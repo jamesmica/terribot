@@ -173,7 +173,7 @@ if prompt := st.chat_input("Ex: Part des familles monoparentales à Vincennes ?"
                 if not df_result.empty:
                     # Analyse du résultat
                     analysis = client.chat.completions.create(
-                        model="gpt-4o",
+                        model="gpt-5.2-2025-12-11",
                         messages=[
                             {"role": "system", "content": "Tu es un expert territoires. Fais une phrase de réponse claire avec le chiffre."},
                             {"role": "user", "content": f"Question: {prompt}\nDonnées: {df_result.to_string()}"}
