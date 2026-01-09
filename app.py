@@ -7,8 +7,8 @@ import os
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Ithea Data Assistant", layout="centered")
 
-# Récupération de la clé API (soit via secrets, soit en dur pour tester)
-# Pour tester vite, tu peux mettre "sk-..." à la place de st.secrets si tu n'as pas configuré secrets.toml
+# Récupération de la clé API
+# Vérifie si la clé est dans les secrets, sinon demande dans la sidebar
 if "OPENAI_API_KEY" in st.secrets:
     api_key = st.secrets["OPENAI_API_KEY"]
 else:
@@ -37,25 +37,33 @@ def init_db():
     schema_info = []
 
     for f in files:
+        # Nettoyage du nom de la table
         table_name = f.replace('.parquet', '').replace('-', '_').replace(' ', '_').lower()
         file_path = os.path.join(data_folder, f)
+        
         # Création d'une VUE (ne charge pas la RAM, lit directement le fichier)
-        con.execute(f"CREATE OR REPLACE VIEW {table_name} AS SELECT * FROM '{file_path}'")
+        # ⚠️ IMPORTANT : On ajoute des guillemets "{table_name}" pour gérer les fichiers comme "all.parquet"
+        con.execute(f'CREATE OR REPLACE VIEW "{table_name}" AS SELECT * FROM \'{file_path}\'')
         schema_info.append(table_name)
-    
-    # 2. Chargement du GLOSSAIRE (si présent)
+
+    # 2. Chargement du GLOSSAIRE
     glossaire_path = os.path.join(data_folder, "Glossaire.txt")
     if os.path.exists(glossaire_path):
         try:
-            # DuckDB est très fort pour détecter le format CSV/TXT tout seul
+            # Essai 1 : Lecture auto (souvent UTF-8)
             con.execute(f"CREATE OR REPLACE VIEW glossaire AS SELECT * FROM read_csv_auto('{glossaire_path}')")
-            schema_info.append("glossaire (Contient la liste des indicateurs)")
-        except Exception as e:
-            st.warning(f"Erreur chargement glossaire: {e}")
+        except:
+            try:
+                # Essai 2 : Forçage Latin-1 (pour fichiers Windows/Excel)
+                con.execute(f"CREATE OR REPLACE VIEW glossaire AS SELECT * FROM read_csv_auto('{glossaire_path}', encoding='latin-1')")
+            except Exception as e:
+                st.warning(f"Impossible de lire le Glossaire : {e}")
+        
+        schema_info.append("glossaire")
 
     return con, ", ".join(schema_info)
 
-# Initialisation
+# Initialisation de la base
 con, table_list = init_db()
 
 # --- INTERFACE ---
@@ -69,7 +77,6 @@ if "messages" not in st.session_state:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        # Si le message contient des résultats (dataframe), on les affiche
         if "data" in msg:
             st.dataframe(msg["data"])
 
@@ -84,32 +91,68 @@ if prompt := st.chat_input("Ex: Part des familles monoparentales à Vincennes ?"
     # 2. Cerveau : GPT génère le SQL
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        message_placeholder.markdown("🧠 *Réflexion et recherche de la bonne table...*")
+        message_placeholder.markdown("🧠 *Lecture du glossaire et réflexion...*")
         
         try:
-            # A. On demande à GPT de trouver la table et faire le SQL
-            # On lui donne un aperçu du glossaire pour qu'il choisisse la bonne table
-            glossaire_sample = ""
-            try:
-                if con: glossaire_sample = con.execute("SELECT * FROM glossaire LIMIT 20").df().to_string()
-            except: pass
+            # A. PRÉPARATION DU CONTEXTE GLOSSAIRE (Colonnes B, E, F)
+            glossaire_txt = ""
+            if con:
+                try:
+                    # On charge tout le glossaire en DataFrame
+                    df_gloss = con.execute("SELECT * FROM glossaire").df()
+                    
+                    # --- MAPPAGE DES COLONNES (B, E, F) ---
+                    # Excel Col B = Index 1 | Col E = Index 4 | Col F = Index 5
+                    try:
+                        # Si les entêtes existent (recommandé)
+                        cols_to_keep = ["Onglet", "Nom au sein de la base de données", "Intitulé détaillé"]
+                        # On filtre si les noms existent
+                        valid_cols = [c for c in cols_to_keep if c in df_gloss.columns]
+                        
+                        if len(valid_cols) == 3:
+                            df_context = df_gloss[valid_cols]
+                        else:
+                            # FALLBACK : On prend par position (Index 1, 4, 5)
+                            # Attention : Python commence à 0. Donc B=1, E=4, F=5
+                            df_context = df_gloss.iloc[:, [1, 4, 5]]
+                            df_context.columns = ["Table_SQL", "Nom_Colonne", "Description"]
+                            
+                    except Exception:
+                        # Si tout échoue, on prend tout (mais c'est plus lourd)
+                        df_context = df_gloss
+                    
+                    # Conversion en texte CSV léger pour GPT
+                    glossaire_txt = df_context.to_csv(index=False, sep="|")
+                    
+                except Exception as e:
+                    # Si pas de glossaire, on continue sans (mais GPT sera moins précis)
+                    st.warning(f"Glossaire non chargé : {e}")
 
+            # B. LE PROMPT SYSTÈME
             system_prompt = f"""
-            Tu es un expert SQL DuckDB. 
-            Tu as accès à des tables locales : {table_list}.
+            Tu es un expert Data Analyst connecté à une base DuckDB.
             
-            Voici un extrait du GLOSSAIRE pour t'aider à choisir la bonne table :
-            {glossaire_sample}
-
-            RÈGLES :
-            1. Trouve la table pertinente.
-            2. La colonne géographique s'appelle souvent 'libgeo', 'LIBGEO', ou 'commune'.
-            3. Génère uniquement une requête SQL valide (pas de Markdown).
-            4. Utilise ILIKE pour les villes : WHERE libgeo ILIKE '%Vincennes%'
+            OBJECTIF :
+            Tu dois transformer la question de l'utilisateur en une requête SQL DuckDB valide.
+            
+            1. ANALYSE LE GLOSSAIRE CI-DESSOUS :
+            Chaque ligne contient : Table SQL | Nom de la colonne variable | Description du contenu.
+            
+            --- DÉBUT GLOSSAIRE ---
+            {glossaire_txt}
+            --- FIN GLOSSAIRE ---
+            
+            2. RÈGLES :
+            - Cherche dans la colonne 'Description' (ou 'Intitulé détaillé') le concept qui correspond à la question.
+            - Utilise la 'Table_SQL' (ou Onglet) et le 'Nom_Colonne' correspondants.
+            - La colonne géographique s'appelle toujours 'libgeo' (ou vérifie 'LIBGEO').
+            - Utilise ILIKE pour la ville : WHERE libgeo ILIKE '%Vincennes%'
+            - Ne réponds QUE le code SQL pur (pas de ```sql, pas de texte).
             """
 
+            # C. APPEL GPT
             response_sql = client.chat.completions.create(
-                model="gpt-4o", # Ou gpt-3.5-turbo
+                model="gpt-4o", # Utilise gpt-4o pour gérer le contexte long du glossaire
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -119,39 +162,33 @@ if prompt := st.chat_input("Ex: Part des familles monoparentales à Vincennes ?"
             
             sql_query = response_sql.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
             
-            # Affichage debug du SQL (optionnel, pour vérifier)
-            with st.expander("Voir la requête SQL générée"):
+            # Debug : Voir ce que GPT a choisi
+            with st.expander("Voir la requête générée"):
                 st.code(sql_query, language="sql")
 
-            # B. Exécution locale (DuckDB)
+            # D. EXÉCUTION
             if con:
                 df_result = con.execute(sql_query).df()
                 
                 if not df_result.empty:
-                    # C. Interprétation du résultat par GPT
+                    # Analyse du résultat
                     analysis = client.chat.completions.create(
                         model="gpt-4o",
                         messages=[
-                            {"role": "system", "content": "Tu es un analyste. Résume ces données en une phrase simple et claire pour l'utilisateur."},
+                            {"role": "system", "content": "Tu es un expert territoires. Fais une phrase de réponse claire avec le chiffre."},
                             {"role": "user", "content": f"Question: {prompt}\nDonnées: {df_result.to_string()}"}
                         ]
                     )
                     final_response = analysis.choices[0].message.content
-                    
-                    # Affichage
                     message_placeholder.markdown(final_response)
                     st.dataframe(df_result)
-                    
-                    # Sauvegarde historique
                     st.session_state.messages.append({"role": "assistant", "content": final_response, "data": df_result})
                 else:
-                    msg = "J'ai exécuté la requête mais je n'ai trouvé aucun résultat (tableau vide). Vérifiez l'orthographe de la ville."
-                    message_placeholder.markdown(msg)
+                    msg = "Aucun résultat trouvé (Tableau vide). Vérifiez le nom de la ville."
+                    message_placeholder.warning(msg)
                     st.session_state.messages.append({"role": "assistant", "content": msg})
             else:
-                st.error("Erreur de connexion DuckDB.")
+                st.error("Erreur connexion DB")
 
         except Exception as e:
-            error_msg = f"Une erreur technique est survenue : {e}"
-            message_placeholder.error(error_msg)
-            st.session_state.messages.append({"role": "assistant", "content": error_msg})
+            st.error(f"Erreur technique : {e}")
