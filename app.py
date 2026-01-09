@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="Terribot | Assistant Territorial",
     page_icon="🗺️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" # La sidebar est ouverte par défaut
 )
 
 st.markdown("""
@@ -23,7 +23,7 @@ st.markdown("""
     footer {visibility: hidden;}
     .stChatInput {padding-bottom: 20px;}
     .stDataFrame {border: 1px solid #f0f2f6; border-radius: 5px;}
-    header {visibility: hidden;}
+    /* header {visibility: hidden;}  <-- CETTE LIGNE CACHIT LE BOUTON DE LA SIDEBAR */
 </style>
 """, unsafe_allow_html=True)
 
