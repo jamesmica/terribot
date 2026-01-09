@@ -152,7 +152,7 @@ if prompt := st.chat_input("Ex: Part des familles monoparentales à Vincennes ?"
 
             # C. APPEL GPT
             response_sql = client.chat.completions.create(
-                model="gpt-4o", # Utilise gpt-4o pour gérer le contexte long du glossaire
+                model="gpt-5.2-2025-12-11", # Utilise gpt-4o pour gérer le contexte long du glossaire
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
