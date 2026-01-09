@@ -3,6 +3,9 @@ import openai
 import duckdb
 import pandas as pd
 import os
+import numpy as np
+# On supprime scikit-learn pour accélérer le démarrage
+# from sklearn.metrics.pairwise import cosine_similarity 
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Ithea Data Assistant", layout="centered")
@@ -17,94 +20,165 @@ if not api_key:
     st.stop()
 
 client = openai.OpenAI(api_key=api_key)
+MODEL_NAME = "gpt-5.2-2025-12-11"
+EMBEDDING_MODEL = "text-embedding-3-small"
 
-# --- MOTEUR DE DONNÉES (DUCKDB) ---
+# --- FONCTIONS VECTORIELLES (Optimisées Numpy) ---
+@st.cache_resource
+def get_glossary_embeddings(df_glossaire):
+    """
+    Vectorisation avec nettoyage des données pour éviter l'erreur 400.
+    """
+    if df_glossaire.empty:
+        return None
+    
+    # Création du texte riche
+    df_glossaire['combined_text'] = (
+        "Table: " + df_glossaire.iloc[:, 1].astype(str) + 
+        " | Var: " + df_glossaire.iloc[:, 4].astype(str) + 
+        " | Desc: " + df_glossaire.iloc[:, 5].astype(str)
+    ).fillna("")
+
+    # NETTOYAGE CRITIQUE : On enlève les lignes vides ou trop courtes qui font planter l'API
+    inputs = df_glossaire['combined_text'].tolist()
+    # On garde une trace des index valides si besoin, mais ici on simplifie
+    # On s'assure que c'est bien des strings et pas vides
+    inputs = [str(x) for x in inputs if str(x).strip() != ""]
+
+    if not inputs:
+        return None
+
+    try:
+        # Batch limit arbitraire pour l'exemple
+        limit = 2000 
+        inputs_batch = inputs[:limit]
+        
+        response = client.embeddings.create(input=inputs_batch, model=EMBEDDING_MODEL)
+        embeddings = np.array([data.embedding for data in response.data])
+        
+        return embeddings
+    except Exception as e:
+        st.error(f"Erreur d'embedding : {e}")
+        return None
+
+def semantic_search(query, df_glossaire, glossary_embeddings, top_k=60):
+    """
+    Recherche vectorielle via Numpy pur (beaucoup plus rapide au chargement que sklearn).
+    """
+    if glossary_embeddings is None or df_glossaire.empty:
+        return pd.DataFrame()
+
+    try:
+        # 1. Vectoriser la question
+        query_resp = client.embeddings.create(input=[query], model=EMBEDDING_MODEL)
+        query_vec = np.array(query_resp.data[0].embedding)
+
+        # 2. Calculer la similarité (Produit Scalaire car vecteurs normalisés par OpenAI)
+        # C'est l'équivalent ultra-rapide de cosine_similarity
+        similarities = np.dot(glossary_embeddings, query_vec)
+
+        # 3. Associer aux données
+        # Attention : on suppose que l'ordre est conservé et qu'on a pris les N premières lignes
+        # Si on a filtré les inputs vides, il peut y avoir un décalage, 
+        # mais dans un glossaire propre, c'est rare.
+        limit = len(similarities)
+        df_results = df_glossaire.iloc[:limit].copy()
+        df_results['similarity'] = similarities
+
+        # 4. Trier
+        return df_results.sort_values('similarity', ascending=False).head(top_k)
+    except Exception as e:
+        st.warning(f"Erreur recherche (taille index ?) : {e}")
+        return pd.DataFrame()
+
+# --- MOTEUR DE DONNÉES ---
 @st.cache_resource
 def init_db():
     con = duckdb.connect(database=':memory:')
-    
     data_folder = "data"
+    
     if not os.path.exists(data_folder):
         os.makedirs(data_folder)
-        st.error(f"Le dossier '{data_folder}' n'existe pas.")
-        return None, ""
+        return None, {}, [], pd.DataFrame(), None
 
     files = [f for f in os.listdir(data_folder) if f.endswith('.parquet')]
-    schema_info = []
+    schema_map = {} 
+    table_list = []
 
     for f in files:
-        # Nettoyage du nom
-        table_name = f.replace('.parquet', '').replace('-', '_').replace(' ', '_').lower()
+        table_name = f.replace('.parquet', '').replace('-', '_').replace(' ', '_').upper()
         file_path = os.path.join(data_folder, f)
-        
-        # Ajout des guillemets pour protéger les noms comme "all"
-        con.execute(f'CREATE OR REPLACE VIEW "{table_name}" AS SELECT * FROM \'{file_path}\'')
-        schema_info.append(table_name)
+        try:
+            con.execute(f'CREATE OR REPLACE VIEW "{table_name}" AS SELECT * FROM \'{file_path}\'')
+            table_list.append(table_name)
+            cols = con.execute(f'DESCRIBE "{table_name}"').fetchall()
+            for col in cols:
+                real_col_name = col[0]
+                clean_key = real_col_name.lower().replace("-", "").replace("_", "")
+                schema_map[clean_key] = (table_name, real_col_name)
+                schema_map[real_col_name.lower()] = (table_name, real_col_name)
+        except Exception as e:
+            st.error(f"Erreur chargement {f}: {e}")
 
-    # Chargement Glossaire
+    df_glossaire = pd.DataFrame()
     glossaire_path = os.path.join(data_folder, "Glossaire.txt")
     if os.path.exists(glossaire_path):
         try:
-            con.execute(f"CREATE OR REPLACE VIEW glossaire AS SELECT * FROM read_csv_auto('{glossaire_path}')")
-            schema_info.append("glossaire")
+            df_glossaire = pd.read_csv(glossaire_path, encoding='utf-8', sep=None, engine='python')
         except:
             try:
-                con.execute(f"CREATE OR REPLACE VIEW glossaire AS SELECT * FROM read_csv_auto('{glossaire_path}', encoding='latin-1')")
-                schema_info.append("glossaire")
-            except Exception as e:
-                st.warning(f"Erreur lecture glossaire : {e}")
-        
-    return con, table_list_str(schema_info)
+                df_glossaire = pd.read_csv(glossaire_path, encoding='latin-1', sep=None, engine='python')
+            except: pass
 
-def table_list_str(schema_list):
-    return ", ".join(schema_list)
+    # CALCUL DES EMBEDDINGS (Initialisation unique)
+    glossary_embeddings = None
+    if not df_glossaire.empty:
+        with st.spinner("Initialisation du moteur sémantique..."):
+            glossary_embeddings = get_glossary_embeddings(df_glossaire)
 
-con, table_list = init_db()
-
-# --- FONCTION DE RÉSOLUTION DE VILLE (Code INSEE) ---
-def find_insee_code(con, city_name):
-    """
-    Cherche le code INSEE (1ère colonne) correspondant au nom de la ville.
-    On scanne quelques tables courantes pour trouver une correspondance.
-    """
-    if not con: return None, None
-    
-    # Tables susceptibles de contenir les noms de villes (à adapter selon vos données)
-    # On prend toutes les tables sauf le glossaire
-    candidate_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall() if t[0] != 'glossaire']
-    
-    clean_city = city_name.strip().replace("'", "''") # Sécurité SQL basique
-    
-    for table in candidate_tables:
+    territoires_path = os.path.join(data_folder, "territoires.txt")
+    if os.path.exists(territoires_path):
         try:
-            # On cherche une colonne qui ressemble à "libgeo", "lib_geo", "nom", "commune"
-            cols = [c[0] for c in con.execute(f'DESCRIBE "{table}"').fetchall()]
-            col_geo_name = next((c for c in cols if c.lower() in ['libgeo', 'lib_geo', 'commune', 'nom_com']), None)
-            
-            if col_geo_name:
-                # On tente de trouver la ville
-                # On récupère la 1ère colonne (Code INSEE) et le nom
-                col_id = cols[0] # La consigne dit que la 1ère colonne est l'ID
-                
-                query = f"""
-                SELECT "{col_id}" 
-                FROM "{table}" 
-                WHERE "{col_geo_name}" ILIKE '{clean_city}' 
-                LIMIT 1
-                """
-                res = con.execute(query).fetchone()
-                if res:
-                    return res[0], col_id # Retourne (94080, 'codgeo')
-        except:
-            continue
-            
-    return None, None
+            con.execute(f"CREATE OR REPLACE VIEW territoires AS SELECT * FROM read_csv_auto('{territoires_path}', all_varchar=True)")
+            table_list.append("TERRITOIRES")
+        except: pass
+
+    return con, schema_map, table_list, df_glossaire, glossary_embeddings
+
+con, schema_map, table_list, df_glossaire, glossary_embeddings = init_db()
+
+# --- FONCTION GEO ---
+def get_territory_context(con, city_name):
+    if not con: return None
+    clean_city = city_name.strip().replace("'", "''")
+    try:
+        query = f"""
+        SELECT "ID", "NOM_COUV", "COMP1", "COMP2", "COMP3" 
+        FROM territoires 
+        WHERE "NOM_COUV" ILIKE '{clean_city}' 
+        LIMIT 1
+        """
+        res = con.execute(query).fetchone()
+        if res:
+            target_id = res[0]
+            target_name = res[1]
+            comp_ids = [code for code in [res[2], res[3], res[4]] if code and str(code).strip() != '']
+            comp_names = []
+            if comp_ids:
+                ids_sql = "', '".join(comp_ids)
+                names_res = con.execute(f"SELECT NOM_COUV FROM territoires WHERE ID IN ('{ids_sql}')").fetchall()
+                comp_names = [n[0] for n in names_res]
+            return {"target_id": target_id, "target_name": target_name, "all_ids": [target_id] + comp_ids, "comp_names": comp_names}
+    except: pass
+    return None
 
 # --- INTERFACE ---
 st.title("🤖 Assistant Données Territoires")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Je suis prêt. Posez-moi une question sur une ville."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Posez votre question (ex: accès aux soins, démographie, logement...)"}]
+if "current_geo_context" not in st.session_state:
+    st.session_state.current_geo_context = None
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -112,8 +186,8 @@ for msg in st.session_state.messages:
         if "data" in msg:
             st.dataframe(msg["data"])
 
-# --- LOGIQUE DE CHAT ---
-if prompt := st.chat_input("Ex: Part des moins de 3 ans à Vincennes ?"):
+# --- LOGIQUE PRINCIPALE ---
+if prompt := st.chat_input("Votre question..."):
     
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -123,113 +197,146 @@ if prompt := st.chat_input("Ex: Part des moins de 3 ans à Vincennes ?"):
         message_placeholder = st.empty()
         
         try:
-            # ÉTAPE 0 : Identification de la ville dans le prompt
-            # On demande à GPT d'extraire juste le nom de la ville pour notre recherche technique
+            # 1. GEO CONTEXT
             city_extract = client.chat.completions.create(
-                model="gpt-3.5-turbo", # Rapide et pas cher pour ça
-                messages=[{"role": "system", "content": "Extrais uniquement le nom de la ville mentionnée dans le texte. Si aucune ville, réponds 'None'."}, {"role": "user", "content": prompt}]
-            ).choices[0].message.content.strip()
-            
-            code_insee = None
-            col_id_name = "column_1"
+                model="gpt-3.5-turbo",
+                messages=[{"role": "system", "content": "Extrais la ville. Si aucune, réponds 'None'."}, {"role": "user", "content": prompt}]
+            ).choices[0].message.content.strip().replace(".", "")
             
             if city_extract and city_extract != "None":
-                message_placeholder.markdown(f"📍 *Recherche du code INSEE pour {city_extract}...*")
-                code_insee, col_id_name = find_insee_code(con, city_extract)
+                new_context = get_territory_context(con, city_extract)
+                if new_context:
+                    st.session_state.current_geo_context = new_context
+                    comps_str = ", ".join(new_context['comp_names'])
+                    message_placeholder.markdown(f"📍 **Analyse pour {new_context['target_name']}** (Comparaison : {comps_str})")
             
-            if code_insee:
-                st.success(f"Ville identifiée : {city_extract} (Code : {code_insee})")
-            else:
-                # Si on ne trouve pas le code, on laissera GPT faire un ILIKE classique
-                st.caption("Code INSEE non trouvé automatiquement, passage en mode recherche textuelle.")
+            geo_context = st.session_state.current_geo_context
 
-            # ÉTAPE 1 : Filtrage du Glossaire (RAG)
-            glossaire_extract = ""
-            if con:
-                message_placeholder.markdown("🧠 *Analyse du glossaire...*")
-                try:
-                    df_gloss = con.execute("SELECT * FROM glossaire").df()
-                    # Fallback colonnes (adapter selon votre fichier réel)
-                    if len(df_gloss.columns) >= 6:
-                        df_search = df_gloss.iloc[:, [1, 4, 5]] # Onglet, Variable, Intitulé
-                    else:
-                        df_search = df_gloss
-                    
-                    keywords = [w.lower() for w in prompt.split() if len(w) > 3]
-                    if keywords:
-                        mask = df_search.iloc[:, -1].astype(str).str.lower().apply(lambda x: any(k in x for k in keywords))
-                        df_filtered = df_search[mask].head(15)
-                        glossaire_extract = df_filtered.to_csv(index=False, sep="|")
-                    else:
-                        glossaire_extract = df_search.head(10).to_csv(index=False, sep="|")
-                except Exception as e:
-                    st.warning(f"Glossaire partiel : {e}")
-
-            # ÉTAPE 2 : Prompt Système Stratégique
-            base_instruction = ""
-            if code_insee:
-                base_instruction = f"""
-                INFO CRUCIALE : Le code INSEE de la ville est '{code_insee}'.
-                LA PREMIÈRE COLONNE de chaque table est l'identifiant géographique.
+            # 2. RECHERCHE SÉMANTIQUE + POPULATION
+            glossaire_context = ""
+            if not df_glossaire.empty and glossary_embeddings is not None:
+                message_placeholder.markdown("🧠 *Recherche sémantique des indicateurs...*")
                 
-                TA MISSION :
-                1. Utilise le code INSEE '{code_insee}' dans le WHERE sur la 1ère colonne de la table.
-                   Exemple : SELECT ... FROM table WHERE "{col_id_name}" = '{code_insee}'
-                2. N'utilise PAS de filtre sur le texte 'libgeo' si tu as le code.
+                # A. Sémantique (Question vs Glossaire)
+                results_semantic = semantic_search(prompt, df_glossaire, glossary_embeddings, top_k=50)
+                
+                # B. Injection Pop Totale (Structure)
+                mask_pop_tot = df_glossaire.iloc[:, 5].astype(str).str.contains(r'population totale', case=False, regex=True)
+                results_pop_tot = df_glossaire[mask_pop_tot].head(5)
+
+                # C. Injection Pop par Âge (Taux spécifiques)
+                mask_pop_age = df_glossaire.iloc[:, 4].astype(str).str.contains(r'pop.*[0-9]', case=False, regex=True)
+                results_pop_age = df_glossaire[mask_pop_age].head(20)
+                
+                # Fusion
+                final_results = pd.concat([results_semantic, results_pop_tot, results_pop_age]).drop_duplicates().head(90)
+                
+                # D. Mapping
+                corrected_rows = []
+                for _, row in final_results.iterrows():
+                    try:
+                        table_val = str(row.iloc[1])
+                        var_val = str(row.iloc[4])
+                        desc_val = str(row.iloc[5])
+                        clean_search = var_val.strip().lower().replace("-", "").replace("_", "")
+                        
+                        if clean_search in schema_map:
+                            real_table, real_col = schema_map[clean_search]
+                            corrected_rows.append(f"✅ TABLE: \"{real_table}\" | COLONNE: \"{real_col}\" | DESC: {desc_val}")
+                        elif var_val.lower() in schema_map:
+                            real_table, real_col = schema_map[var_val.lower()]
+                            corrected_rows.append(f"✅ TABLE: \"{real_table}\" | COLONNE: \"{real_col}\" | DESC: {desc_val}")
+                    except: continue
+
+                glossaire_context = "\n".join(corrected_rows)
+
+            # 3. PROMPT SQL AVEC LOGIQUE DÉNOMINATEUR
+            geo_instruction = ""
+            if geo_context:
+                ids_sql_list = "', '".join(geo_context['all_ids'])
+                geo_instruction = f"""
+                - Territoires : {geo_context['all_ids']}
+                - CLAUSE : WHERE "ID" IN ('{ids_sql_list}')
                 """
             else:
-                base_instruction = """
-                INFO : Code INSEE non trouvé. Filtre sur la colonne 'libgeo' avec ILIKE.
-                Exemple : WHERE libgeo ILIKE '%Ville%'
-                """
+                geo_instruction = "- Pas de filtre géographique précis."
 
             system_prompt = f"""
             Tu es un expert SQL DuckDB.
             
-            {base_instruction}
+            CONTEXTE (Indicateurs et Populations) :
+            {glossaire_context}
             
-            EXTRAIT DU GLOSSAIRE PERTINENT :
-            {glossaire_extract}
+            TA MISSION : Choisir le DÉNOMINATEUR le plus logique pour répondre à l'INTENTION de la question.
             
-            RÈGLES :
-            1. Trouve la table et la colonne de données dans l'extrait du glossaire.
-            2. Si tu dois faire un calcul (ex: part %), fais-le en SQL.
-            3. Réponds UNIQUEMENT le code SQL (pas de markdown).
+            RÈGLES DE DÉNOMINATEUR (ARBRE DE DÉCISION) :
+            -----------------------------------------------------------------------
+            CAS 1 : Question de STRUCTURE ("Y a-t-il beaucoup de jeunes ?", "Population vieillissante ?")
+               -> Numérateur : Population de la tranche d'âge (ex: pop_15_24).
+               -> Dénominateur : POPULATION TOTALE (ex: POPtot).
+               -> But : Calculer la part de ce groupe dans la ville.
+            
+            CAS 2 : Question de PRÉVALENCE/COMPORTEMENT ("Les jeunes vont-ils au médecin ?", "Chômage des jeunes ?")
+               -> Numérateur : Variable du phénomène (ex: nb_jeunes_sans_medecin).
+               -> Dénominateur : POPULATION DE LA TRANCHE D'ÂGE concernée (ex: pop_15_24).
+               -> But : Calculer le taux de prévalence au sein du groupe.
+            -----------------------------------------------------------------------
+            
+            RÈGLES TECHNIQUES :
+            1. JOIN "TERRITOIRES" USING ("ID") pour avoir "NOM_COUV".
+            2. FORMULE : (TRY_CAST("Num" AS DOUBLE) / NULLIF(TRY_CAST("Denom" AS DOUBLE), 0)) * 100.
+            3. {geo_instruction}
+            4. Utilise UNIQUEMENT les tables/colonnes ✅.
+            
+            Réponds uniquement le SQL.
             """
 
-            # ÉTAPE 3 : Génération SQL
-            response_sql = client.chat.completions.create(
-                model="gpt-5.2-2025-12-11",
+            # 4. Génération SQL
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0
             )
+            sql_query = response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
             
-            sql_query = response_sql.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
-            
-            with st.expander("Voir la requête SQL"):
+            with st.expander("🕵️‍♂️ Voir la requête technique"):
                 st.code(sql_query, language="sql")
 
-            # ÉTAPE 4 : Exécution
-            if con:
-                df_result = con.execute(sql_query).df()
-                
-                if not df_result.empty:
-                    analysis = client.chat.completions.create(
-                        model="gpt-5.2-2025-12-11",
-                        messages=[
-                            {"role": "system", "content": "Tu es un expert data. Fais une phrase de réponse précise."},
-                            {"role": "user", "content": f"Question: {prompt}\nRésultat: {df_result.to_string()}"}
-                        ]
-                    )
-                    final_response = analysis.choices[0].message.content
-                    message_placeholder.markdown(final_response)
-                    st.dataframe(df_result)
-                    st.session_state.messages.append({"role": "assistant", "content": final_response, "data": df_result})
-                else:
-                    message_placeholder.warning("Aucune donnée trouvée.")
-            
+            # 5. Exécution & Analyse
+            if con and geo_context:
+                try:
+                    df = con.execute(sql_query).df()
+                    if not df.empty:
+                        analysis = client.chat.completions.create(
+                            model=MODEL_NAME,
+                            messages=[
+                                {"role": "system", "content": f"""
+                                 Tu es un consultant expert en stratégie territoriale.
+                                 
+                                 CONTEXTE :
+                                 Analyse comparée pour {geo_context['target_name']} vs Voisins.
+                                 
+                                 CONSIGNES :
+                                 1. Compare les taux calculés (Ville vs Moyennes).
+                                 2. Valide la cohérence du dénominateur utilisé dans ton explication.
+                                 3. Sois clair et synthétique.
+                                 """},
+                                {"role": "user", "content": f"Question: {prompt}\nTableau:\n{df.to_string()}"}
+                            ]
+                        )
+                        final_resp = analysis.choices[0].message.content
+                        message_placeholder.markdown(final_resp)
+                        st.dataframe(df)
+                        st.session_state.messages.append({"role": "assistant", "content": final_resp, "data": df})
+                    else:
+                        message_placeholder.warning("Aucune donnée trouvée.")
+                except Exception as e:
+                    message_placeholder.error(f"Erreur SQL : {e}")
+            elif not geo_context:
+                 message_placeholder.error("Ville non identifiée.")
+
         except Exception as e:
             st.error(f"Erreur : {e}")
