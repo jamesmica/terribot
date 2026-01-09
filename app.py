@@ -7,8 +7,6 @@ import os
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Ithea Data Assistant", layout="centered")
 
-# Récupération de la clé API
-# Vérifie si la clé est dans les secrets, sinon demande dans la sidebar
 if "OPENAI_API_KEY" in st.secrets:
     api_key = st.secrets["OPENAI_API_KEY"]
 else:
@@ -23,57 +21,91 @@ client = openai.OpenAI(api_key=api_key)
 # --- MOTEUR DE DONNÉES (DUCKDB) ---
 @st.cache_resource
 def init_db():
-    """Initialise DuckDB et charge virtuellement les fichiers Parquet"""
     con = duckdb.connect(database=':memory:')
     
-    # 1. Chargement automatique des PARQUETS du dossier 'data'
     data_folder = "data"
     if not os.path.exists(data_folder):
         os.makedirs(data_folder)
-        st.error(f"Le dossier '{data_folder}' n'existe pas. Créez-le et mettez vos fichiers parquet dedans.")
+        st.error(f"Le dossier '{data_folder}' n'existe pas.")
         return None, ""
 
     files = [f for f in os.listdir(data_folder) if f.endswith('.parquet')]
     schema_info = []
 
     for f in files:
-        # Nettoyage du nom de la table
+        # Nettoyage du nom
         table_name = f.replace('.parquet', '').replace('-', '_').replace(' ', '_').lower()
         file_path = os.path.join(data_folder, f)
         
-        # Création d'une VUE (ne charge pas la RAM, lit directement le fichier)
-        # ⚠️ IMPORTANT : On ajoute des guillemets "{table_name}" pour gérer les fichiers comme "all.parquet"
+        # Ajout des guillemets pour protéger les noms comme "all"
         con.execute(f'CREATE OR REPLACE VIEW "{table_name}" AS SELECT * FROM \'{file_path}\'')
         schema_info.append(table_name)
 
-    # 2. Chargement du GLOSSAIRE
+    # Chargement Glossaire
     glossaire_path = os.path.join(data_folder, "Glossaire.txt")
     if os.path.exists(glossaire_path):
         try:
-            # Essai 1 : Lecture auto (souvent UTF-8)
             con.execute(f"CREATE OR REPLACE VIEW glossaire AS SELECT * FROM read_csv_auto('{glossaire_path}')")
+            schema_info.append("glossaire")
         except:
             try:
-                # Essai 2 : Forçage Latin-1 (pour fichiers Windows/Excel)
                 con.execute(f"CREATE OR REPLACE VIEW glossaire AS SELECT * FROM read_csv_auto('{glossaire_path}', encoding='latin-1')")
+                schema_info.append("glossaire")
             except Exception as e:
-                st.warning(f"Impossible de lire le Glossaire : {e}")
+                st.warning(f"Erreur lecture glossaire : {e}")
         
-        schema_info.append("glossaire")
+    return con, table_list_str(schema_info)
 
-    return con, ", ".join(schema_info)
+def table_list_str(schema_list):
+    return ", ".join(schema_list)
 
-# Initialisation de la base
 con, table_list = init_db()
+
+# --- FONCTION DE RÉSOLUTION DE VILLE (Code INSEE) ---
+def find_insee_code(con, city_name):
+    """
+    Cherche le code INSEE (1ère colonne) correspondant au nom de la ville.
+    On scanne quelques tables courantes pour trouver une correspondance.
+    """
+    if not con: return None, None
+    
+    # Tables susceptibles de contenir les noms de villes (à adapter selon vos données)
+    # On prend toutes les tables sauf le glossaire
+    candidate_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall() if t[0] != 'glossaire']
+    
+    clean_city = city_name.strip().replace("'", "''") # Sécurité SQL basique
+    
+    for table in candidate_tables:
+        try:
+            # On cherche une colonne qui ressemble à "libgeo", "lib_geo", "nom", "commune"
+            cols = [c[0] for c in con.execute(f'DESCRIBE "{table}"').fetchall()]
+            col_geo_name = next((c for c in cols if c.lower() in ['libgeo', 'lib_geo', 'commune', 'nom_com']), None)
+            
+            if col_geo_name:
+                # On tente de trouver la ville
+                # On récupère la 1ère colonne (Code INSEE) et le nom
+                col_id = cols[0] # La consigne dit que la 1ère colonne est l'ID
+                
+                query = f"""
+                SELECT "{col_id}" 
+                FROM "{table}" 
+                WHERE "{col_geo_name}" ILIKE '{clean_city}' 
+                LIMIT 1
+                """
+                res = con.execute(query).fetchone()
+                if res:
+                    return res[0], col_id # Retourne (94080, 'codgeo')
+        except:
+            continue
+            
+    return None, None
 
 # --- INTERFACE ---
 st.title("🤖 Assistant Données Territoires")
-st.caption(f"🚀 Moteur DuckDB actif sur {len(table_list.split(','))} tables.")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Je suis connecté à vos données locales. Posez-moi une question sur un territoire."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Je suis prêt. Posez-moi une question sur une ville."}]
 
-# Affichage historique
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -81,78 +113,93 @@ for msg in st.session_state.messages:
             st.dataframe(msg["data"])
 
 # --- LOGIQUE DE CHAT ---
-if prompt := st.chat_input("Ex: Part des familles monoparentales à Vincennes ?"):
+if prompt := st.chat_input("Ex: Part des moins de 3 ans à Vincennes ?"):
     
-    # 1. Afficher message user
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 2. Cerveau : GPT génère le SQL
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        message_placeholder.markdown("🧠 *Lecture du glossaire et réflexion...*")
         
         try:
-            # A. PRÉPARATION DU CONTEXTE GLOSSAIRE (Colonnes B, E, F)
-            glossaire_txt = ""
-            if con:
-                try:
-                    # On charge tout le glossaire en DataFrame
-                    df_gloss = con.execute("SELECT * FROM glossaire").df()
-                    
-                    # --- MAPPAGE DES COLONNES (B, E, F) ---
-                    # Excel Col B = Index 1 | Col E = Index 4 | Col F = Index 5
-                    try:
-                        # Si les entêtes existent (recommandé)
-                        cols_to_keep = ["Onglet", "Nom au sein de la base de données", "Intitulé détaillé"]
-                        # On filtre si les noms existent
-                        valid_cols = [c for c in cols_to_keep if c in df_gloss.columns]
-                        
-                        if len(valid_cols) == 3:
-                            df_context = df_gloss[valid_cols]
-                        else:
-                            # FALLBACK : On prend par position (Index 1, 4, 5)
-                            # Attention : Python commence à 0. Donc B=1, E=4, F=5
-                            df_context = df_gloss.iloc[:, [1, 4, 5]]
-                            df_context.columns = ["Table_SQL", "Nom_Colonne", "Description"]
-                            
-                    except Exception:
-                        # Si tout échoue, on prend tout (mais c'est plus lourd)
-                        df_context = df_gloss
-                    
-                    # Conversion en texte CSV léger pour GPT
-                    glossaire_txt = df_context.to_csv(index=False, sep="|")
-                    
-                except Exception as e:
-                    # Si pas de glossaire, on continue sans (mais GPT sera moins précis)
-                    st.warning(f"Glossaire non chargé : {e}")
+            # ÉTAPE 0 : Identification de la ville dans le prompt
+            # On demande à GPT d'extraire juste le nom de la ville pour notre recherche technique
+            city_extract = client.chat.completions.create(
+                model="gpt-3.5-turbo", # Rapide et pas cher pour ça
+                messages=[{"role": "system", "content": "Extrais uniquement le nom de la ville mentionnée dans le texte. Si aucune ville, réponds 'None'."}, {"role": "user", "content": prompt}]
+            ).choices[0].message.content.strip()
+            
+            code_insee = None
+            col_id_name = "column_1"
+            
+            if city_extract and city_extract != "None":
+                message_placeholder.markdown(f"📍 *Recherche du code INSEE pour {city_extract}...*")
+                code_insee, col_id_name = find_insee_code(con, city_extract)
+            
+            if code_insee:
+                st.success(f"Ville identifiée : {city_extract} (Code : {code_insee})")
+            else:
+                # Si on ne trouve pas le code, on laissera GPT faire un ILIKE classique
+                st.caption("Code INSEE non trouvé automatiquement, passage en mode recherche textuelle.")
 
-            # B. LE PROMPT SYSTÈME
+            # ÉTAPE 1 : Filtrage du Glossaire (RAG)
+            glossaire_extract = ""
+            if con:
+                message_placeholder.markdown("🧠 *Analyse du glossaire...*")
+                try:
+                    df_gloss = con.execute("SELECT * FROM glossaire").df()
+                    # Fallback colonnes (adapter selon votre fichier réel)
+                    if len(df_gloss.columns) >= 6:
+                        df_search = df_gloss.iloc[:, [1, 4, 5]] # Onglet, Variable, Intitulé
+                    else:
+                        df_search = df_gloss
+                    
+                    keywords = [w.lower() for w in prompt.split() if len(w) > 3]
+                    if keywords:
+                        mask = df_search.iloc[:, -1].astype(str).str.lower().apply(lambda x: any(k in x for k in keywords))
+                        df_filtered = df_search[mask].head(15)
+                        glossaire_extract = df_filtered.to_csv(index=False, sep="|")
+                    else:
+                        glossaire_extract = df_search.head(10).to_csv(index=False, sep="|")
+                except Exception as e:
+                    st.warning(f"Glossaire partiel : {e}")
+
+            # ÉTAPE 2 : Prompt Système Stratégique
+            base_instruction = ""
+            if code_insee:
+                base_instruction = f"""
+                INFO CRUCIALE : Le code INSEE de la ville est '{code_insee}'.
+                LA PREMIÈRE COLONNE de chaque table est l'identifiant géographique.
+                
+                TA MISSION :
+                1. Utilise le code INSEE '{code_insee}' dans le WHERE sur la 1ère colonne de la table.
+                   Exemple : SELECT ... FROM table WHERE "{col_id_name}" = '{code_insee}'
+                2. N'utilise PAS de filtre sur le texte 'libgeo' si tu as le code.
+                """
+            else:
+                base_instruction = """
+                INFO : Code INSEE non trouvé. Filtre sur la colonne 'libgeo' avec ILIKE.
+                Exemple : WHERE libgeo ILIKE '%Ville%'
+                """
+
             system_prompt = f"""
-            Tu es un expert Data Analyst connecté à une base DuckDB.
+            Tu es un expert SQL DuckDB.
             
-            OBJECTIF :
-            Tu dois transformer la question de l'utilisateur en une requête SQL DuckDB valide.
+            {base_instruction}
             
-            1. ANALYSE LE GLOSSAIRE CI-DESSOUS :
-            Chaque ligne contient : Table SQL | Nom de la colonne variable | Description du contenu.
+            EXTRAIT DU GLOSSAIRE PERTINENT :
+            {glossaire_extract}
             
-            --- DÉBUT GLOSSAIRE ---
-            {glossaire_txt}
-            --- FIN GLOSSAIRE ---
-            
-            2. RÈGLES :
-            - Cherche dans la colonne 'Description' (ou 'Intitulé détaillé') le concept qui correspond à la question.
-            - Utilise la 'Table_SQL' (ou Onglet) et le 'Nom_Colonne' correspondants.
-            - La colonne géographique s'appelle toujours 'libgeo' (ou vérifie 'LIBGEO').
-            - Utilise ILIKE pour la ville : WHERE libgeo ILIKE '%Vincennes%'
-            - Ne réponds QUE le code SQL pur (pas de ```sql, pas de texte).
+            RÈGLES :
+            1. Trouve la table et la colonne de données dans l'extrait du glossaire.
+            2. Si tu dois faire un calcul (ex: part %), fais-le en SQL.
+            3. Réponds UNIQUEMENT le code SQL (pas de markdown).
             """
 
-            # C. APPEL GPT
+            # ÉTAPE 3 : Génération SQL
             response_sql = client.chat.completions.create(
-                model="gpt-5.2-2025-12-11", # Utilise gpt-4o pour gérer le contexte long du glossaire
+                model="gpt-5.2-2025-12-11",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -162,21 +209,19 @@ if prompt := st.chat_input("Ex: Part des familles monoparentales à Vincennes ?"
             
             sql_query = response_sql.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
             
-            # Debug : Voir ce que GPT a choisi
-            with st.expander("Voir la requête générée"):
+            with st.expander("Voir la requête SQL"):
                 st.code(sql_query, language="sql")
 
-            # D. EXÉCUTION
+            # ÉTAPE 4 : Exécution
             if con:
                 df_result = con.execute(sql_query).df()
                 
                 if not df_result.empty:
-                    # Analyse du résultat
                     analysis = client.chat.completions.create(
                         model="gpt-5.2-2025-12-11",
                         messages=[
-                            {"role": "system", "content": "Tu es un expert territoires. Fais une phrase de réponse claire avec le chiffre."},
-                            {"role": "user", "content": f"Question: {prompt}\nDonnées: {df_result.to_string()}"}
+                            {"role": "system", "content": "Tu es un expert data. Fais une phrase de réponse précise."},
+                            {"role": "user", "content": f"Question: {prompt}\nRésultat: {df_result.to_string()}"}
                         ]
                     )
                     final_response = analysis.choices[0].message.content
@@ -184,11 +229,7 @@ if prompt := st.chat_input("Ex: Part des familles monoparentales à Vincennes ?"
                     st.dataframe(df_result)
                     st.session_state.messages.append({"role": "assistant", "content": final_response, "data": df_result})
                 else:
-                    msg = "Aucun résultat trouvé (Tableau vide). Vérifiez le nom de la ville."
-                    message_placeholder.warning(msg)
-                    st.session_state.messages.append({"role": "assistant", "content": msg})
-            else:
-                st.error("Erreur connexion DB")
-
+                    message_placeholder.warning("Aucune donnée trouvée.")
+            
         except Exception as e:
-            st.error(f"Erreur technique : {e}")
+            st.error(f"Erreur : {e}")
