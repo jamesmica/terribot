@@ -23,6 +23,7 @@ st.markdown("""
     footer {visibility: hidden;}
     .stChatInput {padding-bottom: 20px;}
     .stDataFrame {border: 1px solid #f0f2f6; border-radius: 5px;}
+    
     /* Style pour les étapes de raisonnement */
     .reasoning-step {
         font-size: 0.85em;
@@ -30,6 +31,11 @@ st.markdown("""
         border-left: 3px solid #FF4B4B;
         padding-left: 10px;
         margin-bottom: 10px;
+    }
+    
+    /* Bouton reset custom */
+    div.stButton > button:first-child {
+        border-radius: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -84,7 +90,18 @@ def inject_placeholder_animation():
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("Intelligence Territoriale v5.1 (UI Order)")
+    st.caption("Intelligence Territoriale v5.3 (Fuzzy Search)")
+    st.divider()
+    
+    # Bouton Reset
+    if st.button("🗑️ Nouvelle conversation", type="secondary", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.current_geo_context = None
+        st.session_state.pending_prompt = None
+        st.session_state.ambiguity_candidates = None
+        st.rerun()
+        st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Quel territoire souhaitez-vous analyser ?"}]
+
     st.divider()
     
     if "OPENAI_API_KEY" in st.secrets:
@@ -97,31 +114,63 @@ with st.sidebar:
             st.stop()
 
     st.divider()
-    st.info("💡 **Dataviz :** L'IA choisit elle-même la variable du graphique selon votre question.")
+    with st.expander("📚 Sources de données"):
+        st.markdown("""
+        - **INSEE** : Recensement (Pop, Logement, Emploi)
+        - **RPLS** : Logement social
+        - **Philosofi** : Revenus & Pauvreté
+        - **Sirene** : Entreprises
+        """)
+        
+    st.info("💡 **Astuce :** L'IA choisit elle-même la variable du graphique selon votre question.")
 
 client = openai.OpenAI(api_key=api_key)
-MODEL_NAME = "gpt-5.2-2025-12-11" # Si ce modèle n'existe pas, OpenAI fallbackera sur un gpt-4o ou similaire selon votre plan, mais je garde le string tel quel.
+MODEL_NAME = "gpt-5.2-2025-12-11"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 # --- 4. FONCTIONS INTELLIGENTES (FORMATAGE & SÉLECTION) ---
-def infer_format_specs_with_ai(df: pd.DataFrame, question: str, glossaire_context: str, client, model: str):
-    """Demande à l'IA de deviner le format (%, €, nombre) pour chaque colonne numérique."""
+def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: str, client, model: str):
+    """
+    Fusionne la sélection des variables (1 ou plusieurs) et la détection des formats.
+    """
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    if not numeric_cols: return {}
+    # Nettoyage des colonnes techniques
+    numeric_cols = [c for c in numeric_cols if c.upper() not in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]]
+    
+    if not numeric_cols: return {"selected_columns": [], "formats": {}}
 
+    # Stats légères pour aider l'IA
     stats = {}
-    for c in numeric_cols:
-        s = pd.to_numeric(df[c], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
-        if len(s) == 0: continue
-        stats[c] = {"min": float(s.min()), "max": float(s.max()), "mean": float(s.mean())}
+    for c in numeric_cols[:10]: # On limite pour ne pas exploser le contexte
+        s = pd.to_numeric(df[c], errors="coerce").dropna()
+        if len(s) > 0:
+            stats[c] = {"min": float(s.min()), "max": float(s.max())}
 
     payload = {
         "question": question,
-        "columns": df.columns.tolist(),
-        "numeric_columns": numeric_cols,
-        "stats": stats,
-        "glossaire_context": (glossaire_context or "")[-4000:],
+        "available_columns": numeric_cols,
+        "data_stats": stats,
+        "glossaire_sample": (glossaire_context or "")[-2000:],
     }
+
+    system_prompt = """
+    Tu es un expert Dataviz. Configure le graphique pour répondre à la question.
+    
+    TA MISSION :
+    1. Choisis les colonnes à afficher ('selected_columns'). 
+       - Si la question implique une comparaison de plusieurs indicateurs (ex: "Compare le chômage et la pauvreté"), choisis plusieurs colonnes.
+       - Si c'est une simple évolution, une seule suffit.
+       - Choisis des variables comparables entre les territoires (ex: taux, part, pour X habitants).
+    2. Définis le format ('formats') pour chaque colonne choisie.
+    
+    JSON ATTENDU :
+    {
+      "selected_columns": ["col1", "col2"],
+      "formats": {
+        "col1": { "kind": "percent|currency|number", "decimals": 1, "title": "Titre Axe Y" }
+      }
+    }
+    """
 
     try:
         resp = client.chat.completions.create(
@@ -129,80 +178,25 @@ def infer_format_specs_with_ai(df: pd.DataFrame, question: str, glossaire_contex
             temperature=0,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": """
-Tu es un expert en visualisation de données. Ton but est de déterminer le format d'affichage optimal pour chaque colonne numérique.
-
-Retour attendu (JSON strict) :
-{
-  "columns": {
-    "<nom_colonne>": {
-      "kind": "percent|currency|count|number",
-      "percent_base": "0-1|0-100|null",
-      "decimals": 0-2,
-      "unit": "%|€|hab|",
-      "title": "Titre court et propre pour l'axe"
-    }
-  }
-}
-
-Règles de décision :
-1. "percent" : Si c'est un taux, une part, une évolution.
-   - Si les valeurs sont entre 0 et 1 (ex: 0.15), percent_base="0-1".
-   - Si les valeurs sont entre 0 et 100 (ex: 15.0), percent_base="0-100".
-2. "currency" : Si c'est un revenu, un prix, un montant (unit="€").
-3. "count" : Si c'est une population, un nombre de logements, un volume brut.
-4. "number" : Par défaut (ex: densité, ratio sans unité).
-
-Sois logique avec les stats fournies (min/max).
-"""},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
         )
         data = json.loads(resp.choices[0].message.content)
         
-        # --- APPARENCE : Affichage du raisonnement IA ---
-        with st.expander("🎨 IA : Détection des Formats", expanded=False):
-             st.caption("L'IA analyse les stats (min/max) et le nom des colonnes pour deviner les unités.")
+        # Fallback si l'IA ne renvoie rien de cohérent
+        if not data.get("selected_columns"):
+            data["selected_columns"] = [numeric_cols[0]]
+            
+        # Filtrer pour être sûr que les colonnes existent
+        data["selected_columns"] = [c for c in data["selected_columns"] if c in df.columns]
+        
+        with st.expander("🎨 IA : Configuration Graphique (Fusionnée)", expanded=False):
              st.json(data)
-        # ------------------------------------------------
-        
-        return data.get("columns", {}) or {}
-    except:
-        return {}
-
-def select_best_metric_for_chart(df: pd.DataFrame, question: str, client, model: str):
-    """L'IA choisit la colonne la plus pertinente pour le graphique en fonction de la question."""
-    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-    # On retire les colonnes années/id si présentes par erreur dans les numériques
-    numeric_cols = [c for c in numeric_cols if c.upper() not in ["AN", "ANNEE", "YEAR", "ID"]]
-    
-    if not numeric_cols: return None
-    if len(numeric_cols) == 1: return numeric_cols[0] # Pas le choix
-
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Tu es un expert Dataviz. Ta mission : Choisir la colonne numérique la plus pertinente pour faire un graphique qui répond à la question de l'utilisateur. Renvoie un JSON : {\"column\": \"nom_exact_colonne\"}."},
-                {"role": "user", "content": f"Question reformulée : {question}\nColonnes disponibles : {numeric_cols}"}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0
-        )
-        selected_json = json.loads(response.choices[0].message.content)
-        selected = selected_json.get("column")
-        
-        # --- APPARENCE : Affichage du choix IA ---
-        with st.expander("📊 IA : Choix de la métrique Graphique", expanded=False):
-             st.caption(f"Colonnes dispos : {numeric_cols}")
-             st.write(f"Choix de l'IA : **{selected}**")
-        # -----------------------------------------
-
-        if selected in df.columns:
-            return selected
-        return numeric_cols[0] # Fallback
-    except:
-        return numeric_cols[0]
+             
+        return data
+    except Exception as e:
+        return {"selected_columns": [numeric_cols[0]], "formats": {}}
 
 def style_df(df: pd.DataFrame, specs: dict):
     """Applique le formatage (Pandas Styler) pour l'affichage tableau."""
@@ -357,48 +351,87 @@ def init_db():
 con, schema_map, df_glossaire, glossary_embeddings, valid_indices = init_db()
 
 # --- 7. INTELLIGENCE GÉOGRAPHIQUE ---
-def normalize_text(text):
+def clean_search_term(text):
+    """Nettoie le terme de recherche pour ne garder que le nom géographique."""
     if not isinstance(text, str): return ""
+    
+    # 1. Normalisation unicode
     text = text.lower()
     text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
+    
+    # 2. Remplacements standards
     text = text.replace('-', ' ').replace("'", " ").replace("’", " ")
-    text = text.replace("st ", "saint ").replace("ste ", "sainte ")
+    
+    # 3. Suppression des mots-clés administratifs
+    keywords = [
+        "communaute de communes", "communaute d agglomeration", "communaute urbaine",
+        "metropole", "syndicat", "agglomeration", "territoire", "grand", 
+        "cc ", "ca ", "cu ", " de ", " du ", " d ", " le ", " la ", " les ", " et "
+    ]
+    
+    for kw in keywords:
+        text = text.replace(kw, " ")
+        
     return text.strip()
 
 def search_territory_smart(con, input_str):
-    """ Recherche ID ou Nom (robuste aux variantes) """
-    clean_raw = input_str.strip()
+    """
+    Retourne :
+    - Soit un tuple unique (ID, NOM, ...) si certitude absolue (Code ou 1 seul résultat Token)
+    - Soit une liste de tuples [...] si ambiguïté (Plusieurs résultats proches)
+    - Soit None
+    """
+    clean_input = clean_search_term(input_str)
     
-    dept_hint = ""
-    if "(" in clean_raw and ")" in clean_raw:
-        parts = clean_raw.split("(")
-        clean_raw = parts[0].strip()
-        dept_hint = parts[1].replace(")", "").strip()
-
-    if clean_raw.isdigit() and len(clean_raw) <= 3: 
-        query = f"SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = 'D{clean_raw}' LIMIT 1"
+    # 1. Code Exact -> Certitude (On renvoie un tuple unique)
+    if input_str.strip().isdigit():
         try:
-            res = con.execute(query).fetchone()
-            if res: return res
+            res = con.execute(f"SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = '{input_str.strip()}' LIMIT 1").fetchone()
+            if res: return res 
         except: pass
 
-    norm_input = normalize_text(clean_raw)
-    sql_clean_col = "lower(replace(replace(replace(replace(NOM_COUV, '-', ' '), '''', ' '), '’', ' '), 'St ', 'Saint '))"
-    
-    sql_dept_filter = ""
-    if dept_hint and dept_hint.isdigit():
-        sql_dept_filter = f"AND (ID LIKE '{dept_hint}%' OR COMP2 = 'D{dept_hint}')"
-    
-    query = f"""
-    SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 
-    FROM territoires 
-    WHERE ("ID" = '{clean_raw}' OR {sql_clean_col} LIKE '%{norm_input}%')
-    {sql_dept_filter}
-    ORDER BY length("NOM_COUV") ASC LIMIT 1
+    # 2. Token Search (Mots clés)
+    words = [w for w in clean_input.split() if len(w) > 2]
+    if words:
+        conditions = [f"strip_accents(lower(NOM_COUV)) LIKE '%{w}%'" for w in words]
+        sql_keywords = f"""
+        SELECT ID, NOM_COUV, COMP1, COMP2, COMP3
+        FROM territoires WHERE {" AND ".join(conditions)}
+        ORDER BY length(NOM_COUV) ASC LIMIT 5
+        """
+        try:
+            results = con.execute(sql_keywords).fetchall()
+            if len(results) == 1: return results[0] # Un seul candidat -> Certitude
+            if len(results) > 1: return results # Plusieurs candidats -> Ambiguïté
+        except: pass
+
+    # 3. Fuzzy Search (Jaro-Winkler)
+    sql_fuzzy = f"""
+    WITH clean_data AS (
+        SELECT ID, NOM_COUV, COMP1, COMP2, COMP3,
+        lower(replace(replace(replace(NOM_COUV, '-', ' '), '''', ' '), '’', ' ')) as nom_simple
+        FROM territoires
+    )
+    SELECT ID, NOM_COUV, COMP1, COMP2, COMP3,
+    jaro_winkler_similarity(nom_simple, '{clean_input}') as score
+    FROM clean_data
+    WHERE score > 0.65 
+    ORDER BY score DESC LIMIT 5
     """
     try:
-        res = con.execute(query).fetchone()
-        if res: return res
+        results = con.execute(sql_fuzzy).fetchall()
+        if not results: return None
+        
+        # Logique de tri des scores
+        top_score = results[0][5] # Le score est en 6ème position
+        # On garde ceux qui sont proches du meilleur score (différence < 0.1)
+        candidates = [r for r in results if (top_score - r[5]) < 0.1]
+        
+        if len(candidates) == 1: return candidates[0][:5] # Un seul -> Certitude
+        
+        # On retourne la liste (sans le score) -> Ambiguïté
+        return [c[:5] for c in candidates]
+        
     except: pass
     
     return None
@@ -431,15 +464,33 @@ def analyze_territorial_scope(con, rewritten_prompt):
     primary_res = None
     
     debug_search = []
-    for lieu in lieux_cites:
-        res = search_territory_smart(con, lieu)
-        if res:
-            found_ids.append(str(res[0]))
-            found_names.append(res[1])
-            debug_search.append({"Recherche": lieu, "Trouvé": res[1], "ID": res[0]})
-            if not primary_res: primary_res = res
-        else:
-            debug_search.append({"Recherche": lieu, "Trouvé": "NON"})
+    # Gestion de l'ambiguïté sur le premier lieu trouvé (le plus important)
+    # On suppose que l'utilisateur cherche principalement un lieu
+    first_lieu = lieux_cites[0]
+    search_res = search_territory_smart(con, first_lieu)
+    
+    # Cas Ambiguïté : search_res est une LISTE
+    if isinstance(search_res, list):
+        return {
+            "ambiguity": True,
+            # MODIFICATION ICI : On ajoute "comps" pour stocker les comparateurs
+            "candidates": [{
+                "id": r[0], 
+                "nom": r[1], 
+                "comps": [str(c) for c in [r[2], r[3], r[4]] if c and str(c) not in ['None', 'nan', '']]
+            } for r in search_res],
+            "input_text": first_lieu,
+            "display_context": "Ambiguïté détectée"
+        }
+    
+    # Cas Normal : search_res est un TUPLE (ou None)
+    if search_res:
+        primary_res = search_res
+        found_ids.append(str(primary_res[0]))
+        found_names.append(primary_res[1])
+        debug_search.append({"Recherche": first_lieu, "Trouvé": primary_res[1], "ID": primary_res[0]})
+    else:
+        debug_search.append({"Recherche": first_lieu, "Trouvé": "NON"})
 
     if not found_ids: return None
 
@@ -483,111 +534,141 @@ def analyze_territorial_scope(con, rewritten_prompt):
     }
 
 # --- 8. VISUALISATION AUTO (SMART FORMAT & SELECTION IA) ---
-def auto_plot_data(df, sorted_ids, format_specs=None, forced_metric=None):
+def auto_plot_data(df, sorted_ids, config=None):
     """
-    Trace un graphique optimisé.
-    - Max 5 territoires (sauf si explicitement demandé, ici on coupe par défaut).
-    - Couleurs imposées.
-    - Format d'unités via format_specs (IA).
-    - Sélection de variable via forced_metric (IA) ou heuristic.
+    Trace le graphique avec respect strict de l'ordre des couleurs :
+    Rouge (Cible), Orange (Comp1), Vert (Comp2), Bleu (Comp3), Violet (FR/Autre).
     """
+    if config is None: config = {}
+    selected_metrics = config.get("selected_columns", [])
+    format_specs = config.get("formats", {})
+    
+    # --- COULEURS IMPOSÉES ---
     color_range = ["#EB2C30", "#F38331", "#97D422", "#1DB5C5", "#5C368D"]
-    format_specs = format_specs or {}
-
+    
     cols = df.columns.tolist()
     label_col = next((c for c in cols if c.upper() in ["NOM_COUV", "TERRITOIRE", "LIBELLE", "VILLE"]), None)
     date_col = next((c for c in cols if c.upper() in ["AN", "ANNEE", "YEAR", "DATE"]), None)
     id_col = next((c for c in cols if c.upper() == "ID"), None)
-    
-    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-    if date_col in numeric_cols: numeric_cols.remove(date_col)
-    
-    if not numeric_cols or not label_col: return
 
-    # --- TRI & FILTRE 5 ---
+    if not selected_metrics or not label_col: return
+
+    # --- TRI CRITIQUE ---
+    # On force le tri du DF selon l'ordre exact de 'sorted_ids' pour que les couleurs s'alignent.
     df_plot = df.copy()
     if id_col:
         id_order_map = {str(uid): i for i, uid in enumerate(sorted_ids)}
         df_plot['sort_order'] = df_plot[id_col].astype(str).map(id_order_map)
         df_plot = df_plot.sort_values('sort_order').drop(columns=['sort_order'])
     
-    # Règle : Max 5 territoires si pas de date
-    if not date_col and len(df_plot) > 5:
-        df_plot = df_plot.head(5)
-
+    # On extrait les labels dans l'ordre trié -> C'est notre Domain pour Vega
     sorted_labels = df_plot[label_col].unique().tolist()
 
-    # --- CHOIX MÉTRIQUE (IA OU HEURISTIQUE) ---
-    if forced_metric and forced_metric in numeric_cols:
-        target_metric = forced_metric
-    else:
-        # Fallback heuristic
-        valid_metrics = [c for c in numeric_cols if not any(k in c.lower() for k in ['pop', 'habitant', 'nombre_personne'])]
-        if not valid_metrics: valid_metrics = numeric_cols
-        
-        target_metric = valid_metrics[0]
-        ratio_keywords = ['%', 'taux', 'part', 'ratio', 'evol', 'densite', 'revenu', 'ind', 'score', '/']
-        for col in valid_metrics:
-            if any(k in col.lower() for k in ratio_keywords):
-                target_metric = col
-                break
+    # Si pas de date et trop de territoires (et 1 seule métrique), on coupe à 5 pour ne pas surcharger
+    if not date_col and len(df_plot) > 5 and len(selected_metrics) == 1:
+        df_plot = df_plot.head(5)
+        sorted_labels = df_plot[label_col].unique().tolist() # Re-update labels
 
-    # --- FORMAT VIA IA ---
-    # On récupère les infos de formatage pour l'axe Y
-    spec = format_specs.get(target_metric, {})
-    kind = spec.get("kind", "number")
-    pb = spec.get("percent_base")
-    dec = int(spec.get("decimals", 1))
-    title = spec.get("title", target_metric)
-    
-    y_format = f",.{dec}f"
-    y_field = target_metric
-    
-    # Adaptation Vega selon format
-    if kind == "percent":
-        title = f"{title} (%)" if "%" not in title else title
-        y_format = f".{dec}%"
-        if pb == "0-100":
-            # Vega attend 0-1 pour le format %, donc on divise
-            df_plot[target_metric + "_frac"] = df_plot[target_metric] / 100.0
-            y_field = target_metric + "_frac"
-            
-    elif kind == "currency":
-        title = f"{title} (€)" if "€" not in title else title
-        y_format = f"$.{dec}f" # Vega utilise d3-format, $ marche souvent pour currency locale selon config, sinon ","
-        # Note: Vega-Lite localize support est parfois limité en simple json, on reste sur du standard
-        y_format = f",.{dec}f" # Séparateur milliers standard
+    # --- MELT ---
+    id_vars = [label_col]
+    if date_col: id_vars.append(date_col)
+    df_melted = df_plot.melt(id_vars=id_vars, value_vars=selected_metrics, var_name="Indicateur", value_name="Valeur")
 
-    # --- PLOT ---
+    # --- FORMATS ---
+    first_metric = selected_metrics[0]
+    spec = format_specs.get(first_metric, {})
+    title_y = spec.get("title", "Valeur")
+    y_format = ",.1f"
+    if spec.get("kind") == "percent":
+        y_format = ".1%"
+        if spec.get("percent_base") == "0-100": df_melted["Valeur"] = df_melted["Valeur"] / 100.0
+    elif spec.get("kind") == "currency": y_format = ",.0f"
+
+    # --- CONFIG COMMUNE ---
+    vega_config = {
+        "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
+        "axis": {"labelFontSize": 11, "titleFontSize": 12},
+        "legend": {"labelFontSize": 11, "titleFontSize": 12, "orient": "bottom"}
+    }
+    
+    # --- DÉFINITION COULEUR STRICTE ---
+    # La couleur dépend TOUJOURS du Territoire, avec le domaine forcé
+    color_def = {
+        "field": label_col, 
+        "type": "nominal", 
+        "scale": {"domain": sorted_labels, "range": color_range}, 
+        "title": "Territoire",
+        "legend": {"orient": "bottom"}
+    }
+    
+    chart = None
+    is_multi_metric = len(selected_metrics) > 1
+
+    # CAS 1 : GRAPHIQUE TEMPOREL (LIGNE)
     if date_col:
-        st.vega_lite_chart(df_plot, {
+        chart_encoding = {
+            "x": {"field": date_col, "type": "ordinal", "title": "Année"},
+            "y": {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}},
+            "color": color_def, # Rouge = Cible
+            "tooltip": [{"field": label_col}, {"field": "Indicateur"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
+        }
+        
+        # Si multi-metric, on distingue les variables par le style de trait
+        if is_multi_metric:
+            chart_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
+
+        chart = {
+            "config": vega_config,
             "mark": {"type": "line", "point": True, "tooltip": True},
-            "encoding": {
-                "x": {"field": date_col, "type": "ordinal", "title": "Année"},
-                "y": {"field": y_field, "type": "quantitative", "title": title, "axis": {"format": y_format}},
-                "color": {"field": label_col, "type": "nominal", "scale": {"domain": sorted_labels, "range": color_range}, "title": "Territoire"},
-                "tooltip": [{"field": label_col}, {"field": date_col}, {"field": y_field, "format": y_format, "title": title}]
-            }
-        }, use_container_width=True)
+            "encoding": chart_encoding
+        }
+
+    # CAS 2 : GRAPHIQUE BARRES (COMPARAISON)
     else:
-        st.vega_lite_chart(df_plot, {
-            "mark": {"type": "bar", "cornerRadiusEnd": 4, "tooltip": True},
-            "encoding": {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": -45}, "title": None},
-                "y": {"field": y_field, "type": "quantitative", "title": title, "axis": {"format": y_format}},
-                "color": {"field": label_col, "type": "nominal", "scale": {"domain": sorted_labels, "range": color_range}, "legend": None},
-                "tooltip": [{"field": label_col}, {"field": y_field, "format": y_format, "title": title}]
+        # Configuration Multi-Variables "Groupée par Variable"
+        # X = Indicateur (pour grouper les KPIs)
+        # xOffset = Territoire (pour comparer Rouge vs Orange côte à côte)
+        # Color = Territoire (pour garder l'identité visuelle)
+        
+        if is_multi_metric:
+             chart_encoding = {
+                "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
+                "y": {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}},
+                "color": color_def,
+                "xOffset": {"field": label_col}, # C'est ici que se fait le groupement
+                "tooltip": [{"field": label_col}, {"field": "Indicateur"}, {"field": "Valeur", "format": y_format}]
             }
-        }, use_container_width=True)
+        else:
+            # Config classique
+            chart_encoding = {
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": -45}, "title": None},
+                "y": {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}},
+                "color": color_def,
+                "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
+            }
+
+        chart = {
+            "config": vega_config,
+            "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True},
+            "encoding": chart_encoding
+        }
+    
+    st.vega_lite_chart(df_melted, chart, use_container_width=True)
+
 
 # --- 9. UI PRINCIPALE ---
 st.title("🗺️ Terribot")
 st.markdown("#### L'expert des données territoriales")
 
+# Initialisation des variables de session pour l'ambiguïté
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Quel territoire souhaitez-vous analyser ?"}]
 if "current_geo_context" not in st.session_state:
     st.session_state.current_geo_context = None
+if "pending_prompt" not in st.session_state:
+    st.session_state.pending_prompt = None
+if "ambiguity_candidates" not in st.session_state:
+    st.session_state.ambiguity_candidates = None
 
 for msg in st.session_state.messages:
     avatar = "🤖" if msg["role"] == "assistant" else "👤"
@@ -628,6 +709,17 @@ for msg in st.session_state.messages:
                     st.dataframe(style_df(df_display, specs), use_container_width=True)
                 except:
                     st.dataframe(df_display, use_container_width=True)
+                
+                # Bouton Download CSV
+                try:
+                    csv = df_display.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Télécharger les données (CSV)",
+                        data=csv,
+                        file_name="terribot_export.csv",
+                        mime="text/csv",
+                    )
+                except: pass
 
         # 3. GRAPHIQUE (Déplié / Visible directement)
         if "data" in msg and "ID" in msg["data"].columns:
@@ -637,27 +729,97 @@ for msg in st.session_state.messages:
                  sorted_ids = msg["debug_info"]["final_ids"]
             
             # Récupérer la métrique choisie par l'IA si dispo
-            forced = msg.get("selected_metric", None)
-            try: auto_plot_data(msg["data"], sorted_ids, format_specs=specs, forced_metric=forced)
+            # Ici on récupère plutôt la config entière si elle a été sauvée
+            # Pour la rétrocompatibilité ou si selected_metric est utilisé seul :
+            forced_cols = [msg.get("selected_metric")] if msg.get("selected_metric") else []
+            saved_config = {"selected_columns": forced_cols, "formats": specs}
+            # (idéalement on sauverait 'chart_config' en entier dans msg)
+            
+            try: auto_plot_data(msg["data"], sorted_ids, config=saved_config)
             except: pass
 
         # 4. ANALYSE (Visible)
         st.markdown(msg["content"])
 
 
-# --- 10. TRAITEMENT ---
+# --- 10. TRAITEMENT ET GESTION AMBIGUÏTÉ ---
 inject_placeholder_animation()
 
-if prompt := st.chat_input("Posez votre question..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"): st.markdown(prompt)
+# Initialisation de la variable de déclenchement si elle n'existe pas
+if "trigger_run_prompt" not in st.session_state:
+    st.session_state.trigger_run_prompt = None
+
+# -- A. RÉSOLUTION D'AMBIGUÏTÉ (Affichage des boutons si nécessaire) --
+if st.session_state.ambiguity_candidates:
+    st.warning(f"🤔 Plusieurs territoires trouvés pour '{st.session_state.ambiguity_candidates[0].get('nom', 'ce lieu')}'. Veuillez préciser :")
+    
+    cols = st.columns(min(len(st.session_state.ambiguity_candidates), 4))
+    
+    for i, cand in enumerate(st.session_state.ambiguity_candidates[:4]):
+        # On affiche le bouton
+        if cols[i].button(f"{cand['nom']} ({cand['id']})", key=f"amb_btn_{cand['id']}"):
+            
+            # 1. Construction de la liste
+            ordered_ids = [str(cand['id'])]
+            if "comps" in cand and isinstance(cand["comps"], list):
+                 # On nettoie bien les comparateurs
+                 valid_comps = [str(c) for c in cand["comps"] if c and str(c).lower() not in ['none', 'nan', 'null', '']]
+                 ordered_ids.extend(valid_comps)
+            ordered_ids.append('FR')
+            
+            # Dédoublonnage
+            final_ids_ordered = list(dict.fromkeys(ordered_ids))
+            
+            # 2. Mise à jour du contexte
+            st.session_state.current_geo_context = {
+                "target_name": cand['nom'],
+                "target_id": str(cand['id']),
+                "all_ids": final_ids_ordered, # C'est CRUCIAL que cette liste soit pleine ici
+                "parent_clause": "",
+                "display_context": cand['nom'],
+                "debug_search": [{"Trouvé": cand['nom'], "Source": "Choix Utilisateur"}],
+                "lieux_cites": [cand['nom']]
+            }
+            
+            st.session_state.trigger_run_prompt = st.session_state.pending_prompt
+            
+            # 3. LE VERROU (Important !)
+            st.session_state.force_geo_context = True 
+            
+            st.session_state.ambiguity_candidates = None
+            st.session_state.pending_prompt = None
+            st.rerun()
+
+# -- B. INPUT PRINCIPAL --
+user_input = st.chat_input("Posez votre question...")
+
+# -- C. LOGIQUE DE DÉCISION (Quel prompt traiter ?) --
+prompt_to_process = None
+
+# Priorité 1 : On vient de cliquer sur un bouton (variable stockée en session)
+if st.session_state.trigger_run_prompt:
+    prompt_to_process = st.session_state.trigger_run_prompt
+    st.session_state.trigger_run_prompt = None # On consomme le trigger pour ne pas boucler
+
+# Priorité 2 : L'utilisateur vient de taper une nouvelle question
+elif user_input:
+    prompt_to_process = user_input
+
+# --- D. EXÉCUTION DU TRAITEMENT ---
+if prompt_to_process:
+    # Si c'est un nouvel input utilisateur, on l'ajoute à l'historique
+    # (On vérifie pour éviter les doublons lors de la reprise après ambiguïté)
+    last_msg = st.session_state.messages[-1] if st.session_state.messages else {}
+    if last_msg.get("content") != prompt_to_process or last_msg.get("role") != "user":
+        st.session_state.messages.append({"role": "user", "content": prompt_to_process})
+        with st.chat_message("user", avatar="👤"): st.markdown(prompt_to_process)
 
     with st.chat_message("assistant", avatar="🤖"):
         message_placeholder = st.empty()
         debug_container = {} 
         
         try:
-            # A. REFORMULATION
+            # 1. REFORMULATION
             history_text = "\n".join([f"{m['role']}: {m.get('content','')}" for m in st.session_state.messages[-4:]])
             current_geo_name = st.session_state.current_geo_context['target_name'] if st.session_state.current_geo_context else ""
             
@@ -669,38 +831,68 @@ if prompt := st.chat_input("Posez votre question..."):
                     OBJECTIFS :
                     1. Rendre la question autonome.
                     2. SI "ramène à la population" ou "et pour X ?", REPRENDS le SUJET PRÉCÉDENT.
-                    3. Si aucun lieu, réinjecte '{current_geo_name}'.
+                    3. Si aucun lieu explicite dans la question, réinjecte '{current_geo_name}'.
                     """},
-                    {"role": "user", "content": f"Historique:\n{history_text}\n\nDernière question: {prompt}"}
+                    {"role": "user", "content": f"Historique:\n{history_text}\n\nDernière question: {prompt_to_process}"}
                 ]
             )
             rewritten_prompt = reformulation.choices[0].message.content
-            debug_container["reformulation"] = f"Original: {prompt}\nReformulé: {rewritten_prompt}"
+            debug_container["reformulation"] = f"Original: {prompt_to_process}\nReformulé: {rewritten_prompt}"
             
-            # --- APPARENCE : Trace Reformulation ---
             with st.expander("🤔 Trace : Reformulation (IA)", expanded=False):
-                st.write(f"**Question originale :** {prompt}")
+                st.write(f"**Question originale :** {prompt_to_process}")
                 st.write(f"**Reformulée :** {rewritten_prompt}")
-            # --------------------------------------
 
-            # B. GEO SCOPE
-            new_context = analyze_territorial_scope(con, rewritten_prompt)
+            # 2. GEO SCOPE
+            new_context = None
             
-            if new_context:
+            # --- MODIFICATION ICI : Gestion du Verrou ---
+            if st.session_state.get("force_geo_context"):
+                st.session_state.force_geo_context = False # On consomme le verrou
+                # On ne lance PAS analyze_territorial_scope, on garde l'existant
+                if st.session_state.current_geo_context:
+                    geo_context = st.session_state.current_geo_context
+                    message_placeholder.info(f"📍 **Périmètre validé :** {geo_context['display_context']}")
+                    # On force new_context à None pour sauter les blocs suivants
+                    new_context = None 
+            else:
+                # Analyse normale
+                new_context = analyze_territorial_scope(con, rewritten_prompt)
+                
+            # --- GESTION DE L'AMBIGUÏTÉ DÉTECTÉE ---
+            # Si une ambiguïté est détectée ET que ce n'est pas le contexte qu'on vient juste de forcer
+            if new_context and new_context.get("ambiguity"):
+                # Petite sécurité : si le lieu ambigu est le même que celui qu'on a déjà validé, on ignore l'ambiguïté
+                if st.session_state.current_geo_context and new_context['input_text'] in st.session_state.current_geo_context['target_name']:
+                     pass # On garde le contexte actuel
+                else:
+                    # On stocke l'état et on arrête l'exécution pour afficher les boutons au prochain tour
+                    st.session_state.ambiguity_candidates = new_context['candidates']
+                    st.session_state.pending_prompt = prompt_to_process
+                    st.session_state.messages.append({"role": "assistant", "content": f"🤔 J'ai un doute sur le lieu **{new_context['input_text']}**. Veuillez choisir ci-dessus."})
+                    st.rerun()
+
+            # Mise à jour du contexte si un nouveau lieu valide est trouvé
+            if new_context and not new_context.get("ambiguity"):
                 st.session_state.current_geo_context = new_context
                 message_placeholder.info(f"📍 **Périmètre :** {new_context['display_context']}")
                 
                 debug_container["geo_extraction"] = new_context["lieux_cites"]
                 debug_container["geo_resolution"] = new_context["debug_search"]
                 debug_container["final_ids"] = new_context["all_ids"]
-                        
+            
+            # Si on n'a rien trouvé de nouveau, on utilise le contexte existant (celui du bouton par exemple)
+            elif st.session_state.current_geo_context:
+                 geo_context = st.session_state.current_geo_context
+                 # On ne réaffiche pas l'info si elle n'a pas changé, ou on peut la laisser pour confirmation
+            
             elif not st.session_state.current_geo_context:
                 message_placeholder.warning("⚠️ Je ne détecte pas de territoire. Précisez une ville.")
                 st.stop()
             
             geo_context = st.session_state.current_geo_context
 
-            # C. RAG
+            # 3. RAG (Recherche Variables)
             glossaire_context = ""
             glossaire_context += "✅ TAB:\"EVO\" | VAR:\"POP_22\" | DEF:\"Population en 2022\" | SRC:INSEE | AN:2022\n"
             
@@ -726,18 +918,16 @@ if prompt := st.chat_input("Posez votre question..."):
                     glossaire_context += "\n".join(rows)
                     debug_container["rag_context"] = glossaire_context[:2000] + "..."
                     
-                    # --- APPARENCE : Trace RAG ---
                     with st.expander("📚 Trace : Variables trouvées (RAG)", expanded=False):
                         st.text(glossaire_context)
-                    # -----------------------------
 
-            # D. SQL
+            # 4. SQL GENERATION
             ids_sql = ", ".join([f"'{str(i)}'" for i in geo_context['all_ids']])
             parent_clause = geo_context.get('parent_clause', '')
             
             system_prompt = f"""
             Tu es Terribot.
-            CONTEXTE DONNÉES :
+            CONTEXTE DONNÉES (Glossaire) :
             {glossaire_context}
             
             SCHEMA TABLE "TERRITOIRES" (alias t) :
@@ -746,24 +936,29 @@ if prompt := st.chat_input("Posez votre question..."):
             
             MISSION : Répondre à "{rewritten_prompt}" via UNE SEULE requête SQL.
             
-            RÈGLES CRITIQUES :
-            1. PÉRIMÈTRE :
-               - WHERE (t."ID" IN ({ids_sql}) {parent_clause})
-               - 🚨 INTERDIT : Ne fais PAS de UNION ALL complexe.
+            🚨 RÈGLES CRITIQUES :
             
-            2. INTELLIGENCE DE DONNÉES :
-               - 🚨 OBLIGATOIRE : Si tu sélectionnes des volumes, tu DOIS AUSSI sélectionner la Population Totale (table EVO, var POP_22) et calculer un ratio (ex: Taux pour 1000 hab).
-               - Exemple : `TRY_CAST(d.crimes AS DOUBLE) / NULLIF(TRY_CAST(e.POP_22 AS DOUBLE), 0) * 1000 AS crimes_pour_1000_hab`.
+            1. PÉRIMÈTRE GÉOGRAPHIQUE :
+               - Copie STRICTEMENT cette clause WHERE :
+               - `WHERE (t."ID" IN ({ids_sql}) {parent_clause})`
+               - ⛔ INTERDIT : N'ajoute JAMAIS de condition `AND t."NOM_COUV" = ...`.
+               - ⛔ INTERDIT : N'ajoute JAMAIS de condition `AND t."NOM_COUV" LIKE ...`.
+               - La liste des IDs contient déjà la cible + les comparateurs + la France. Si tu filtres sur le nom, tu perds les comparaisons.
             
-            3. CASTING :
-               - DONNÉES -> TRY_CAST("col" AS DOUBLE).
-
-            4. GESTION DES SÉRIES TEMPORELLES (Années en colonnes) :
-            Si tu dois transformer des colonnes (ex: pop_2010, pop_2011...) en lignes (axe temporel) :
-            - UTILISE la clause `UNPIVOT` de DuckDB.
-            - Syntaxe stricte : `UNPIVOT (val_col FOR name_col IN (col1, col2, ...))`
-            - 🚨 CRITIQUE : Dans le `SELECT` qui contient le UNPIVOT, N'UTILISE PAS les alias des tables jointes (ex: ne fais pas `t.ID` mais juste `ID`). L'UNPIVOT absorbe les tables précédentes.
-            - Ensuite, nettoie la colonne 'annee' (ex: REPLACE(annee, 'pop_', '')) et CAST la en INT.
+            2. STRUCTURE DES DONNÉES :
+               - Tables format LARGE (une colonne par variable).
+               - Pas de colonne "VAR" ou "VALUE". Utilise le nom de la variable directement (ex: `e."POP_22"`).
+               - Utilise `TRY_CAST(table."colonne" AS DOUBLE)`.
+            
+            3. JOINTURES :
+               - `LEFT JOIN` sur la colonne "ID".
+            
+            4. INTELLIGENCE :
+               - Calcule toujours des ratios pour comparer (ex: / POP_22).
+               - Gère les divisions par zéro : `NULLIF(..., 0)`.
+               - Réfléchis bien à la variable à utiliser, et si ça répond à la question.
+               - INTERDIT : faire des approximations au doigt mouillé.
+               - Les noms de variables que tu crées doivent être descriptifs, compréhensibles par un inconnu, sans contexte supplémentaire.
             
             Réponds uniquement le SQL.
             """
@@ -777,53 +972,33 @@ if prompt := st.chat_input("Posez votre question..."):
             sql_query = sql_query_raw.split(";")[0]
             debug_container["sql_query"] = sql_query
             
-            # --- APPARENCE : Trace SQL ---
             with st.expander("💻 Trace : Génération SQL (IA)", expanded=False):
                 st.code(sql_query, language="sql")
-            # -----------------------------
 
-            # E. EXECUTION
+            # 5. EXECUTION & VISUALISATION
             if con:
                 try:
                     df = con.execute(sql_query).df()
                     
                     if not df.empty:
-                        # STATUS POUR VIZ ET ANALYSE
                         with st.status("Génération de l'analyse et du graphique...", expanded=True) as status:
                             
-                            st.write("🔍 Détection des formats (%, €, hab)...")
-                            format_specs = infer_format_specs_with_ai(
-                                df=df, 
-                                question=rewritten_prompt, 
-                                glossaire_context=glossaire_context,
-                                client=client,
-                                model=MODEL_NAME
-                            )
+                            st.write("🎨 Configuration intelligente du graphique...")
+                            # Appel unique fusionné pour choisir colonnes + formats
+                            chart_config = get_chart_configuration(df, rewritten_prompt, glossaire_context, client, MODEL_NAME)
                             
-                            st.write("🧠 Choix de la variable graphique...")
-                            selected_metric = select_best_metric_for_chart(
-                                df=df, 
-                                question=rewritten_prompt, 
-                                client=client, 
-                                model=MODEL_NAME
-                            )
-                            
-                            st.write("📊 Création du graphique optimisé...")
-                            auto_plot_data(
-                                df, 
-                                geo_context['all_ids'], 
-                                format_specs=format_specs, 
-                                forced_metric=selected_metric
-                            )
+                            st.write("📊 Création du graphique...")
+                            # On passe la config entière à la fonction de plot
+                            auto_plot_data(df, geo_context['all_ids'], config=chart_config)
                             
                             st.write("📝 Rédaction de la synthèse...")
                             analysis = client.chat.completions.create(
-                                model=MODEL_NAME,
+                                model=MODEL_NAME,  
                                 messages=[
                                     {"role": "system", "content": f"""
                                     Tu es Terribot. Analyse les résultats pour : {rewritten_prompt}.
-                                    CONSIGNE : Sois très SYNTHÉTIQUE (max 10 lignes). Va droit au but (Oui/Non). Utilise des puces.
-                                    Respecte les unités fournies dans FORMAT_SPECS : {json.dumps(format_specs, ensure_ascii=False)}
+                                    CONSIGNE : Sois très SYNTHÉTIQUE (max 15 lignes). Va droit au but et utilise des puces.
+                                    Respecte les unités fournies : {json.dumps(chart_config.get('formats', {}), ensure_ascii=False)}
                                     """},
                                     {"role": "user", "content": df.to_string()}
                                 ]
@@ -832,34 +1007,27 @@ if prompt := st.chat_input("Posez votre question..."):
                         
                         final_resp = analysis.choices[0].message.content
                         
-                        # AFFICHAGE FINAL (Ordre demandé : Debug -> Tableau -> Graph -> Analyse)
-                        # 1. Debug (déjà affiché progressivement, mais on garde le bloc historique final)
-                        # Le bloc progressif est déjà visible au dessus. On n'affiche plus rien ici pour éviter les doublons immédiats.
-                        
-                        # 2. Tableau
+                        # Affichage des données (Expander)
                         with st.expander("📊 Voir les données brutes", expanded=False):
+                            try: st.dataframe(style_df(df, chart_config.get('formats', {})), use_container_width=True)
+                            except: st.dataframe(df, use_container_width=True)
                             try:
-                                st.dataframe(style_df(df, format_specs), use_container_width=True)
-                            except:
-                                st.dataframe(df, use_container_width=True)
+                                csv = df.to_csv(index=False).encode('utf-8')
+                                st.download_button("📥 Télécharger (CSV)", data=csv, file_name="terribot_export.csv", mime="text/csv")
+                            except: pass
 
-                        # 3. Graphique (déjà affiché dans le status mais on le refait propre ici pour persistance)
-                        auto_plot_data(
-                            df, 
-                            geo_context['all_ids'], 
-                            format_specs=format_specs, 
-                            forced_metric=selected_metric
-                        )
+                        # Affichage du graphique (Visible)
+                        auto_plot_data(df, geo_context['all_ids'], config=chart_config)
 
-                        # 4. Analyse
                         message_placeholder.markdown(final_resp)
                         
                         st.session_state.messages.append({
                             "role": "assistant", 
                             "content": final_resp, 
                             "data": df,
-                            "format_specs": format_specs,
-                            "selected_metric": selected_metric,
+                            "format_specs": chart_config.get('formats', {}),
+                            # On stocke selected_metric pour compatibilité, mais c'est bien une liste dans chart_config
+                            "selected_metric": chart_config.get('selected_columns', [])[0] if chart_config.get('selected_columns') else None,
                             "debug_info": debug_container
                         })
                     else:
