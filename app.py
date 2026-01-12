@@ -90,7 +90,7 @@ def inject_placeholder_animation():
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("Intelligence Territoriale v5.3 (Fuzzy Search)")
+    st.caption("v0.13 - 12 janvier 2026")
     st.divider()
     
     # Bouton Reset
