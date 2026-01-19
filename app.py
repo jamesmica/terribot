@@ -247,17 +247,28 @@ st.markdown("""
 def inject_placeholder_animation():
     components.html("""
     <script>
-        const questions = [
-            "Quelle est la structure par âge à Saint-Malo ?",
-            "Le chômage baisse-t-il à Bordeaux ?",
-            "Quelle est la part des cadres à Lyon ?",
-            "Toutes les communes de la Seine-Saint-Denis",
-            "Niveau de vie médian à Biarritz ?",
-            "Tous les EPCI de la région Bretagne",
-            "Densité de population à Paris ?",
-            "Combien de résidences secondaires à La Baule ?",
-            "Les jeunes partent-ils de Charleville-Mézières ?",
-            "Quel est le taux de pauvreté à Roubaix ?"
+const questions = [
+            "Compare le revenu médian à Bordeaux et à Toulouse",
+            "Quel est le taux de chômage des jeunes à Marseille ?",
+            "Quelle est la part des cadres à Neuilly-sur-Seine ?",
+            "Compare la pauvreté à Roubaix avec la moyenne nationale",
+            "Y a-t-il plus de propriétaires à Vannes ou à Lorient ?",
+            "Quelle est la part des 15-24 ans à Rennes ?",
+            "Compare le niveau de vie à Vincennes et Saint-Mandé",
+            "Combien de résidences secondaires à La Rochelle ?",
+            "Quel est le taux de bacheliers à Strasbourg ?",
+            "Y a t il beaucoup de jeunes à Saint-Michel dans l'Aisne ?",
+            "Compare la densité de population à Lyon et Villeurbanne",
+            "La part des familles monoparentales à Saint-Denis",
+            "Compare le chômage à Lens avec le département du Pas-de-Calais",
+            "Quelle est la part de logements sociaux à Sarcelles ?",
+            "Les revenus sont-ils plus élevés à Nantes ou à Angers ?",
+            "Compare la part des seniors (65+) à Nice et Menton",
+            "Quel est le taux d'activité des femmes à Lille ?",
+            "Compare les non-diplômés à Maubeuge et Valenciennes",
+            "Quelle est la taille moyenne des ménages à Paris ?",
+            "Compare le revenu des habitants de Fontenay-sous-Bois aux villes voisines",
+            "Quelle est la part des maisons à Brest ?"
         ];
         let idx = 0;
         function cyclePlaceholder() {
@@ -321,7 +332,7 @@ with st.sidebar:
         st.markdown("""
         - **INSEE** : Recensement (Pop, Logement, Emploi)
         - **RPLS** : Logement social
-        - **Philosofi** : Revenus & Pauvreté
+        - **Filosofi** : Revenus & Pauvreté
         - **Sirene** : Entreprises
         """)
         
@@ -957,7 +968,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
         if ai_decision and ai_decision.get("selected_id"):
              sel_id = ai_decision["selected_id"]
              # On retrouve le nom officiel
-             winner = next((c for c in candidates if c['ID'] == sel_id), None)
+             winner = next((c for c in candidates if str(c['ID']).lstrip('0') == str(sel_id).lstrip('0')), None)
              
              if winner:
                  found_ids.append(str(winner['ID']))
@@ -1153,7 +1164,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             }
         else:
             chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 500},  # <--- CORRECTION 1 : Affiche le nom complet (jusqu'à 500px)
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},  # <--- CORRECTION 1 : Affiche le nom complet (jusqu'à 500px)
                 "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
                 "color": color_def,
                 "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
@@ -1338,13 +1349,20 @@ if prompt_to_process:
 # Réponse Assistant
     with st.chat_message("assistant", avatar="🤖"):
             # Placeholders pour l'affichage progressif
-            chart_placeholder = st.empty()   # Le graphique s'affichera ici (avant le texte)
-            message_placeholder = st.empty() # Le texte s'écrira ici
+            # 1. DÉFINITION DE L'ORDRE D'AFFICHAGE (Haut -> Bas)
+            chart_placeholder = st.empty()   # Le graphique en haut
+            data_placeholder = st.empty()    # Les données au milieu (NOUVEAU)
+            message_placeholder = st.empty() # Le texte en bas
 
 
-            # 1. DÉMARRAGE (Message initial plus sympa)
-            status_container = st.status("J'analyse votre demande...", expanded=False)
+            # --- 🛑 MODIFICATION ICI : LE CONTENEUR JETABLE ---    
+            loader_placeholder = st.empty()  # Un placeholder dédié pour le chargement
             
+            # On crée le statut À L'INTÉRIEUR de ce placeholder
+            with loader_placeholder:
+                status_container = st.status("J'analyse votre demande...", expanded=False)
+            
+            # Le reste des initialisations reste inchangé...
             debug_container = {}
             debug_steps = []
             debug_container["steps"] = debug_steps
@@ -1563,30 +1581,27 @@ if prompt_to_process:
 
                     debug_container["sql_query"] = sql_query
 
-                    # 5. EXECUTION
                     if con:
                         df = con.execute(sql_query).df()
                         _dbg("sql.exec.result", empty=df.empty, rows=len(df), cols=list(df.columns))
+                        
                         if not df.empty:
                             _dbg("sql.exec.head", head=df.head(3).to_dict(orient="records"))
-
-                        if not df.empty:
+                            
                             status_container.update(label="🎨 Je prépare la visualisation...")
-                            st.write("🎨 Configuration graphique...")
+                            
+                            # On configure le graph PENDANT que le loader est encore là
                             print("[TERRIBOT][PIPE] 📈 get_chart_configuration() start")
-
                             chart_config = get_chart_configuration(df, rewritten_prompt, glossaire_context, client, MODEL_NAME)
                             _dbg("pipeline.chart_config.done", selected=chart_config.get("selected_columns"), formats=chart_config.get("formats"))
-
-                            status_container.update(label="Analyse terminée", state="complete", expanded=False)
-                            status_container.empty()
+                            status_container.update(label="Terminé", state="complete")
                         else:
                             status_container.update(label="Aucune donnée trouvée", state="error")
                             message_placeholder.warning("Aucune donnée trouvée.")
                             st.stop()
 
-                # --- ZONE D'AFFICHAGE UNIQUE (LIVE) ---
-                    
+                # --- SORTIE DU CONTEXTE 'with status_container:' ---
+                loader_placeholder.empty()
                 # A. Affichage du Graphique (une seule fois ici via le placeholder)
                 if not df.empty:
                     with chart_placeholder:
@@ -1594,6 +1609,10 @@ if prompt_to_process:
                         current_ids = debug_container.get("final_ids", [])
                         
                         auto_plot_data(df, current_ids, config=chart_config, con=con)
+                
+                with data_placeholder:
+                        with st.expander("📊 Voir les données brutes", expanded=False):
+                            st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
                 
                 # B. Streaming du Texte
                 if not df.empty:
@@ -1626,10 +1645,6 @@ if prompt_to_process:
                     full_response_text = message_placeholder.write_stream(stream)
                     _dbg("pipeline.stream.done", response_len=len(full_response_text) if full_response_text else 0)
                     print("[TERRIBOT][PIPE] ✅ Pipeline done")
-
-                    # C. Affichage Données (Discret, dans un expander APRES le graphique)
-                    with st.expander("📊 Voir les données brutes", expanded=False):
-                        st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
 
                     # D. Sauvegarde Historique
                     st.session_state.messages.append({

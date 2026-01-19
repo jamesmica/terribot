@@ -1,0 +1,57 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='\nQuel isolement des seniors de mon territoire à Vincennes?' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: \nQuel isolement des seniors de mon territoire à Vincennes?' current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quel est le niveau d’isolement social des seniors (personnes âgées) sur mon territoire à Vincennes (Val-de-Marne), et comment se répartit-il (par quartiers ou types de ménages) ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=13 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': 'D86', 'NOM_COUV': 'Vienne', 'COMP1': None, 'COMP2':
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Vincennes' candidates_len=13
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94080",\n  "reason": "Le terme recherché est un nom de ville (« Vincennes ») et le contexte précise « Vincennes (Val-de-Marne) » : il s’agit donc de la commune INSEE 94080 (dépar
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Val-de-Marne' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=14 sample=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.0722222222222222}, {'ID': '11080', 'NOM_COUV': 'Val de Lambronne', 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Val-de-Marne' candidates_len=14
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D94",\n  "reason": "Le terme recherché est « Val-de-Marne », qui correspond au département (code 94). Parmi les candidats, seul « D94 » est de type Département ; les autres sont 
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Vincennes', 'target_id': '94080', 'all_ids': ['94080', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Vincennes, Val-de-Marne', 'debug_search': [{'Recherch
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Vincennes', 'target_id': '94080', 'all_ids': ['94080', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Vincennes, Val-de-Marne', 'debug_search': [{'Recherch
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quel est le niveau d’isolement social des seniors (personnes âgées) sur mon territoire à Vincennes (Val-de-Marne), et comment se répartit-il (par quartiers ou types de ménages) ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quel est le niveau d’isolement social des seniors (personnes âgées) sur mon territoire à Vincennes (Val-de-Marne), et comment se répartit-il (par quartiers ou t' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quel est le niveau d’isolement social des seniors (personnes âgées) sur mon territoire à Vincennes (Val-de-Marne), et co' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.4960965562365621
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=892
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=7319
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=7319 preview='✅ TABLE: "CMF" | VAR: "p22_pop6579_pseul" | DESC: "Population de 65-79 ans vivant seul en 2022"\n✅ TABLE: "CMF" | VAR: "p22_pop80p_pseul" | DESC: "Population de 80 ans ou plus vivant seul en 2022"\n✅
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=10591
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  /* Volumes (2022) */\n  TRY_CAST(cmf."p22_pop6579_pseul" AS DOUBLE) AS "p22_pop6579_pseul",\n  TRY_CAST(cmf."p22_pop80p_pseul" AS DOUBLE) AS "p22_pop80p_pseul",\
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "cmf" does not have a column named "65+_SEUL"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'cmf' -> 'CMF'
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  /* Volumes (2022) */\n  TRY_CAST(cmf."p22_pop6579_pseul" AS DOUBLE) AS "p22_pop6579_pseul",\n  TRY_CAST(cmf."p22_pop80p_pseul" AS DOUBLE) AS "p22_pop80p_pseul",\ ids=['94080', '200057941', 'D94', 'R11', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'p22_pop6579_pseul', 'p22_pop80p_pseul', 'p22_pop6579', 'p22_pop80p', 'part_6579_vivant_seul', 'part_80p_vivant_seul', 'part_65p_vivant_seul', 'x65_seul', 'x65_coupl', 'x65_aut', 'p
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'p22_pop6579_pseul': 48497.88102247378, 'p22_pop80p_pseul': 28716.74188883915, 'p22_pop6579': 152649.13124973045, 'p22_pop80p': 64025.473446354794, 'part_657
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quel est le niveau d’isolement social des seniors (personnes âgées) sur mon territoire à Vincennes (Val-de-Marne), et comment se répartit-il (par quartiers ou t' df_rows=5 df_cols=21
+[TERRIBOT][DBG] chart.numeric_cols :: count=19 sample=['p22_pop6579_pseul', 'p22_pop80p_pseul', 'p22_pop6579', 'p22_pop80p', 'part_6579_vivant_seul', 'part_80p_vivant_seul', 'part_65p_vivant_seul', 'x65_seul', 'x65_coupl', 'x65_aut', 'part_menages_ref_65
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=': "Population des 15-24 ans habitant seul.e en 2016"\n✅ TABLE: "EVO_10" | VAR: "h5054_11" | DESC: "Hommes de 50-54 ans en 2011"\n✅ TABLE: "EVO_5" | VAR: "f6569_16" | DESC: "Femmes de 65-69 ans en 201
+[TERRIBOT][DBG] chart.config.raw :: selected=['part_65p_vivant_seul'] formats_keys=['part_65p_vivant_seul']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['part_65p_vivant_seul'] formats={'part_65p_vivant_seul': {'kind': 'percent', 'decimals': 1, 'label': '65+ vivant seul', 'title': 'Part des personnes de 65 ans ou plus vivant seules (proxy d’isolement social)'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'p22_pop6579_pseul', 'p22_pop80p_pseul', 'p22_pop6579', 'p22_pop80p', 'part_6579_vivant_seul', 'part_80p_vivant_seul', 'part_65p_vivant_seul', 'x65_seul', 'x65_coupl', 'x65_aut'] sorted_ids=['94080', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_65p_vivant_seul']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' col='POP_MOCO_40'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'p22_pop6579_pseul', 'p22_pop80p_pseul', 'p22_pop6579', 'p22_pop80p', 'part_6579_vivant_seul', 'part_80p_vivant_seul', 'part_65p_vivant_seul', 'x65_seul', 'x65_coupl', 'x65_aut', 'p formats={'part_65p_vivant_seul': {'kind': 'percent', 'decimals': 1, 'label': '65+ vivant seul', 'title': 'Part des personnes de 65 ans ou plus vivant seules (proxy d’isolement social)'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1606
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

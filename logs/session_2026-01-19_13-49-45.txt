@@ -1,0 +1,73 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='\nCompare Vincennes avec des villes voisines  en termes de pauvreté' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: \nCompare Vincennes avec des villes voisines  en termes de pauvreté' current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Comparez la commune de Vincennes (Val-de-Marne) avec ses communes voisines (par exemple Saint-Mandé, Montreuil, Fontenay-sous-Bois, Charenton-le-Pont) en termes de pauvreté.'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes (Val-de-Marne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.875}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Vincennes (Val-de-Marne)' candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94080",\n  "reason": "Le terme recherché est le nom d’une ville avec précision du département (Val-de-Marne) : selon la règle, on sélectionne la commune. Le candidat unique corre
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Mandé' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '22312', 'NOM_COUV': 'Saint-Maden', 'COMP1': '200068989', 'COMP2': 'D22', 'COMP3': 'R53', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9436363636363637}, {'ID': '33436', 'NOM_COUV': 'Saint-Magne',
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Saint-Mandé' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94067",\n  "reason": "Le terme recherché est un nom de ville sans mention d\'intercommunalité ; dans le contexte (voisine de Vincennes, Val-de-Marne), il s\'agit de la commune de
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Montreuil' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '28267', 'NOM_COUV': 'Montreuil', 'COMP1': '200040277', 'COMP2': 'D28', 'COMP3': 'R24', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '85148', 'NOM_COUV': 'Montreuil', 'COMP1': '20007193
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Montreuil' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "93048",\n  "reason": "Dans le contexte, il s’agit des communes voisines de Vincennes (Val-de-Marne) en petite couronne parisienne ; « Montreuil » correspond donc à la commune de 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Fontenay-sous-Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '94033', 'NOM_COUV': 'Fontenay-sous-Bois', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9555555555555556}, {'ID': '76275', 'NOM_COUV': 'Fonten
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Fontenay-sous-Bois' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94033",\n  "reason": "Le terme recherché est un nom de ville sans mention d\'intercommunalité ; dans le contexte (voisines de Vincennes, Val-de-Marne), il s\'agit de la commune d
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Charenton-le-Pont' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=6 sample=[{'ID': 'D16', 'NOM_COUV': 'Charente', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.0441176470588236}, {'ID': '94018', 'NOM_COUV': 'Charenton-le-Pont', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Charenton-le-Pont' candidates_len=6
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94018",\n  "reason": "Le terme recherché est un nom de ville sans mention d\'intercommunalité ; dans le contexte des communes voisines de Vincennes (Val-de-Marne), il s\'agit de 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Val-de-Marne' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=14 sample=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.0722222222222222}, {'ID': '11080', 'NOM_COUV': 'Val de Lambronne', 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Val-de-Marne' candidates_len=14
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D94",\n  "reason": "Le terme recherché est « Val-de-Marne », qui correspond au département (code 94). Parmi les candidats, seul « D94 » est de type « Département » et correspond 
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Vincennes', 'target_id': '94080', 'all_ids': ['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', 'FR'], 'parent_clause': '', 'display_context': 'Vincennes (Val-de
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Vincennes', 'target_id': '94080', 'all_ids': ['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', 'FR'], 'parent_clause': '', 'display_context': 'Vincennes (Val-de
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Comparez la commune de Vincennes (Val-de-Marne) avec ses communes voisines (par exemple Saint-Mandé, Montreuil, Fontenay-sous-Bois, Charenton-le-Pont) en termes de pauvreté.' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Comparez la commune de Vincennes (Val-de-Marne) avec ses communes voisines (par exemple Saint-Mandé, Montreuil, Fontenay-sous-Bois, Charenton-le-Pont) en termes' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Comparez la commune de Vincennes (Val-de-Marne) avec ses communes voisines (par exemple Saint-Mandé, Montreuil, Fontenay' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.41462356263229266
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=55
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=55
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=55
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=6026
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=6026 preview='✅ TABLE: "FILO" | VAR: "tp60_40_49" | DESC: "Taux de pauvreté au seuil de 60% (%) - Ménages dont le référent fiscal a de 40 à 49 ans en 2021"\n✅ TABLE: "FILO" | VAR: "tp60_30_39" | DESC: "Taux de pau
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=9 parent_clause='' sys_prompt_len=9329
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(f."tp6021" AS DOUBLE) AS "tp6021",\n  TRY_CAST(f."tp60_mono" AS DOUBLE) AS "tp60_mono",\n  TRY_CAST(f."tp60_cae" AS DOUBLE) AS "tp60_cae",\n  TRY_CAST(f
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(f."tp6021" AS DOUBLE) AS "tp6021",\n  TRY_CAST(f."tp60_mono" AS DOUBLE) AS "tp60_mono",\n  TRY_CAST(f."tp60_cae" AS DOUBLE) AS "tp60_cae",\n  TRY_CAST(f ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', 'FR'] ids_count=9
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=9 cols=['ID', 'NOM_COUV', 'tp6021', 'tp60_mono', 'tp60_cae', 'tp60_cse', 'tp60_hs', 'tp60_fs', 'tp60_30', 'tp60_30_39', 'tp60_40_49', 'tp60_50_59', 'tp60_60_74', 'tp60_75']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': '94067', 'NOM_COUV': 'Saint-Mandé', 'tp6021': 8.0, 'tp60_mono': 14.0, 'tp60_cae': 5.0, 'tp60_cse': nan, 'tp60_hs': 17.0, 'tp60_fs': 13.0, 'tp60_30': 16.0, 'tp60_30_39': 8.0, 'tp60_40_49': 7.0,
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Comparez la commune de Vincennes (Val-de-Marne) avec ses communes voisines (par exemple Saint-Mandé, Montreuil, Fontenay-sous-Bois, Charenton-le-Pont) en termes' df_rows=9 df_cols=14
+[TERRIBOT][DBG] chart.numeric_cols :: count=12 sample=['tp6021', 'tp60_mono', 'tp60_cae', 'tp60_cse', 'tp60_hs', 'tp60_fs', 'tp60_30', 'tp60_30_39', 'tp60_40_49', 'tp60_50_59', 'tp60_60_74', 'tp60_75']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=': "med_fs" | DESC: "Revenu médian annuel disponible (€) - Ménages dont le référent fiscal est une femme seule en 2021"\n✅ TABLE: "SUP" | VAR: "psdc1968" | DESC: "Population sans double compte en 1968
+[TERRIBOT][DBG] chart.config.raw :: selected=['tp6021'] formats_keys=['tp6021']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['tp6021'] formats={'tp6021': {'kind': 'percent', 'decimals': 1, 'label': 'Pauvreté (60%)', 'title': 'Taux de pauvreté au seuil de 60% du niveau de vie médian (%) en 2021'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=9 df_cols=['ID', 'NOM_COUV', 'tp6021', 'tp60_mono', 'tp60_cae', 'tp60_cse', 'tp60_hs', 'tp60_fs', 'tp60_30', 'tp60_30_39', 'tp60_40_49', 'tp60_50_59'] sorted_ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', 'FR'] selected_metrics=['tp6021']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' col='POP_MOCO_40'
+[TERRIBOT][DBG] plot.vega :: melted_rows=9 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=9 df_cols=['ID', 'NOM_COUV', 'tp6021', 'tp60_mono', 'tp60_cae', 'tp60_cse', 'tp60_hs', 'tp60_fs', 'tp60_30', 'tp60_30_39', 'tp60_40_49', 'tp60_50_59', 'tp60_60_74', 'tp60_75'] formats={'tp6021': {'kind': 'percent', 'decimals': 1, 'label': 'Pauvreté (60%)', 'title': 'Taux de pauvreté au seuil de 60% du niveau de vie médian (%) en 2021'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=2353
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...
