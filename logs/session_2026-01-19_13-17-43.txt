@@ -1,0 +1,20 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="\nQuel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: \nQuel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quel est le taux de chômage des jeunes à **Saint-Michel (Aisne)**, et comment se compare-t-il à celui de **Vincennes**, **Cergy** et **Lille** ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Michel (Aisne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '9271', 'NOM_COUV': 'Saint-Michel', 'COMP1': '200066231', 'COMP2': 'D9', 'COMP3': 'R76', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8933333333333334}, {'ID': '32397', 'NOM_COUV': 'Saint-Michel',
+[TERRIBOT][FATAL] Exception: TypeError("ai_validate_territory() got an unexpected keyword argument 'full_sentence_context'")
+Traceback (most recent call last):
+  File "C:\Users\james\Downloads\terribot\app.py", line 1404, in <module>
+    new_context = analyze_territorial_scope(con, rewritten_prompt)
+  File "C:\Users\james\Downloads\terribot\app.py", line 955, in analyze_territorial_scope
+    ai_decision = ai_validate_territory(client, MODEL_NAME, lieu, candidates, full_sentence_context=rewritten_prompt)
+TypeError: ai_validate_territory() got an unexpected keyword argument 'full_sentence_context'
+
+  Stopping...

@@ -1,0 +1,63 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Quel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: Quel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui de Vincennes (Val-de-Marne), de Cergy (Val-d’Oise) et de Lille (Nord) ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Michel (Aisne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '9271', 'NOM_COUV': 'Saint-Michel', 'COMP1': '200066231', 'COMP2': 'D9', 'COMP3': 'R76', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8933333333333334}, {'ID': '32397', 'NOM_COUV': 'Saint-Michel',
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Saint-Michel (Aisne)' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "2684",\n  "reason": "Le terme recherché est « Saint-Michel (Aisne) » : l’Aisne correspond au département 02 (COMP2 = D2). Parmi les communes candidates nommées Saint-Michel, seul
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes (Val-de-Marne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.875}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Vincennes (Val-de-Marne)' candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94080",\n  "reason": "Le terme recherché est une ville avec précision du département (Val-de-Marne) : il s’agit de la commune de Vincennes (code INSEE 94080), et non d’un EPCI.",
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Cergy (Val-d’Oise)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': '95127', 'NOM_COUV': 'Cergy', 'COMP1': '249500109', 'COMP2': 'D95', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8588235294117647}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Cergy (Val-d’Oise)' candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "95127",\n  "reason": "Le terme recherché est un nom de ville avec précision du département (Val-d’Oise) : il s’agit donc de la commune de Cergy (INSEE 95127), et non de l’EPCI.",
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Lille (Nord)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=2 sample=[{'ID': '59350', 'NOM_COUV': 'Lille', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8833333333333334}, {'ID': '62516', 'NOM_COUV': 'Lillers', 'COMP1': 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Lille (Nord)' candidates_len=2
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59350",\n  "reason": "Le terme recherché est un nom de ville avec précision du département (Nord) : on sélectionne la commune « Lille » (code INSEE 59350). « Lillers » est une au
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Saint-Michel', 'target_id': '2684', 'all_ids': ['2684', '240200600', 'D2', 'R32', '94080', '95127', '59350', 'FR'], 'parent_clause': '', 'display_context': 'Saint-Michel (Aisne), Vinc
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Saint-Michel', 'target_id': '2684', 'all_ids': ['2684', '240200600', 'D2', 'R32', '94080', '95127', '59350', 'FR'], 'parent_clause': '', 'display_context': 'Saint-Michel (Aisne), Vinc
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui de Vincennes (Val-de-Marne), de Cergy (Val-d’Oise) et de Lille (Nord) ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui de Vincennes (Val-de-Marne), de Cergy (Val-d’' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui de Vi' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.4589639037396962
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=542
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=7150
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=7150 preview='✅ TABLE: "EMPL" | VAR: "1524_STAG" | DESC: "Population des 15-24 ans stagiaires rémunérés en entreprise en 2022"\n✅ TABLE: "EMPL" | VAR: "1524_EJCES" | DESC: "Population des 15-24 ans en emplois jeun
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=8 parent_clause='' sys_prompt_len=10455
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1524" AS DOUBLE) / NULLIF(TRY_CAST(a."p22_act1524" AS DOUBLE), 0) AS "taux_chomage_15_24_2022"\nFROM territoires t\nLEFT JOIN "ACT" a ON t."I
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1524" AS DOUBLE) / NULLIF(TRY_CAST(a."p22_act1524" AS DOUBLE), 0) AS "taux_chomage_15_24_2022"\nFROM territoires t\nLEFT JOIN "ACT" a ON t."I ids=['2684', '240200600', 'D2', 'R32', '94080', '95127', '59350', 'FR'] ids_count=8
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=8 cols=['ID', 'NOM_COUV', 'taux_chomage_15_24_2022']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D2', 'NOM_COUV': 'Aisne', 'taux_chomage_15_24_2022': 0.324123893261024}, {'ID': 'R32', 'NOM_COUV': 'Hauts-de-France', 'taux_chomage_15_24_2022': 0.2866802704316237}, {'ID': 'FR', 'NOM_COUV': 
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui de Vincennes (Val-de-Marne), de Cergy (Val-d’' df_rows=8 df_cols=3
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['taux_chomage_15_24_2022']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=' TABLE: "ACT_5" | VAR: "p16_ainact1564" | DESC: "Population des autres inactifs de 15 à 64 ans en 2016"\n✅ TABLE: "ACT_5" | VAR: "p16_hchom5564" | DESC: "Hommes actifs au chômage de 55-64 ans en 2016
+[TERRIBOT][DBG] chart.config.raw :: selected=['taux_chomage_15_24_2022'] formats_keys=['taux_chomage_15_24_2022']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['taux_chomage_15_24_2022'] formats={'taux_chomage_15_24_2022': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage 15-24', 'title': 'Taux de chômage des 15-24 ans (2022)'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=8 df_cols=['ID', 'NOM_COUV', 'taux_chomage_15_24_2022'] sorted_ids=['2684', '240200600', 'D2', 'R32', '94080', '95127', '59350', 'FR'] selected_metrics=['taux_chomage_15_24_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason="Colonne pop introuvable parmi ['ID', 'NOM_COUV', 'COMP1', 'COMP2', 'COMP3']..."
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=8 df_cols=['ID', 'NOM_COUV', 'taux_chomage_15_24_2022'] formats={'taux_chomage_15_24_2022': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage 15-24', 'title': 'Taux de chômage des 15-24 ans (2022)'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1092
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

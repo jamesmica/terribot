@@ -1,0 +1,77 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=8 df_cols=['ID', 'NOM_COUV', 'taux_chomage_15_24_2022'] sorted_ids=['2684', '240200600', 'D2', 'R32', '94080', '95127', '59350', 'FR'] selected_metrics=['taux_chomage_15_24_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' table='EVO' col='POP_MOCO_40' order=['94080', '240200600', 'D2', 'R32']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Compare Vincennes avec des villes voisines' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=3
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='bilité, partenariats avec les employeurs, ciblage des “NEET”, etc.).\n\n**Pour aller plus loin :** souhaitez-vous un graphique qui compare **le chômage des 15–24 ans** entre les communes/intercommuna current_geo_name='Saint-Michel'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Pouvez-vous **comparer le taux de chômage des jeunes (15–24 ans) à Vincennes** avec celui des **communes voisines de Vincennes** (par exemple **Saint-Mandé, Montreuil, Fontenay-sous-Bois, Charenton-l
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Saint-Michel'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=13 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': 'D86', 'NOM_COUV': 'Vienne', 'COMP1': None, 'COMP2':
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Vincennes' candidates_len=13
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94080",\n  "reason": "Le terme recherché est uniquement le nom de la ville « Vincennes » (sans mention d’agglo/métropole/intercommunalité) : selon la règle 1, on sélectionne la c
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Mandé' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '22312', 'NOM_COUV': 'Saint-Maden', 'COMP1': '200068989', 'COMP2': 'D22', 'COMP3': 'R53', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9436363636363637}, {'ID': '33436', 'NOM_COUV': 'Saint-Magne',
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Saint-Mandé' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94067",\n  "reason": "Le terme recherché est un nom de ville (« Saint-Mandé ») dans le contexte des communes voisines de Vincennes ; on sélectionne donc la commune. Parmi les can
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Montreuil' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '28267', 'NOM_COUV': 'Montreuil', 'COMP1': '200040277', 'COMP2': 'D28', 'COMP3': 'R24', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '85148', 'NOM_COUV': 'Montreuil', 'COMP1': '20007193
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Montreuil' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "93048",\n  "reason": "Dans le contexte (Vincennes et ses communes voisines en Val-de-Marne/Seine-Saint-Denis), « Montreuil » désigne la commune limitrophe de Vincennes située en 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Fontenay-sous-Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '94033', 'NOM_COUV': 'Fontenay-sous-Bois', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9555555555555556}, {'ID': '76275', 'NOM_COUV': 'Fonten
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Fontenay-sous-Bois' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94033",\n  "reason": "Le terme recherché est un nom de ville précis (« Fontenay-sous-Bois ») cité comme commune voisine de Vincennes ; selon la règle, on sélectionne la Commune. 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Charenton-le-Pont' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=6 sample=[{'ID': 'D16', 'NOM_COUV': 'Charente', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.0441176470588236}, {'ID': '94018', 'NOM_COUV': 'Charenton-le-Pont', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Charenton-le-Pont' candidates_len=6
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94018",\n  "reason": "Le terme recherché est un nom de ville (« Charenton-le-Pont ») sans mention d’intercommunalité ; selon la règle, on sélectionne la commune. Parmi les candid
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Maurice' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '58257', 'NOM_COUV': 'Saint-Maurice', 'COMP1': '200067908', 'COMP2': 'D58', 'COMP3': 'R27', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9692307692307692}, {'ID': '67427', 'NOM_COUV': 'Saint-Mauri
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Saint-Maurice' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94069",\n  "reason": "Dans le contexte, il s’agit des communes voisines de Vincennes (Val-de-Marne, D94). « Saint-Maurice » correspond donc à la commune INSEE 94069 (et non aux h
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Vincennes', 'target_id': '94080', 'all_ids': ['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', '94069', 'FR'], 'parent_clause': '', 'display_context': 'Vincenne
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Vincennes', 'target_id': '94080', 'all_ids': ['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', '94069', 'FR'], 'parent_clause': '', 'display_context': 'Vincenne
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Pouvez-vous **comparer le taux de chômage des jeunes (15–24 ans) à Vincennes** avec celui des **communes voisines de Vincennes** (par exemple **Saint-Mandé, Montreuil, Fontenay-sous-Bois, Charenton-l df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Pouvez-vous **comparer le taux de chômage des jeunes (15–24 ans) à Vincennes** avec celui des **communes voisines de Vincennes** (par exemple **Saint-Mandé, Mon' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Pouvez-vous **comparer le taux de chômage des jeunes (15–24 ans) à Vincennes** avec celui des **communes voisines de Vin' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5572032797462982
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=1323
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=7066
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=7066 preview='✅ TABLE: "ACT_10" | VAR: "p11_pop1524" | DESC: "Population de 15-24 ans en 2011"\n✅ TABLE: "ACT_10" | VAR: "p11_pop2554" | DESC: "Population de 25-54 ans en 2011"\n✅ TABLE: "ACT" | VAR: "p22_poptot15
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=10 parent_clause='' sys_prompt_len=10510
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1524" AS DOUBLE) / NULLIF(TRY_CAST(a."p22_act1524" AS DOUBLE), 0) AS "taux_chomage_1524_2022"\nFROM territoires t\nLEFT JOIN "ACT" a\n  ON t.
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1524" AS DOUBLE) / NULLIF(TRY_CAST(a."p22_act1524" AS DOUBLE), 0) AS "taux_chomage_1524_2022"\nFROM territoires t\nLEFT JOIN "ACT" a\n  ON t. ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', '94069', 'FR'] ids_count=10
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=10 cols=['ID', 'NOM_COUV', 'taux_chomage_1524_2022']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'taux_chomage_1524_2022': 0.2229004256038335}, {'ID': 'R11', 'NOM_COUV': 'Île-de-France', 'taux_chomage_1524_2022': 0.21676539216704435}, {'ID': 'FR', 'NOM_C
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Pouvez-vous **comparer le taux de chômage des jeunes (15–24 ans) à Vincennes** avec celui des **communes voisines de Vincennes** (par exemple **Saint-Mandé, Mon' df_rows=10 df_cols=3
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['taux_chomage_1524_2022']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=' 15 à 24 ans en 2011"\n✅ TABLE: "ACT_5" | VAR: "p16_pop5564" | DESC: "Population de 55-64 ans en 2016"\n✅ TABLE: "ACT_10" | VAR: "p11_hactocc2554" | DESC: "Hommes actifs occupés de 25 à 54 ans en 201
+[TERRIBOT][DBG] chart.config.raw :: selected=['taux_chomage_1524_2022'] formats_keys=['taux_chomage_1524_2022']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['taux_chomage_1524_2022'] formats={'taux_chomage_1524_2022': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage 15-24 ans', 'title': 'Taux de chômage des 15–24 ans (2022)'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=10 df_cols=['ID', 'NOM_COUV', 'taux_chomage_1524_2022'] sorted_ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94018', '94069', 'FR'] selected_metrics=['taux_chomage_1524_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' table='EVO' col='POP_MOCO_40' order=['94067', '200057941', 'D94', 'R11']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=10 df_cols=['ID', 'NOM_COUV', 'taux_chomage_1524_2022'] formats={'taux_chomage_1524_2022': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage 15-24 ans', 'title': 'Taux de chômage des 15–24 ans (2022)'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1020
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

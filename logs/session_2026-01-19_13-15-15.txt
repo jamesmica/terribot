@@ -1,0 +1,30 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Quel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: Quel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Michel (Aisne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '9271', 'NOM_COUV': 'Saint-Michel', 'COMP1': '200066231', 'COMP2': 'D9', 'COMP3': 'R76', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8933333333333334}, {'ID': '32397', 'NOM_COUV': 'Saint-Michel',
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "02684",\n  "reason": "L’utilisateur précise « Saint-Michel (département de l’Aisne) » : on sélectionne donc la commune Saint-Michel du département 02 (Aisne), qui correspond au c
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=13 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': 'D86', 'NOM_COUV': 'Vienne', 'COMP1': None, 'COMP2':
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=13
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La recherche vise notamment la commune « Saint-Michel (département de l’Aisne) » ainsi que les communes de Cergy et Lille, mais aucun candidat correspondant à 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Cergy' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '95127', 'NOM_COUV': 'Cergy', 'COMP1': '249500109', 'COMP2': 'D95', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '91129', 'NOM_COUV': 'Cerny', 'COMP1': '249100546', 'COM
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La recherche porte sur « Saint-Michel (département de l’Aisne) » ainsi que Vincennes, Cergy et Lille. Or, dans la liste de candidats fournie, seule la commune 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Lille' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '59350', 'NOM_COUV': 'Lille', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '62516', 'NOM_COUV': 'Lillers', 'COMP1': '200072460', 'C
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La question cite 4 communes (Saint-Michel dans l’Aisne, Vincennes, Cergy, Lille). Or, parmi les candidats fournis, seule la commune de Lille est présente (ID 5
+[TERRIBOT][DBG] pipeline.geo.after :: new_context=None
+  Stopping...

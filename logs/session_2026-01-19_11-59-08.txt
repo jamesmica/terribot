@@ -1,0 +1,143 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'MED21', 'MED_CAE', 'MED_CSE', 'MED_MONO', 'MED_COMPLEX', 'D121', 'D921', 'NBMENFISC21', 'NBPERSMENFISC21'] sorted_ids=['200058782', '78423', 'D78', 'R11', 'FR'] selected_metrics=['MED21']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['200058782', '78423', 'D78', 'R11', 'FR'] final_order=['200058782', '78423', 'D78', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.0f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'MED_MONO_EUR', 'MED_CAE_EUR', 'ECART_EUR', 'ECART_PCT'] sorted_ids=['200058782', '78423', 'D78', 'R11', 'FR'] selected_metrics=['ECART_EUR', 'ECART_PCT']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['200058782', '78423', 'D78', 'R11', 'FR'] final_order=['200058782', '78423', 'D78', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=False is_multi_metric=True y_format=',.0f'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Oui' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=5
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='ccès aux ressources pour les familles monoparentales même dans un territoire globalement favorisé.\n\n**Pour aller plus loin :** souhaitez-vous un graphique qui montre, pour chaque territoire, **le r current_geo_name='CA de Saint Quentin en Yvelines'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Pouvez-vous produire, pour la **CA de Saint-Quentin-en-Yvelines**, un **graphique en barres côte à côte** comparant le **revenu médian (2021) des familles monoparentales** et celui des **couples avec
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='CA de Saint Quentin en Yvelines'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='CA de Saint-Quentin-en-Yvelines' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=3 sample=[{'ID': '200058782', 'NOM_COUV': 'CA de Saint Quentin en Yvelines', 'COMP1': '78423', 'COMP2': 'D78', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'EPCI/Interco', 'score': 1.3}, {'ID': '200071892', 'NOM_COUV': 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='CA de Saint-Quentin-en-Yvelines' candidates_len=3
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "200058782",\n  "reason": "La requête contient \\"CA de Saint-Quentin-en-Yvelines\\" : il s’agit explicitement d’une communauté d’agglomération (EPCI). Le candidat 200058782 corre
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Quentin-en-Yvelines' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=7 sample=[{'ID': '2691', 'NOM_COUV': 'Saint-Quentin', 'COMP1': '200071892', 'COMP2': 'D2', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8806153846153846}, {'ID': '16346', 'NOM_COUV': 'Saint-Quentin
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Saint-Quentin-en-Yvelines' candidates_len=7
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "200058782",\n  "reason": "La recherche correspond à « Saint-Quentin-en-Yvelines », qui désigne l’intercommunalité (CA de Saint Quentin en Yvelines) et non une commune ; parmi les
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Yvelines' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': 'D78', 'NOM_COUV': 'Yvelines', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.45}, {'ID': '55543', 'NOM_COUV': 'Velaines', 'COMP1': '200033025', 'COM
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Yvelines' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D78",\n  "reason": "La recherche \\"Yvelines\\" correspond au nom du département ; parmi les candidats, seul \\"Yvelines\\" est un territoire de type Département (ID D78).",\n  "
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'CA de Saint Quentin en Yvelines', 'target_id': '200058782', 'all_ids': ['200058782', '78423', 'D78', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'CA de Saint-Quentin-en-Yvel
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'CA de Saint Quentin en Yvelines', 'target_id': '200058782', 'all_ids': ['200058782', '78423', 'D78', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'CA de Saint-Quentin-en-Yvel
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Pouvez-vous produire, pour la **CA de Saint-Quentin-en-Yvelines**, un **graphique en barres côte à côte** comparant le **revenu médian (2021) des familles monoparentales** et celui des **couples avec df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Pouvez-vous produire, pour la **CA de Saint-Quentin-en-Yvelines**, un **graphique en barres côte à côte** comparant le **revenu médian (2021) des familles monop' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Pouvez-vous produire, pour la **CA de Saint-Quentin-en-Yvelines**, un **graphique en barres côte à côte** comparant le *' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.59509030716237
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=1280
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=10619 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=10619 preview='✅ TABLE: "FILO" | VAR: "MED_CAE" | DESC: "Revenu médian annuel disponible (€) - Ménages dont le référent fiscal est un couple avec enfant(s) en 2021"\n✅ TABLE: "FILO" | VAR: "TP60_CAE" | DESC: "Taux 
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=14043
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(f."MED_MONO" AS DOUBLE) AS "Revenu_median_2021_familles_monoparentales",\n  TRY_CAST(f."MED_CAE" AS DOUBLE)  AS "Revenu_median_2021_couples_avec_enfants
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  \'Revenu médian (2021)\' AS "indicateur",\n  TRY_CAST(f."MED_MONO" AS DOUBLE) AS "familles_monoparentales",\n  TRY_CAST(f."MED_CAE" AS DOUBLE) AS "couples_avec_e ids=['200058782', '78423', 'D78', 'R11', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'indicateur', 'familles_monoparentales', 'couples_avec_enfants']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D78', 'NOM_COUV': 'Yvelines', 'indicateur': 'Revenu médian (2021)', 'familles_monoparentales': 20710.0, 'couples_avec_enfants': 29740.0}, {'ID': 'R11', 'NOM_COUV': 'Île-de-France', 'indicateu
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Pouvez-vous produire, pour la **CA de Saint-Quentin-en-Yvelines**, un **graphique en barres côte à côte** comparant le **revenu médian (2021) des familles monop' df_rows=5 df_cols=5
+[TERRIBOT][DBG] chart.numeric_cols :: count=2 sample=['familles_monoparentales', 'couples_avec_enfants']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='C: "Population des 15-24 ans chez le(s) parents(s) en 2016"\n✅ TABLE: "FILO" | VAR: "MED_40-49" | DESC: "Revenu médian annuel disponible (€) - Ménages dont le référent fiscal a de 40 à 49 ans en 2021
+[TERRIBOT][DBG] chart.config.raw :: selected=['familles_monoparentales', 'couples_avec_enfants'] formats_keys=['familles_monoparentales', 'couples_avec_enfants']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['familles_monoparentales', 'couples_avec_enfants'] formats={'familles_monoparentales': {'kind': 'currency', 'decimals': 0, 'label': 'Mono (médian €)', 'title': 'Revenu médian annuel disponible (2021) — Familles monoparentales (€)'}, 'couples_avec_enfants': {'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'indicateur', 'familles_monoparentales', 'couples_avec_enfants'] sorted_ids=['200058782', '78423', 'D78', 'R11', 'FR'] selected_metrics=['familles_monoparentales', 'couples_avec_enfants']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['200058782', '78423', 'D78', 'R11', 'FR'] final_order=['200058782', '78423', 'D78', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=False is_multi_metric=True y_format=',.0f'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'indicateur', 'familles_monoparentales', 'couples_avec_enfants'] formats={'familles_monoparentales': {'kind': 'currency', 'decimals': 0, 'label': 'Mono (médian €)', 'title': 'Revenu médian annuel disponible (2021) — Familles monoparentales (€)'}, 'couples_avec_enfants': {'
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1412
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'MED21', 'MED_CAE', 'MED_CSE', 'MED_MONO', 'MED_COMPLEX', 'D121', 'D921', 'NBMENFISC21', 'NBPERSMENFISC21'] sorted_ids=['200058782', '78423', 'D78', 'R11', 'FR'] selected_metrics=['MED21']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['200058782', '78423', 'D78', 'R11', 'FR'] final_order=['200058782', '78423', 'D78', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.0f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'MED_MONO_EUR', 'MED_CAE_EUR', 'ECART_EUR', 'ECART_PCT'] sorted_ids=['200058782', '78423', 'D78', 'R11', 'FR'] selected_metrics=['ECART_EUR', 'ECART_PCT']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['200058782', '78423', 'D78', 'R11', 'FR'] final_order=['200058782', '78423', 'D78', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=False is_multi_metric=True y_format=',.0f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'indicateur', 'familles_monoparentales', 'couples_avec_enfants'] sorted_ids=['200058782', '78423', 'D78', 'R11', 'FR'] selected_metrics=['familles_monoparentales', 'couples_avec_enfants']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['200058782', '78423', 'D78', 'R11', 'FR'] final_order=['200058782', '78423', 'D78', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=False is_multi_metric=True y_format=',.0f'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Non, compare la CA à Vincennes, Fontenay sous bois, Meaux' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=7
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='nement socio-économique plus favorisé de la commune que l’intercommunalité prise dans son ensemble.\n\n**Pour aller plus loin :** souhaitez-vous un graphique montrant **l’écart de revenu entre couple current_geo_name='CA de Saint Quentin en Yvelines'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Peux-tu **comparer le revenu médian annuel disponible (2021)** de la **CA de Saint-Quentin-en-Yvelines**, pour les **familles monoparentales** et les **couples avec enfants**, avec les communes de **
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='CA de Saint Quentin en Yvelines'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='CA de Saint-Quentin-en-Yvelines' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=3 sample=[{'ID': '200058782', 'NOM_COUV': 'CA de Saint Quentin en Yvelines', 'COMP1': '78423', 'COMP2': 'D78', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'EPCI/Interco', 'score': 1.3}, {'ID': '200071892', 'NOM_COUV': 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='CA de Saint-Quentin-en-Yvelines' candidates_len=3
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "200058782",\n  "reason": "La requête contient \\"CA de Saint-Quentin-en-Yvelines\\" : il s’agit explicitement d’une communauté d’agglomération (EPCI). Le candidat 200058782 corre
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=13 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': 'D86', 'NOM_COUV': 'Vienne', 'COMP1': None, 'COMP2':
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Vincennes' candidates_len=13
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94080",\n  "reason": "La recherche contient uniquement le nom de la ville « Vincennes » : selon la règle 1, on sélectionne la commune (code INSEE à 5 chiffres). Parmi les candida
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Fontenay-sous-Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '94033', 'NOM_COUV': 'Fontenay-sous-Bois', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9555555555555556}, {'ID': '76275', 'NOM_COUV': 'Fonten
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Fontenay-sous-Bois' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94033",\n  "reason": "La recherche correspond exactement à la commune « Fontenay-sous-Bois » (règle 1 : nom de ville seul => Commune, code INSEE à 5 chiffres).",\n  "is_ambiguous
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Meaux' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '77284', 'NOM_COUV': 'Meaux', 'COMP1': '200072130', 'COMP2': 'D77', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '17233', 'NOM_COUV': 'Meux', 'COMP1': '200041523', 'COMP
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Meaux' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "77284",\n  "reason": "La recherche est un nom de ville seul (« Meaux ») : selon la règle 1, on sélectionne la commune correspondante. Parmi les candidats, « Meaux » correspond ex
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'CA de Saint Quentin en Yvelines', 'target_id': '200058782', 'all_ids': ['200058782', '78423', 'D78', 'R11', '94080', '94033', '77284', 'FR'], 'parent_clause': '', 'display_context': '
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'CA de Saint Quentin en Yvelines', 'target_id': '200058782', 'all_ids': ['200058782', '78423', 'D78', 'R11', '94080', '94033', '77284', 'FR'], 'parent_clause': '', 'display_context': '
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Peux-tu **comparer le revenu médian annuel disponible (2021)** de la **CA de Saint-Quentin-en-Yvelines**, pour les **familles monoparentales** et les **couples avec enfants**, avec les communes de ** df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Peux-tu **comparer le revenu médian annuel disponible (2021)** de la **CA de Saint-Quentin-en-Yvelines**, pour les **familles monoparentales** et les **couples ' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Peux-tu **comparer le revenu médian annuel disponible (2021)** de la **CA de Saint-Quentin-en-Yvelines**, pour les **fam' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.6407812816540306
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=1322
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=10930 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=10930 preview='✅ TABLE: "FILO" | VAR: "MED_CAE" | DESC: "Revenu médian annuel disponible (€) - Ménages dont le référent fiscal est un couple avec enfant(s) en 2021"\n✅ TABLE: "FILO" | VAR: "MED_MONO" | DESC: "Reven
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=8 parent_clause='' sys_prompt_len=14380
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(d."MED_MONO" AS DOUBLE) AS "MED_MONO_2021",\n  TRY_CAST(d."MED_CAE" AS DOUBLE) AS "MED_CAE_2021",\n  (TRY_CAST(d."MED_CAE" AS DOUBLE) - TRY_CAST(d."MED_
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(d."MED_MONO" AS DOUBLE) AS "MED_MONO_2021",\n  TRY_CAST(d."MED_CAE" AS DOUBLE) AS "MED_CAE_2021",\n  (TRY_CAST(d."MED_CAE" AS DOUBLE) - TRY_CAST(d."MED_ ids=['200058782', '78423', 'D78', 'R11', '94080', '94033', '77284', 'FR'] ids_count=8
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=8 cols=['ID', 'NOM_COUV', 'MED_MONO_2021', 'MED_CAE_2021', 'ECART_CAE_MOINS_MONO_2021']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D78', 'NOM_COUV': 'Yvelines', 'MED_MONO_2021': 20710.0, 'MED_CAE_2021': 29740.0, 'ECART_CAE_MOINS_MONO_2021': 9030.0}, {'ID': 'R11', 'NOM_COUV': 'Île-de-France', 'MED_MONO_2021': 19160.0, 'ME
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Peux-tu **comparer le revenu médian annuel disponible (2021)** de la **CA de Saint-Quentin-en-Yvelines**, pour les **familles monoparentales** et les **couples ' df_rows=8 df_cols=5
+[TERRIBOT][DBG] chart.numeric_cols :: count=3 sample=['MED_MONO_2021', 'MED_CAE_2021', 'ECART_CAE_MOINS_MONO_2021']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='famille principale est composée d\'un couple de deux actif en emploi en 2022"\n✅ TABLE: "CMF" | VAR: "MFPMONOH" | DESC: "Ménages dont la famille principale est composée d\'un homme monoparental en 20
+[TERRIBOT][DBG] chart.config.raw :: selected=['ECART_CAE_MOINS_MONO_2021'] formats_keys=['ECART_CAE_MOINS_MONO_2021']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['ECART_CAE_MOINS_MONO_2021'] formats={'ECART_CAE_MOINS_MONO_2021': {'kind': 'currency', 'decimals': 0, 'label': 'Écart (CAE - mono)', 'title': 'Écart de revenu médian annuel disponible 2021 : couples avec enfants moins familles monoparen
+[TERRIBOT][DBG] plot.enter :: df_rows=8 df_cols=['ID', 'NOM_COUV', 'MED_MONO_2021', 'MED_CAE_2021', 'ECART_CAE_MOINS_MONO_2021'] sorted_ids=['200058782', '78423', 'D78', 'R11', '94080', '94033', '77284', 'FR'] selected_metrics=['ECART_CAE_MOINS_MONO_2021']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=8 top_5_ids=['200058782', '78423', 'D78', 'R11', '94080'] final_order=['200058782', '78423', 'D78', 'R11', '94080']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.0f'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=8 df_cols=['ID', 'NOM_COUV', 'MED_MONO_2021', 'MED_CAE_2021', 'ECART_CAE_MOINS_MONO_2021'] formats={'ECART_CAE_MOINS_MONO_2021': {'kind': 'currency', 'decimals': 0, 'label': 'Écart (CAE - mono)', 'title': 'Écart de revenu médian annuel disponible 2021 : couples avec enfants moins familles monoparen
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1961
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

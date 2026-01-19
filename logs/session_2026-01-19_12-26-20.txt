@@ -1,0 +1,66 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="\nQuelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: \nQuelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, lycées), de moyens humains et matériels,
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Roubaix' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=6 sample=[{'ID': '59512', 'NOM_COUV': 'Roubaix', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '11324', 'NOM_COUV': 'Roubia', 'COMP1': '200035863', '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Roubaix' candidates_len=6
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59512",\n  "reason": "La recherche contient uniquement le nom de ville « Roubaix » : selon la règle 1, on sélectionne la Commune (code INSEE 5 chiffres). Parmi les candidats, « R
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Nord' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': 'D59', 'NOM_COUV': 'Nord', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.45}, {'ID': 'R28', 'NOM_COUV': 'Normandie', 'COMP1': None, 'COMP2': None, '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Nord' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D59",\n  "reason": "La recherche \\"Nord\\" correspond au nom du département « Nord » (code 59). Les autres candidats sont des communes ou EPCI contenant « Nord » dans leur nom, 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='France' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': 'FR', 'NOM_COUV': 'France métropolitaine', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Pays', 'score': 1.0045454545454544}, {'ID': '37110', 'NOM_COUV': 'Francueil', 'COMP1
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='France' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "FR",\n  "reason": "La recherche \\"France\\" correspond au territoire de type \\"Pays\\" proposé : \\"France métropolitaine\\" (ID FR). Les autres candidats sont des communes don
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix, Nord, France', 'debug_search': [{'Recherche': 
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix, Nord, France', 'debug_search': [{'Recherche': 
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, lycées), de moyens humains et matériels, df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, l' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en terme' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5008415402522566
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=317
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=8641 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=8641 preview='✅ TABLE: "DIPL" | VAR: "6-10_AUTREG" | DESC: "Population des 6 à 10 ans scolarisés dans une autre région en France métropolitaine en 2022"\n✅ TABLE: "DIPL" | VAR: "11-14_AUTREG" | DESC: "Population d
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=12109
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Volumes scolarisés / population (proxy conditions de scolarisation) */\n  TRY_CAST(dipl."P22_POP0205" AS DOUBLE) AS "P22_POP0205",\n  TRY_CAST(dipl."P22_SCO
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_NSCOL"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'DIPL'
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "menj" does not have a column named "prim-etab-public"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'menj' -> 'MENJ'
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 2/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Volumes scolarisés / population (proxy de la scolarisation) */\n  TRY_CAST(dipl."p22_scol0205" AS DOUBLE) / NULLIF(TRY_CAST(dipl."p22_pop0205" AS DOUBLE), 0 ids=['59512', '200093201', 'D59', 'R32', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'tx_scolarisation_2_5', 'tx_scolarisation_6_10', 'tx_scolarisation_11_14', 'tx_scolarisation_15_17', 'part_non_scolarises_3_5', 'part_non_scolarises_6_10', 'part_non_scolarises_11_1
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D59', 'NOM_COUV': 'Nord', 'tx_scolarisation_2_5': 0.7912051135868196, 'tx_scolarisation_6_10': 0.9757707906407919, 'tx_scolarisation_11_14': 0.9826536511856486, 'tx_scolarisation_15_17': 0.94
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, l' df_rows=5 df_cols=44
+[TERRIBOT][DBG] chart.numeric_cols :: count=42 sample=['tx_scolarisation_2_5', 'tx_scolarisation_6_10', 'tx_scolarisation_11_14', 'tx_scolarisation_15_17', 'part_non_scolarises_3_5', 'part_non_scolarises_6_10', 'part_non_scolarises_11_14', 'part_non_scol
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=': "DIPL" | VAR: "P22_POP2529" | DESC: "Population de 25 à 29 ans en 2022"\n✅ TABLE: "DIPL" | VAR: "1529_BAC" | DESC: "Population des 15-29 ans Baccalauréat, brevet professionnel ou équivalent en 2022
+[TERRIBOT][DBG] chart.config.raw :: selected=['tx_scolarisation_15_17'] formats_keys=['tx_scolarisation_15_17']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['tx_scolarisation_15_17'] formats={'tx_scolarisation_15_17': {'kind': 'percent', 'decimals': 1, 'label': '15-17 ans', 'title': 'Taux de scolarisation des 15-17 ans'}}
+[TERRIBOT][FATAL] Exception: KeyError('data')
+Traceback (most recent call last):
+  File "C:\Users\james\Downloads\terribot\app.py", line 1518, in <module>
+    auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
+                   ~~~^^^^^^^^
+KeyError: 'data'
+
+  Stopping...

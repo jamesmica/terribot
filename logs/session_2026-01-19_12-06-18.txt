@@ -1,0 +1,133 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+
+========================================
+🛠️ CODE MODIFIÉ DPUIS LA DERNIÈRE EXÉCUTION
+🔴 CODE SUPPRIMÉ :
+   - def auto_plot_data(df, sorted_ids, config=None):
+   - comparators = top_5_ids[1:]
+   - try:
+   - if 'con' in globals() and comparators:
+   - pop_col = next((c for c in db_cols if "POP" in c and any(x in c for x in ["22","21","20","19"])), "POP")
+   - if pop_col in db_cols:
+   - q_sort = f"SELECT ID FROM territoires WHERE ID IN ({ids_sql_list}) ORDER BY TRY_CAST({pop_col} AS INTEGER) ASC"
+   - except: pass
+   - _dbg("plot.ids", available=len(available_ids_in_data), top_5_ids=top_5_ids, final_order=final_display_order)
+   - auto_plot_data(msg["data"], final_ids, config=saved_config)
+   - auto_plot_data(df, geo_context['all_ids'], config=chart_config)
+🟢 CODE AJOUTÉ :
+   + def auto_plot_data(df, sorted_ids, config=None, con=None):
+   + 
+   + # Séparation : Cible (toujours en 1er) vs Comparateurs (à trier)
+   + comparators = [x for x in top_5_ids[1:]] # Copie propre
+   + 
+   + # On ne trie que s'il y a une connexion DB et des comparateurs
+   + if con and comparators:
+   + try:
+   + # A. Trouver la colonne population (PTOT, POP, PMUN...)
+   + # On cherche une colonne qui contient POP, PTOT ou PMUN
+   + pop_col = next((c for c in db_cols if any(x in c for x in ["POP", "PTOT", "PMUN"])), None)
+   + 
+   + if pop_col:
+   + 
+   + # B. Requête Robuste :
+   + # - REPLACE : Enlève les espaces ("10 000" -> "10000")
+   + # - TRY_CAST : Convertit en entier
+   + # - ASC : Du plus petit au plus grand (pour mettre les gros à droite)
+   + q_sort = f"""
+   + SELECT ID
+   + FROM territoires
+   + WHERE ID IN ({ids_sql_list})
+   + ORDER BY TRY_CAST(REPLACE(CAST("{pop_col}" AS VARCHAR), ' ', '') AS INTEGER) ASC
+   + """
+   + _dbg("plot.sort", status="success", col=pop_col, order=sorted_comparators)
+   + else:
+   + _dbg("plot.sort", status="failed", reason="Colonne population introuvable dans territoires.txt")
+   + 
+   + except Exception as e:
+   + _dbg("plot.sort", status="error", msg=str(e))
+   + 
+   + # Reconstitution : Cible + Comparateurs triés
+   + 
+   + # Filtre final du DataFrame
+   + auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
+   + auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
+========================================
+
+[TERRIBOT][DB] ▶️ get_db_connection() ENTER
+[TERRIBOT][DBG] db.data_dir :: data_dir='data' exists=True
+[TERRIBOT][DB] 📦 Parquets détectés: 75 -> ['aah.parquet', 'acci.parquet', 'act.parquet', 'act_10.parquet', 'act_5.parquet', 'aeeh.parquet', 'all.parquet', 'all30.parquet', 'apl.parquet', 'artif.parquet']
+[TERRIBOT][DB] 📦 75 vues créées.
+[TERRIBOT][DBG] db.meta_paths :: glossaire_path='data/Glossaire.txt' territoires_path='data/territoires.txt' glossaire_exists=True territoires_exists=True
+[TERRIBOT][DB] 🔎 FTS init...
+[TERRIBOT][DB] ✅ FTS index created on glossaire
+[TERRIBOT][DB] ✅ get_db_connection() EXIT
+[TERRIBOT][EMB] ▶️ get_glossary_embeddings ENTER
+[TERRIBOT][DBG] emb.df_glossaire :: empty=False rows=2043 cols=['Source', 'Onglet', 'Repère', 'Année de référence', 'Nom au sein de la base de données', 'Intitulé détaillé', 'Onglets', 'Nb thématiques']
+[TERRIBOT][DBG] emb.cleaned :: clean_texts_len=2043 valid_indices_len=2043
+[TERRIBOT][DBG] emb.cache :: cache_path='data\\embeddings_cache.npy' cache_exists=True
+[TERRIBOT][DBG] emb.cache_loaded :: embeddings_shape=(2043, 1536)
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Quelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: Quelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (académie de Lille), notamment en termes d’accès aux établissements, de qualité de l’enseignement, de moyens (eff
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Roubaix' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=6 sample=[{'ID': '59512', 'NOM_COUV': 'Roubaix', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '11324', 'NOM_COUV': 'Roubia', 'COMP1': '200035863', '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Roubaix' candidates_len=6
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59512",\n  "reason": "La recherche contient uniquement le nom de la ville « Roubaix » : selon la règle 1, on sélectionne la Commune (code INSEE 5 chiffres). Parmi les candidats, 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Académie de Lille' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=0 sample=[]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Académie de Lille' candidates_len=0
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Lille' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '59350', 'NOM_COUV': 'Lille', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '62516', 'NOM_COUV': 'Lillers', 'COMP1': '200072460', 'C
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Lille' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59350",\n  "reason": "La recherche est uniquement le nom de ville « Lille » : selon la règle 1, on sélectionne la commune (code INSEE à 5 chiffres). Parmi les candidats, « Lille 
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', '59350', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix, Académie de Lille, Lille', 'debug_sea
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', '59350', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix, Académie de Lille, Lille', 'debug_sea
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (académie de Lille), notamment en termes d’accès aux établissements, de qualité de l’enseignement, de moyens (eff df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (académie de Lille), notamment en termes d’accès aux établissements, de qu' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (académie de Lille), notamment en ' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.48533068127752177
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=214
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=8670 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=8670 preview='✅ TABLE: "DIPL" | VAR: "6-10_AUTREG" | DESC: "Population des 6 à 10 ans scolarisés dans une autre région en France métropolitaine en 2022"\n✅ TABLE: "DIPL" | VAR: "3-5_AUTREG" | DESC: "Population des
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=6 parent_clause='' sys_prompt_len=12153
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Accès / scolarisation (parts par lieu de scolarisation) */\n  TRY_CAST(d."P22_SCOL0205" AS DOUBLE) / NULLIF(TRY_CAST(d."P22_POP0205" AS DOUBLE), 0) AS part_
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "d" does not have a column named "3_5_COMRES"
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "d" does not have a column named "3_5_AUTCOMDEP"
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 2/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "d" does not have a column named "3_5_AUTDEP"
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 3/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "d" does not have a column named "3_5_AUTREG"
+[TERRIBOT][FATAL] Exception: BinderException('Binder Error: Values list "d" does not have a column named "3_5_AUTREG"\n\nLINE 6:   TRY_CAST(d."3_5_AUTREG" AS DOUBLE) / NULLIF(TRY_CAST(d."P22_POP0205...\n                   ^')
+Traceback (most recent call last):
+  File "C:\Users\james\Downloads\terribot\app.py", line 1434, in <module>
+    sql_query = generate_and_fix_sql(client, MODEL_NAME, system_prompt, rewritten_prompt, con)
+  File "C:\Users\james\Downloads\terribot\app.py", line 454, in generate_and_fix_sql
+    raise e
+  File "C:\Users\james\Downloads\terribot\app.py", line 426, in generate_and_fix_sql
+    con.execute(f"EXPLAIN {sql_query}")
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+_duckdb.BinderException: Binder Error: Values list "d" does not have a column named "3_5_AUTREG"
+
+LINE 6:   TRY_CAST(d."3_5_AUTREG" AS DOUBLE) / NULLIF(TRY_CAST(d."P22_POP0205...
+                   ^
+
+  Stopping...

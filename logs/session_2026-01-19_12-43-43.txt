@@ -1,0 +1,246 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_1999', 'logements_2011', 'logements_2016', 'logements_2022', 'evol_1990_1999', 'evol_1999_2011', 'evol_2011_2016', 'evol_2016_2022', 'evol_1990_2022'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['evol_1990_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Pour Manosque seulement' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=5
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='omération et Manosque se situent donc sur une croissance **plus rapide** que les moyennes régionale et nationale sur longue période.\n\n**Piste pour aller plus loin :** souhaitez-vous un graphique qu current_geo_name='Manosque'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Peux-tu tracer **une courbe d’évolution du nombre de logements à Manosque**, de **1990 à 2022** (par années de recensement : **1990, 1999, 2011, 2016 et 2022**) ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Manosque'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Manosque' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '4112', 'NOM_COUV': 'Manosque', 'COMP1': '200034700', 'COMP2': 'D4', 'COMP3': 'R93', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '28232', 'NOM_COUV': 'Manou', 'COMP1': '200070167', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Manosque' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "4112",\n  "reason": "La recherche est exactement « Manosque » sans mention d’intercommunalité ; selon la règle, on sélectionne la commune correspondante (ID INSEE 04112, affiché 
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Peux-tu tracer **une courbe d’évolution du nombre de logements à Manosque**, de **1990 à 2022** (par années de recensement : **1990, 1999, 2011, 2016 et 2022**) ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Peux-tu tracer **une courbe d’évolution du nombre de logements à Manosque**, de **1990 à 2022** (par années de recensement : **1990, 1999, 2011, 2016 et 2022**)' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Peux-tu tracer **une courbe d’évolution du nombre de logements à Manosque**, de **1990 à 2022** (par années de recenseme' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5893825123738085
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=1520
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=7823
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=7823 preview='✅ TABLE: "LOG" | VAR: "log90" | DESC: "Logements en 1990"\n✅ TABLE: "LOG" | VAR: "rp_1971_90" | DESC: "Résidences principales construites entre 1971 et 1990"\n✅ TABLE: "LOG" | VAR: "log68" | DESC: "L
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=11077
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  \'1990\' AS "annee",\n  TRY_CAST(d."log90" AS DOUBLE) AS "logements"\nFROM territoires t\nLEFT JOIN "LOG" d ON t."ID" = d."ID"\nWHERE (t."ID" IN (\'4112\', \'200
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  x."annee",\n  x."logements"\nFROM territoires t\nLEFT JOIN "LOG" d ON t."ID" = d."ID"\nCROSS JOIN (\n  VALUES\n    (1990, TRY_CAST(d."log90" AS DOUBLE)),\n    (1 ids=['4112', '200034700', 'D4', 'R93', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=25 cols=['ID', 'NOM_COUV', 'annee', 'logements']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': '200034700', 'NOM_COUV': 'CA Durance-Lubéron-Verdon Agglomération', 'annee': 1990, 'logements': 26265.0}, {'ID': '200034700', 'NOM_COUV': 'CA Durance-Lubéron-Verdon Agglomération', 'annee': 19
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Peux-tu tracer **une courbe d’évolution du nombre de logements à Manosque**, de **1990 à 2022** (par années de recensement : **1990, 1999, 2011, 2016 et 2022**)' df_rows=25 df_cols=4
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['logements']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='PLS" | VAR: "nb_ls2022" | DESC: "Nombre de logements sociaux en 2022"\n✅ TABLE: "LOG" | VAR: "RP65+2p" | DESC: "Résidences principales dont personne de référence de plus de 65 ans de 2 pièces en 2022
+[TERRIBOT][DBG] chart.config.raw :: selected=['logements'] formats_keys=['logements']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['logements'] formats={'logements': {'kind': 'number', 'decimals': 0, 'label': 'Logements', 'title': 'Nombre de logements (total)'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] formats={'logements': {'kind': 'number', 'decimals': 0, 'label': 'Logements', 'title': 'Nombre de logements (total)'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1486
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_1999', 'logements_2011', 'logements_2016', 'logements_2022', 'evol_1990_1999', 'evol_1999_2011', 'evol_2011_2016', 'evol_2016_2022', 'evol_1990_2022'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['evol_1990_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Enlève les territoires de comparaison' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=7
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='ide** que le département, la région et la moyenne nationale sur la période 1990–2022.\n\n### Pour aller plus loin\nSouhaitez-vous un graphique montrant **la part de Manosque dans le parc de logements current_geo_name='Manosque'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Entre **1990 et 2022**, le **parc de logements à Manosque** progresse nettement :\n\n- **1990 : 8\u202f695 logements**\n- **2022 : 13\u202f268 logements**\n\nSoit **+4\u202f573 logements** en 32 ans,
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Manosque'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Manosque' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '4112', 'NOM_COUV': 'Manosque', 'COMP1': '200034700', 'COMP2': 'D4', 'COMP3': 'R93', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '28232', 'NOM_COUV': 'Manou', 'COMP1': '200070167', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Manosque' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "4112",\n  "reason": "La recherche est un nom de ville seul (« Manosque ») : selon la règle, on sélectionne la commune correspondante. Parmi les candidats, « Manosque » (Commune) 
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Entre **1990 et 2022**, le **parc de logements à Manosque** progresse nettement :\n\n- **1990 : 8\u202f695 logements**\n- **2022 : 13\u202f268 logements**\n\nSoit **+4\u202f573 logements** en 32 ans, df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Entre **1990 et 2022**, le **parc de logements à Manosque** progresse nettement :\n\n- **1990 : 8\u202f695 logements**\n- **2022 : 13\u202f268 logements**\n\nSoit **+4\u202f573 log' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Entre **1990 et 2022**, le **parc de logements à Manosque** progresse nettement :\n\n- **1990 : 8\u202f695 logements**\n- **2022' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5804810475954724
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=1552
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=7823
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=7823 preview='✅ TABLE: "RPLS" | VAR: "age_moyen" | DESC: "Âge moyen des logements sociaux en 2024"\n✅ TABLE: "LOG" | VAR: "log90" | DESC: "Logements en 1990"\n✅ TABLE: "LOG" | VAR: "log68" | DESC: "Logements en 19
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=11125
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(d."log90" AS DOUBLE) AS "logements_1990",\n  TRY_CAST(d."log22" AS DOUBLE) AS "logements_2022",\n  (TRY_CAST(d."log22" AS DOUBLE) - TRY_CAST(d."log90" A
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(l."log90" AS DOUBLE) AS "logements_1990",\n  TRY_CAST(l."log22" AS DOUBLE) AS "logements_2022",\n  (TRY_CAST(l."log22" AS DOUBLE) - TRY_CAST(l."log90" A ids=['4112', '200034700', 'D4', 'R93', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_2022', 'evolution_absolue_1990_2022', 'evolution_pourcent_1990_2022']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D4', 'NOM_COUV': 'Alpes de Haute-Provence', 'logements_1990': 92368.0, 'logements_2022': 132550.12257880057, 'evolution_absolue_1990_2022': 40182.12257880057, 'evolution_pourcent_1990_2022': 
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Entre **1990 et 2022**, le **parc de logements à Manosque** progresse nettement :\n\n- **1990 : 8\u202f695 logements**\n- **2022 : 13\u202f268 logements**\n\nSoit **+4\u202f573 log' df_rows=5 df_cols=6
+[TERRIBOT][DBG] chart.numeric_cols :: count=4 sample=['logements_1990', 'logements_2022', 'evolution_absolue_1990_2022', 'evolution_pourcent_1990_2022']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='es par des 15-24 ans locataires HLM en 2022"\n✅ TABLE: "RPLS" | VAR: "nb_ls2016" | DESC: "Nombre de logements sociaux en 2016"\n✅ TABLE: "SITADL" | VAR: "logaut20" | DESC: "Logements autorisés en 202
+[TERRIBOT][DBG] chart.config.raw :: selected=['evolution_pourcent_1990_2022'] formats_keys=['evolution_pourcent_1990_2022']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['evolution_pourcent_1990_2022'] formats={'evolution_pourcent_1990_2022': {'kind': 'percent', 'decimals': 1, 'label': 'Évolution 1990-2022', 'title': 'Évolution du parc de logements entre 1990 et 2022 (en %)'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_2022', 'evolution_absolue_1990_2022', 'evolution_pourcent_1990_2022'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['evolution_pourcent_1990_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_2022', 'evolution_absolue_1990_2022', 'evolution_pourcent_1990_2022'] formats={'evolution_pourcent_1990_2022': {'kind': 'percent', 'decimals': 1, 'label': 'Évolution 1990-2022', 'title': 'Évolution du parc de logements entre 1990 et 2022 (en %)'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1110
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_1999', 'logements_2011', 'logements_2016', 'logements_2022', 'evol_1990_1999', 'evol_1999_2011', 'evol_2011_2016', 'evol_2016_2022', 'evol_1990_2022'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['evol_1990_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_2022', 'evolution_absolue_1990_2022', 'evolution_pourcent_1990_2022'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['evolution_pourcent_1990_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Fais une courbe de l'évolution du nombre de logements depuis 1990 sans comparaison" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=9
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="e particulièrement marquée à l’échelle du bassin de vie.\n\n**Pour aller plus loin :** souhaitez-vous un graphique qui compare **l’évolution en %** et **les gains en nombre de logements** (deux barre current_geo_name='Manosque'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Peux-tu faire une courbe de l’évolution du **nombre de logements à Manosque** depuis **1990**, **sans aucun territoire de comparaison** (uniquement Manosque) ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Manosque'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Manosque' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '4112', 'NOM_COUV': 'Manosque', 'COMP1': '200034700', 'COMP2': 'D4', 'COMP3': 'R93', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '28232', 'NOM_COUV': 'Manou', 'COMP1': '200070167', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Manosque' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "4112",\n  "reason": "La recherche est un nom de ville seul (« Manosque ») : selon la règle 1, on sélectionne la commune correspondante. Parmi les candidats, « Manosque » (Commune
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Peux-tu faire une courbe de l’évolution du **nombre de logements à Manosque** depuis **1990**, **sans aucun territoire de comparaison** (uniquement Manosque) ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Peux-tu faire une courbe de l’évolution du **nombre de logements à Manosque** depuis **1990**, **sans aucun territoire de comparaison** (uniquement Manosque) ?' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Peux-tu faire une courbe de l’évolution du **nombre de logements à Manosque** depuis **1990**, **sans aucun territoire d' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5424662393677571
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=794
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=7810
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=7810 preview='✅ TABLE: "LOG" | VAR: "log90" | DESC: "Logements en 1990"\n✅ TABLE: "LOG" | VAR: "rp_1971_90" | DESC: "Résidences principales construites entre 1971 et 1990"\n✅ TABLE: "LOG" | VAR: "log75" | DESC: "L
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=11061
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  x."annee",\n  x."logements"\nFROM territoires t\nLEFT JOIN "LOG" d ON t."ID" = d."ID"\nCROSS JOIN (\n  VALUES\n    (1990, TRY_CAST(d."log90" AS DOUBLE)),\n    (1
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  x."annee",\n  x."logements"\nFROM territoires t\nLEFT JOIN (\n  SELECT "ID", 1990 AS "annee", TRY_CAST("log90" AS DOUBLE) AS "logements" FROM "LOG"\n  UNION ALL\ ids=['4112', '200034700', 'D4', 'R93', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'annee', 'logements']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': '4112', 'NOM_COUV': 'Manosque', 'annee': 1990, 'logements': 8695.0}, {'ID': '4112', 'NOM_COUV': 'Manosque', 'annee': 1999, 'logements': 9720.0}, {'ID': '4112', 'NOM_COUV': 'Manosque', 'annee':
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Peux-tu faire une courbe de l’évolution du **nombre de logements à Manosque** depuis **1990**, **sans aucun territoire de comparaison** (uniquement Manosque) ?' df_rows=5 df_cols=4
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['logements']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='ésidences principales occupées par des 15-24 ans locataires HLM en 2022"\n✅ TABLE: "LOG" | VAR: "rp1529_1p" | DESC: "Résidences principales dont personne de référence de 15-29 ans d\'une pièce en 202
+[TERRIBOT][DBG] chart.config.raw :: selected=['logements'] formats_keys=['logements']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['logements'] formats={'logements': {'kind': 'number', 'decimals': 0, 'label': 'Logements', 'title': 'Nombre de logements'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] formats={'logements': {'kind': 'number', 'decimals': 0, 'label': 'Logements', 'title': 'Nombre de logements'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=833
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_1999', 'logements_2011', 'logements_2016', 'logements_2022', 'evol_1990_1999', 'evol_1999_2011', 'evol_2011_2016', 'evol_2016_2022', 'evol_1990_2022'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['evol_1990_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=25 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=25 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'logements_1990', 'logements_2022', 'evolution_absolue_1990_2022', 'evolution_pourcent_1990_2022'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['evolution_pourcent_1990_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'annee', 'logements'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['logements']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col='annee' id_col='ID'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Les bâtiments publics sont ils performants énergetiquement ?' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=11
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='récentes** (croissance plus forte jusqu’en 2011, puis plus modérée ensuite).\n\n**Pour aller plus loin :** souhaitez-vous un graphique qui montre **les gains de logements par période** (barres des év current_geo_name='Manosque'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Les **bâtiments publics à Manosque** sont-ils **performants énergétiquement** (par exemple au regard de leur **DPE**, de leurs **consommations** et/ou de leur **niveau de rénovation**) ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Manosque'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Manosque' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '4112', 'NOM_COUV': 'Manosque', 'COMP1': '200034700', 'COMP2': 'D4', 'COMP3': 'R93', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '28232', 'NOM_COUV': 'Manou', 'COMP1': '200070167', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Manosque' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "4112",\n  "reason": "La recherche est exactement « Manosque » sans mention d’intercommunalité ; selon la règle, on sélectionne la commune correspondante (ID INSEE 04112, affiché 
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque', 'debug_search': [{'Recherche': 'Manosque', 'Tr
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Les **bâtiments publics à Manosque** sont-ils **performants énergétiquement** (par exemple au regard de leur **DPE**, de leurs **consommations** et/ou de leur **niveau de rénovation**) ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Les **bâtiments publics à Manosque** sont-ils **performants énergétiquement** (par exemple au regard de leur **DPE**, de leurs **consommations** et/ou de leur *' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Les **bâtiments publics à Manosque** sont-ils **performants énergétiquement** (par exemple au regard de leur **DPE**, de' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5885298700675837
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=260
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=9449
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=9449 preview='✅ TABLE: "DPE" | VAR: "b_dpe" | DESC: "Diagnostic de Performance Énergétique B - Énergie des logements en 2025"\n✅ TABLE: "DPE" | VAR: "a_dpe" | DESC: "Diagnostic de Performance Énergétique A - Énerg
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=12727
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* DPE tertiaire (locaux non résidentiels) : parts par classe (énergie) */\n  TRY_CAST(dt."dpe_tertiaire_a" AS DOUBLE) / NULLIF(TRY_CAST(dt."tot_tertiaire_dpe"
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* DPE tertiaire (locaux non résidentiels) : parts par classe (énergie) */\n  TRY_CAST(dt."dpe_tertiaire_a" AS DOUBLE) / NULLIF(TRY_CAST(dt."tot_tertiaire_dpe" ids=['4112', '200034700', 'D4', 'R93', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'part_dpe_tertiaire_a_energie', 'part_dpe_tertiaire_b_energie', 'part_dpe_tertiaire_c_energie', 'part_dpe_tertiaire_d_energie', 'part_dpe_tertiaire_e_energie', 'part_dpe_tertiaire_f
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D4', 'NOM_COUV': 'Alpes de Haute-Provence', 'part_dpe_tertiaire_a_energie': 0.09180790960451977, 'part_dpe_tertiaire_b_energie': 0.1596045197740113, 'part_dpe_tertiaire_c_energie': 0.25706214
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Les **bâtiments publics à Manosque** sont-ils **performants énergétiquement** (par exemple au regard de leur **DPE**, de leurs **consommations** et/ou de leur *' df_rows=5 df_cols=24
+[TERRIBOT][DBG] chart.numeric_cols :: count=22 sample=['part_dpe_tertiaire_a_energie', 'part_dpe_tertiaire_b_energie', 'part_dpe_tertiaire_c_energie', 'part_dpe_tertiaire_d_energie', 'part_dpe_tertiaire_e_energie', 'part_dpe_tertiaire_f_energie', 'part_d
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=' en 2024"\n✅ TABLE: "DATA_ES" | VAR: "gestion_departement" | DESC: "Gestionnaire département en 2025"\n✅ TABLE: "REN" | VAR: "x93_11z_gestion_privee" | DESC: "Gestion d’installations sportives en 202
+[TERRIBOT][DBG] chart.config.raw :: selected=['part_dpe_tertiaire_energie_A_C'] formats_keys=['part_dpe_tertiaire_energie_A_C']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['part_dpe_tertiaire_energie_A_C'] formats={'part_dpe_tertiaire_energie_A_C': {'kind': 'percent', 'decimals': 1, 'label': 'DPE A-C', 'title': 'Part des bâtiments tertiaires (publics) classés A à C au DPE énergie'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'part_dpe_tertiaire_a_energie', 'part_dpe_tertiaire_b_energie', 'part_dpe_tertiaire_c_energie', 'part_dpe_tertiaire_d_energie', 'part_dpe_tertiaire_e_energie', 'part_dpe_tertiaire_f sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['part_dpe_tertiaire_energie_A_C']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'part_dpe_tertiaire_a_energie', 'part_dpe_tertiaire_b_energie', 'part_dpe_tertiaire_c_energie', 'part_dpe_tertiaire_d_energie', 'part_dpe_tertiaire_e_energie', 'part_dpe_tertiaire_f formats={'part_dpe_tertiaire_energie_A_C': {'kind': 'percent', 'decimals': 1, 'label': 'DPE A-C', 'title': 'Part des bâtiments tertiaires (publics) classés A à C au DPE énergie'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=2465
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

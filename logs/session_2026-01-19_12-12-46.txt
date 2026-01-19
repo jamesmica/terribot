@@ -1,0 +1,137 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+
+========================================
+🛠️ CODE MODIFIÉ DPUIS LA DERNIÈRE EXÉCUTION
+🔴 CODE SUPPRIMÉ :
+   - # --- AMÉLIORATION : Récupération du schéma de la table fautive ---
+   - # On cherche si l'erreur mentionne une table (ex: Values list "odf"...)
+   - faulty_table = match_table.group(1)
+   - # On récupère les colonnes réelles
+   - cols = con.execute(f"DESCRIBE \"{faulty_table}\"").fetchall()
+   - schema_hint = f"\n\n🚨 INFO CRITIQUE : Voici les colonnes RÉELLES disponibles dans la table '{faulty_table}' : {', '.join(col_names[:50])}..."
+   - except:
+   - pass # Si on arrive pas à décrire la table, tant pis
+   - fix_prompt = f"Erreur DuckDB : {error_msg}. {schema_hint}\nCorrige la requête SQL. Si la colonne n'existe pas, supprime-la de la requête. Ne réponds que le SQL."
+   - 
+   - - ⚠️ IMPORTANT : Les noms de variables dans le glossaire contiennent parfois des caractères spéciaux (-, +, .).
+   - - DANS LE SQL, REMPLACE SYSTÉMATIQUEMENT TOUT CARACTÈRE NON-ALPHANUMÉRIQUE PAR UN UNDERSCORE (_).
+   - - Exemple : "CSSP-POP" devient "CSSP_POP".
+   - - Exemple : "ALD_55+" devient "ALD_55_".
+   - - Exemple : "taux.chom" devient "taux_chom".
+🟢 CODE AJOUTÉ :
+   + # On cherche si l'erreur mentionne une table ou un alias (ex: Values list "d"...)
+   + 
+   + faulty_ref = match_table.group(1)
+   + real_table = faulty_ref
+   + 
+   + # --- AMÉLIORATION : Résolution d'alias (ex: 'd' -> 'DIPL') ---
+   + # On cherche dans le SQL un motif du type : JOIN "MA_TABLE" d  ou  JOIN MA_TABLE AS d
+   + # Le regex cherche un mot (la table) juste avant l'alias fautif
+   + alias_pattern = r'["\s]([a-zA-Z0-9_]+)["\s]+(?:AS\s+)?\b' + re.escape(faulty_ref) + r'\b'
+   + alias_match = re.search(alias_pattern, sql_query, re.IGNORECASE)
+   + 
+   + if alias_match:
+   + real_table = alias_match.group(1)
+   + print(f"[TERRIBOT][SQL] 🕵️ Alias résolu : '{faulty_ref}' -> '{real_table}'")
+   + 
+   + # On récupère les colonnes réelles de la VRAIE table
+   + cols = con.execute(f"DESCRIBE \"{real_table}\"").fetchall()
+   + # On donne un indice précis à l'IA
+   + schema_hint = f"\n\n🚨 INFO CRITIQUE : L'alias '{faulty_ref}' correspond à la table '{real_table}'. Voici ses colonnes RÉELLES : {', '.join(col_names[:50])}..."
+   + except Exception as desc_err:
+   + print(f"[TERRIBOT][SQL] ⚠️ Impossible de décrire '{real_table}': {desc_err}")
+   + fix_prompt = f"Erreur DuckDB : {error_msg}. {schema_hint}\nCorrige la requête SQL. Utilise les guillemets doubles pour les noms de colonnes avec tirets. Ne réponds que le SQL."
+   + 
+   + - ⚠️ CRITIQUE : Les noms de colonnes contiennent souvent des tirets (-) ou des points (.).
+   + - NE LES MODIFIE PAS. Utilise EXACTEMENT le nom fourni dans le CONTEXTE glossaire.
+   + - Utilise TOUJOURS des guillemets doubles pour entourer les noms de colonnes.
+   + - Exemple : Si le contexte indique "3-5_AUTREG", écris SELECT t."3-5_AUTREG" ... (et NON 3_5_AUTREG).
+========================================
+
+[TERRIBOT][DB] ▶️ get_db_connection() ENTER
+[TERRIBOT][DBG] db.data_dir :: data_dir='data' exists=True
+[TERRIBOT][DB] 📦 Parquets détectés: 75 -> ['aah.parquet', 'acci.parquet', 'act.parquet', 'act_10.parquet', 'act_5.parquet', 'aeeh.parquet', 'all.parquet', 'all30.parquet', 'apl.parquet', 'artif.parquet']
+[TERRIBOT][DB] 📦 75 vues créées.
+[TERRIBOT][DBG] db.meta_paths :: glossaire_path='data/Glossaire.txt' territoires_path='data/territoires.txt' glossaire_exists=True territoires_exists=True
+[TERRIBOT][DB] 🔎 FTS init...
+[TERRIBOT][DB] ✅ FTS index created on glossaire
+[TERRIBOT][DB] ✅ get_db_connection() EXIT
+[TERRIBOT][EMB] ▶️ get_glossary_embeddings ENTER
+[TERRIBOT][DBG] emb.df_glossaire :: empty=False rows=2043 cols=['Source', 'Onglet', 'Repère', 'Année de référence', 'Nom au sein de la base de données', 'Intitulé détaillé', 'Onglets', 'Nb thématiques']
+[TERRIBOT][DBG] emb.cleaned :: clean_texts_len=2043 valid_indices_len=2043
+[TERRIBOT][DBG] emb.cache :: cache_path='data\\embeddings_cache.npy' cache_exists=True
+[TERRIBOT][DBG] emb.cache_loaded :: embeddings_shape=(2043, 1536)
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Quelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: Quelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative, qualité des établissements, encadrement, dispositifs de soutien, conditions ma
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Roubaix' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=6 sample=[{'ID': '59512', 'NOM_COUV': 'Roubaix', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '11324', 'NOM_COUV': 'Roubia', 'COMP1': '200035863', '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Roubaix' candidates_len=6
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59512",\n  "reason": "La recherche est uniquement le nom de ville « Roubaix » : selon la règle 1, on sélectionne la commune (code INSEE à 5 chiffres). Parmi les candidats, « Roub
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix', 'debug_search': [{'Recherche': 'Roubaix', 'Tr
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix', 'debug_search': [{'Recherche': 'Roubaix', 'Tr
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative, qualité des établissements, encadrement, dispositifs de soutien, conditions ma df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative, qualité des établissements, encadrement' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative,' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.46618473850978515
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=125
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=8593 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=8593 preview='✅ TABLE: "DIPL" | VAR: "6-10_AUTREG" | DESC: "Population des 6 à 10 ans scolarisés dans une autre région en France métropolitaine en 2022"\n✅ TABLE: "DIPL" | VAR: "3-5_AUTREG" | DESC: "Population des
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=11961
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Accès à l’école : taux de scolarisation (2022) */\n  TRY_CAST(dipl."P22_SCOL0205" AS DOUBLE) / NULLIF(TRY_CAST(dipl."P22_POP0205" AS DOUBLE), 0) AS "tx_scol
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_NSCOL"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'JOIN'
+[TERRIBOT][SQL] ⚠️ Impossible de décrire 'JOIN': Catalog Error: Table with name JOIN does not exist!
+Did you mean "VOIT"?
+
+LINE 1: DESCRIBE "JOIN"
+                 ^
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_NSCOL"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'JOIN'
+[TERRIBOT][SQL] ⚠️ Impossible de décrire 'JOIN': Catalog Error: Table with name JOIN does not exist!
+Did you mean "VOIT"?
+
+LINE 1: DESCRIBE "JOIN"
+                 ^
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 2/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_COMRES"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'JOIN'
+[TERRIBOT][SQL] ⚠️ Impossible de décrire 'JOIN': Catalog Error: Table with name JOIN does not exist!
+Did you mean "VOIT"?
+
+LINE 1: DESCRIBE "JOIN"
+                 ^
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 3/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "menj" does not have a column named "prim-etab-public"
+[TERRIBOT][FATAL] Exception: BinderException('Binder Error: Values list "menj" does not have a column named "prim-etab-public"\n\nLINE 12:   TRY_CAST(menj."prim-etab-public" AS DOUBLE) AS "nb_etab_primaire_public...\n                    ^')
+Traceback (most recent call last):
+  File "C:\Users\james\Downloads\terribot\app.py", line 1446, in <module>
+    sql_query = generate_and_fix_sql(client, MODEL_NAME, system_prompt, rewritten_prompt, con)
+  File "C:\Users\james\Downloads\terribot\app.py", line 467, in generate_and_fix_sql
+    raise e
+  File "C:\Users\james\Downloads\terribot\app.py", line 426, in generate_and_fix_sql
+    con.execute(f"EXPLAIN {sql_query}")
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+_duckdb.BinderException: Binder Error: Values list "menj" does not have a column named "prim-etab-public"
+
+LINE 12:   TRY_CAST(menj."prim-etab-public" AS DOUBLE) AS "nb_etab_primaire_public...
+                    ^
+
+  Stopping...

@@ -1,0 +1,116 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=10 df_cols=['ID', 'NOM_COUV', 'revenu_median_annuel_disponible_2021_euros'] sorted_ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94052', '94018', 'FR'] selected_metrics=['revenu_median_annuel_disponible_2021_euros']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' col='POP_MOCO_40'
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=False is_multi_metric=False y_format=',.0f'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Quel est le taux de chômage à manosque ?' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=3
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='viron **15\u202f000 €** entre **Saint-Mandé** et **Montreuil**, ce qui traduit une forte hétérogénéité sociale entre communes.\n\n**Piste pour aller plus loin :** souhaitez-vous un graphique qui mont current_geo_name='Vincennes'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quel est le **taux de chômage à Manosque** ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Vincennes'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Manosque' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '4112', 'NOM_COUV': 'Manosque', 'COMP1': '200034700', 'COMP2': 'D4', 'COMP3': 'R93', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '28232', 'NOM_COUV': 'Manou', 'COMP1': '200070167', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Manosque' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "04112",\n  "reason": "Le terme recherché est un nom de ville sans mention d\'intercommunalité ; on sélectionne donc la commune. Parmi les candidats, « Manosque » correspond à la 
+[TERRIBOT][DBG] pipeline.geo.after :: new_context=None
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quel est le **taux de chômage à Manosque** ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quel est le **taux de chômage à Manosque** ?' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quel est le **taux de chômage à Manosque** ?' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5205823900319342
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=414
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=6857
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=6857 preview='✅ TABLE: "DEFM_AN" | VAR: "defm2009" | DESC: "Nombre de DEFM en 2009"\n✅ TABLE: "DEFM_AN" | VAR: "defm2010" | DESC: "Nombre de DEFM en 2010"\n✅ TABLE: "DEFM_AN" | VAR: "defm2011" | DESC: "Nombre de D
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=10 parent_clause='' sys_prompt_len=10040
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1564" AS DOUBLE) / NULLIF(TRY_CAST(a."p22_chom1564" AS DOUBLE) + TRY_CAST(a."p22_actocc2554" AS DOUBLE), 0) AS "taux_chomage"\nFROM territoir
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1564" AS DOUBLE) / NULLIF(TRY_CAST(a."p22_h1564" AS DOUBLE) + TRY_CAST(a."p22_fchom1564" AS DOUBLE), 0) AS "taux_chomage"\nFROM territoires t ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94052', '94018', 'FR'] ids_count=10
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=10 cols=['ID', 'NOM_COUV', 'taux_chomage']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'taux_chomage': 0.1656280349394286}, {'ID': 'R11', 'NOM_COUV': 'Île-de-France', 'taux_chomage': 0.16182740503153886}, {'ID': 'FR', 'NOM_COUV': 'France métrop
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quel est le **taux de chômage à Manosque** ?' df_rows=10 df_cols=3
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['taux_chomage']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='opulation des inactifs de 15 à 64 ans en 2016"\n✅ TABLE: "ACT_10" | VAR: "p11_f1524" | DESC: "Femmes de 15 à 24 ans en 2011"\n✅ TABLE: "ACT_5" | VAR: "p16_f2554" | DESC: "Femmes de 25 à 54 ans en 201
+[TERRIBOT][DBG] chart.config.raw :: selected=['taux_chomage'] formats_keys=['taux_chomage']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['taux_chomage'] formats={'taux_chomage': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage', 'title': 'Taux de chômage'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=10 df_cols=['ID', 'NOM_COUV', 'taux_chomage'] sorted_ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94052', '94018', 'FR'] selected_metrics=['taux_chomage']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' col='POP_MOCO_40'
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=10 df_cols=['ID', 'NOM_COUV', 'taux_chomage'] formats={'taux_chomage': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage', 'title': 'Taux de chômage'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1293
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=10 df_cols=['ID', 'NOM_COUV', 'revenu_median_annuel_disponible_2021_euros'] sorted_ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94052', '94018', 'FR'] selected_metrics=['revenu_median_annuel_disponible_2021_euros']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' col='POP_MOCO_40'
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=False is_multi_metric=False y_format=',.0f'
+[TERRIBOT][DBG] plot.enter :: df_rows=10 df_cols=['ID', 'NOM_COUV', 'taux_chomage'] sorted_ids=['94080', '200057941', 'D94', 'R11', '94067', '93048', '94033', '94052', '94018', 'FR'] selected_metrics=['taux_chomage']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' col='POP_MOCO_40'
+[TERRIBOT][DBG] plot.vega :: melted_rows=10 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Quel est le taux de chômage à Manosque ?' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=5
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail=' ciblage des politiques d’accès à l’emploi (publics éloignés de l’emploi, quartiers prioritaires, qualification, mobilité…).\n\n### Pour aller plus loin\nSouhaitez-vous un graphique qui montre **l’éc current_geo_name='Vincennes'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quel est le **taux de chômage à Manosque (Alpes-de-Haute-Provence)** ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Vincennes'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Manosque' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '4112', 'NOM_COUV': 'Manosque', 'COMP1': '200034700', 'COMP2': 'D4', 'COMP3': 'R93', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '28232', 'NOM_COUV': 'Manou', 'COMP1': '200070167', 'CO
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Manosque' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "4112",\n  "reason": "Le contexte précise « Manosque (Alpes-de-Haute-Provence) » : il s’agit de la commune de Manosque (département 04), correspondant au candidat ID 4112.",\n  "i
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Alpes-de-Haute-Provence' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': 'D4', 'NOM_COUV': 'Alpes de Haute-Provence', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.132608695652174}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Alpes-de-Haute-Provence' candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D4",\n  "reason": "Le terme recherché « Alpes-de-Haute-Provence » correspond au nom d’un département ; le seul candidat proposé est le département Alpes-de-Haute-Provence (ID D4)
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque, Alpes-de-Haute-Provence', 'debug_search': [{'Re
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Manosque', 'target_id': '4112', 'all_ids': ['4112', '200034700', 'D4', 'R93', 'FR'], 'parent_clause': '', 'display_context': 'Manosque, Alpes-de-Haute-Provence', 'debug_search': [{'Re
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quel est le **taux de chômage à Manosque (Alpes-de-Haute-Provence)** ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quel est le **taux de chômage à Manosque (Alpes-de-Haute-Provence)** ?' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quel est le **taux de chômage à Manosque (Alpes-de-Haute-Provence)** ?' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5119607618827621
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=376
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=6927
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=6927 preview='✅ TABLE: "DEFM_AN" | VAR: "defm2009" | DESC: "Nombre de DEFM en 2009"\n✅ TABLE: "DEFM_AN" | VAR: "defm2011" | DESC: "Nombre de DEFM en 2011"\n✅ TABLE: "DEFM_AN" | VAR: "defm2010" | DESC: "Nombre de D
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=10089
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1564" AS DOUBLE) / NULLIF(TRY_CAST(a."p11_chom1564" AS DOUBLE) + TRY_CAST(a."p11_actocc1564" AS DOUBLE), 0) AS "taux_chomage_15_64"\nFROM ter
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "a" does not have a column named "p11_inact1564"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'a' -> 'ACT'
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_chom1564" AS DOUBLE) / NULLIF(TRY_CAST(a."p22_act1564" AS DOUBLE), 0) AS "taux_chomage"\nFROM territoires t\nLEFT JOIN "ACT" a\n  ON t."ID" = a." ids=['4112', '200034700', 'D4', 'R93', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'taux_chomage']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D4', 'NOM_COUV': 'Alpes de Haute-Provence', 'taux_chomage': 0.11772323809832115}, {'ID': 'R93', 'NOM_COUV': 'PACA', 'taux_chomage': 0.11993184147192787}, {'ID': 'FR', 'NOM_COUV': 'France métr
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quel est le **taux de chômage à Manosque (Alpes-de-Haute-Provence)** ?' df_rows=5 df_cols=3
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['taux_chomage']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='ESC: "Actifs de 25-54 ans en 2011"\n✅ TABLE: "ACT_10" | VAR: "p11_f2554" | DESC: "Femmes de 25 à 54 ans en 2011"\n✅ TABLE: "ACT_10" | VAR: "p11_actocc1564" | DESC: "Actifs occupés de 15-64 ans en 201
+[TERRIBOT][DBG] chart.config.raw :: selected=['taux_chomage'] formats_keys=['taux_chomage']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['taux_chomage'] formats={'taux_chomage': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage', 'title': 'Taux de chômage'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'taux_chomage'] sorted_ids=['4112', '200034700', 'D4', 'R93', 'FR'] selected_metrics=['taux_chomage']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='success' col='POP_MOCO_40'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'taux_chomage'] formats={'taux_chomage': {'kind': 'percent', 'decimals': 1, 'label': 'Chômage', 'title': 'Taux de chômage'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=731
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

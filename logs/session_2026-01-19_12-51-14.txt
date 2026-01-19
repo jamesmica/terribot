@@ -1,0 +1,57 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Les parents de Saint-Michel dans le département 8 peuvent-ils rencontrer des difficultés financières ou sociales ?' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=2
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: Les parents de Saint-Michel peuvent-ils rencontrer des difficultés financières ou sociales ? \nuser: Les parents de Saint-Michel  current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Les parents vivant à Saint-Michel, dans le département 08 (Ardennes), peuvent-ils rencontrer des difficultés financières ou sociales ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Michel' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '2684', 'NOM_COUV': 'Saint-Michel', 'COMP1': '240200600', 'COMP2': 'D2', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9666666666666666}, {'ID': '9271', 'NOM_COUV': 'Saint-Michel', 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Saint-Michel' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "Le libellé \\"Saint-Michel\\" correspond à plusieurs communes homonymes (IDs 2684, 9271, 64492, 82166, 16341, 32397, 34278, 45294, 31505) dans des départements
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Ardennes' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': 'D8', 'NOM_COUV': 'Ardennes', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.45}, {'ID': '36005', 'NOM_COUV': 'Ardentes', 'COMP1': '243600327', 'COMP
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Ardennes' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D8",\n  "reason": "La recherche « Ardennes » correspond au nom d’un département ; le candidat exact est le Département des Ardennes (ID D8).",\n  "is_ambiguous": false\n}'
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Ardennes', 'target_id': 'D8', 'all_ids': ['D8', 'FR'], 'parent_clause': '', 'display_context': 'Saint-Michel, Ardennes', 'debug_search': [{'Recherche': 'Ardennes', 'Trouvé': 'Ardennes
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Ardennes', 'target_id': 'D8', 'all_ids': ['D8', 'FR'], 'parent_clause': '', 'display_context': 'Saint-Michel, Ardennes', 'debug_search': [{'Recherche': 'Ardennes', 'Trouvé': 'Ardennes
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Les parents vivant à Saint-Michel, dans le département 08 (Ardennes), peuvent-ils rencontrer des difficultés financières ou sociales ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Les parents vivant à Saint-Michel, dans le département 08 (Ardennes), peuvent-ils rencontrer des difficultés financières ou sociales ?' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Les parents vivant à Saint-Michel, dans le département 08 (Ardennes), peuvent-ils rencontrer des difficultés financières' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.4072765800739605
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=97
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=10569
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=10569 preview='✅ TABLE: "FILO" | VAR: "med_mono" | DESC: "Revenu médian annuel disponible (€) - Ménages dont le référent fiscal est une famille monoparentale en 2021"\n✅ TABLE: "FILO" | VAR: "tp60_cae" | DESC: "Tau
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=2 parent_clause='' sys_prompt_len=13767
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(f."tp60_mono" AS DOUBLE) / 100.0 AS "taux_pauvrete_familles_monoparentales_2021",\n  TRY_CAST(f."tp60_cae" AS DOUBLE) / 100.0 AS "taux_pauvrete_couples_
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "c" does not have a column named "1524_PAR"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'c' -> 'CMF'
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(f."tp6021" AS DOUBLE) AS "tp6021",\n  TRY_CAST(f."med21" AS DOUBLE) AS "med21",\n  TRY_CAST(f."tp60_mono" AS DOUBLE) AS "tp60_mono",\n  TRY_CAST(f."med_ ids=['D8', 'FR'] ids_count=2
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=2 cols=['ID', 'NOM_COUV', 'tp6021', 'med21', 'tp60_mono', 'med_mono', 'tp60_cae', 'med_cae', 'part_allocataires_qf_moins_400', 'part_allocataires_qf_400_799', 'x1524_par']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D8', 'NOM_COUV': 'Ardennes', 'tp6021': 19.4, 'med21': 20850.0, 'tp60_mono': 39.1, 'med_mono': 15710.0, 'tp60_cae': 17.4, 'med_cae': 21570.0, 'part_allocataires_qf_moins_400': 0.22402243992296
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Les parents vivant à Saint-Michel, dans le département 08 (Ardennes), peuvent-ils rencontrer des difficultés financières ou sociales ?' df_rows=2 df_cols=11
+[TERRIBOT][DBG] chart.numeric_cols :: count=9 sample=['tp6021', 'med21', 'tp60_mono', 'med_mono', 'tp60_cae', 'med_cae', 'part_allocataires_qf_moins_400', 'part_allocataires_qf_400_799', 'x1524_par']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='tatut d\'actif en emploi en 2022"\n✅ TABLE: "CMF" | VAR: "enf_3a_22" | DESC: "Enfant de moins de 3 ans d\'une famille monoparentale où le parent est une femme au statut autre qu\'actif en emploi en 2
+[TERRIBOT][DBG] chart.config.raw :: selected=['tp6021'] formats_keys=['tp6021']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['tp6021'] formats={'tp6021': {'kind': 'percent', 'decimals': 1, 'label': 'Pauvreté', 'title': 'Taux de pauvreté au seuil de 60% (2021)'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=2 df_cols=['ID', 'NOM_COUV', 'tp6021', 'med21', 'tp60_mono', 'med_mono', 'tp60_cae', 'med_cae', 'part_allocataires_qf_moins_400', 'part_allocataires_qf_400_799', 'x1524_par'] sorted_ids=['D8', 'FR'] selected_metrics=['tp6021']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=2 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=2 df_cols=['ID', 'NOM_COUV', 'tp6021', 'med21', 'tp60_mono', 'med_mono', 'tp60_cae', 'med_cae', 'part_allocataires_qf_moins_400', 'part_allocataires_qf_400_799', 'x1524_par'] formats={'tp6021': {'kind': 'percent', 'decimals': 1, 'label': 'Pauvreté', 'title': 'Taux de pauvreté au seuil de 60% (2021)'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1352
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

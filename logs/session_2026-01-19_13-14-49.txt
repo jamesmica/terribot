@@ -1,0 +1,145 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+
+========================================
+🛠️ CODE MODIFIÉ DPUIS LA DERNIÈRE EXÉCUTION
+🔴 CODE SUPPRIMÉ :
+   - """Applique le formatage (Pandas Styler) pour l'affichage tableau."""
+   - def fr_num(x, decimals=0, suffix=""):
+   - if pd.isna(x): return ""
+   - s = f"{x:,.{decimals}f}".replace(",", " ").replace(".", ",")
+   - sty = df.style
+   - for col, s in (specs or {}).items():
+   - if col not in df.columns: continue
+   - if not pd.api.types.is_numeric_dtype(df[col]): continue
+   - 
+   - dec = int(s.get("decimals", 0))
+   - pb = s.get("percent_base")
+   - unit = s.get("unit", "")
+   - sty = sty.format({col: lambda v, d=dec: fr_num(v, d, "€")})
+   - if pb == "0-1":
+   - sty = sty.format({col: lambda v, d=dec: fr_num(v * 100.0, d, "%")})
+   - else:
+   - sty = sty.format({col: lambda v, d=dec: fr_num(v, d, "%")})
+   - sty = sty.format({col: lambda v, d=dec, u=unit: fr_num(v, d, u)})
+   - return sty
+   - # A. Trouver la colonne population (PTOT, POP, PMUN...)
+   - # On cherche une colonne qui contient POP, PTOT ou PMUN
+   - pop_col = next((c for c in db_cols if any(x in c for x in ["POP", "PTOT", "PMUN"])), None)
+   - # B. Requête Robuste :
+   - # - REPLACE : Enlève les espaces ("10 000" -> "10000")
+   - # - TRY_CAST : Convertit en entier
+   - # - ASC : Du plus petit au plus grand (pour mettre les gros à droite)
+   - _dbg("plot.sort", status="failed", reason="Colonne population introuvable dans territoires.txt")
+   - status_container.update(label="Terminé", state="complete", expanded=False)
+🟢 CODE AJOUTÉ :
+   + """Applique le formatage pour l'affichage (Styler)."""
+   + # On travaille sur une copie pour ne pas casser le DF original
+   + df_display = df.copy()
+   + 
+   + # On force la conversion en numérique pour être sûr
+   + for col in df_display.columns:
+   + df_display[col] = pd.to_numeric(df_display[col], errors='ignore')
+   + 
+   + def fr_num(x, decimals=0, suffix="", factor=1):
+   + if pd.isna(x): return "-" # Tiret pour les nulls
+   + if not isinstance(x, (int, float)): return str(x)
+   + val = x * factor
+   + # Format français (espace millier, virgule décimale)
+   + fmt = f"{{:,.{decimals}f}}"
+   + s = fmt.format(val).replace(",", " ").replace(".", ",")
+   + # On prépare le dictionnaire de formatage
+   + format_dict = {}
+   + 
+   + # On itère sur TOUTES les colonnes du tableau (et pas juste celles du graph)
+   + for col in df_display.columns:
+   + # On ignore les colonnes non numériques (Textes, IDs...)
+   + if not pd.api.types.is_numeric_dtype(df_display[col]): continue
+   + 
+   + # On récupère la config IA si elle existe, sinon des valeurs par défaut
+   + s = specs.get(col, {})
+   + dec = int(s.get("decimals", 1)) # Par défaut 1 décimale
+   + 
+   + # --- RÈGLE INTELLIGENTE : 0 décimale si tout est > 100 ---
+   + try:
+   + # On regarde les valeurs non nulles
+   + valid_vals = df_display[col].dropna().abs()
+   + if not valid_vals.empty:
+   + # Si la plus petite valeur est supérieure à 100 (ex: Pop, Revenus, Années)
+   + if valid_vals.min() >= 100:
+   + dec = 0
+   + # Cas spécial pour les entiers parfaits (ex: nb d'écoles = 3.0 -> 3)
+   + elif (valid_vals % 1 == 0).all():
+   + dec = 0
+   + except: pass
+   + # ---------------------------------------------------------
+   + format_dict[col] = lambda x, d=dec: fr_num(x, d, "€")
+   + # Heuristique : Si c'est < 5 (ex: 0.15), on multiplie par 100.
+   + format_dict[col] = lambda x, d=dec: fr_num(x, d, "%", factor=100 if abs(x)<5 else 1)
+   + format_dict[col] = lambda x, d=dec: fr_num(x, d, "")
+   + 
+   + return df_display.style.format(format_dict)
+   + # A. Trouver la colonne population
+   + # NOUVEAU : Liste de candidats probables pour la population
+   + pop_candidates = ["PMUN", "PTOT", "POP", "P21_POP", "P20_POP", "P19_POP", "PMUN21", "PMUN20"]
+   + pop_col = None
+   + 
+   + # 1. Recherche exacte
+   + for cand in pop_candidates:
+   + if cand in db_cols:
+   + pop_col = cand
+   + break
+   + 
+   + # 2. Recherche partielle (contient "POP" ou "PMUN")
+   + if not pop_col:
+   + pop_col = next((c for c in db_cols if "PMUN" in c or ("POP" in c and "TOT" in c)), None)
+   + 
+   + # B. Requête Robuste (inchangée)
+   + _dbg("plot.sort", status="failed", reason=f"Colonne pop introuvable parmi {db_cols[:10]}...")
+   + status_container.empty()
+========================================
+
+[TERRIBOT][DB] ▶️ get_db_connection() ENTER
+[TERRIBOT][DBG] db.data_dir :: data_dir='data' exists=True
+[TERRIBOT][DB] 📦 Parquets détectés: 75 -> ['aah.parquet', 'acci.parquet', 'act.parquet', 'act_10.parquet', 'act_5.parquet', 'aeeh.parquet', 'all.parquet', 'all30.parquet', 'apl.parquet', 'artif.parquet']
+[TERRIBOT][DB] 📋 Tables valides enregistrées : 75
+[TERRIBOT][DB] 📦 75 vues créées.
+[TERRIBOT][DBG] db.meta_paths :: glossaire_path='data/Glossaire.txt' territoires_path='data/territoires.txt' glossaire_exists=True territoires_exists=True
+[TERRIBOT][DB] 🔎 FTS init...
+[TERRIBOT][DB] ✅ FTS index created on glossaire
+[TERRIBOT][DB] ✅ get_db_connection() EXIT
+[TERRIBOT][EMB] ▶️ get_glossary_embeddings ENTER
+[TERRIBOT][DBG] emb.df_glossaire :: empty=False rows=2043 cols=['Source', 'Onglet', 'Repère', 'Année de référence', 'Nom au sein de la base de données', 'Intitulé détaillé', 'Onglets', 'Nb thématiques']
+[TERRIBOT][DBG] emb.cleaned :: clean_texts_len=2043 valid_indices_len=2043
+[TERRIBOT][DBG] emb.cache :: cache_path='data\\embeddings_cache.npy' cache_exists=True
+[TERRIBOT][DBG] emb.cache_loaded :: embeddings_shape=(2043, 1536)
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Quel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: Quel est le taux de chômage des jeunes à Saint Michel dans l'Aisne, comparé à Vincennes, Cergy et Lille ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Michel (Aisne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '9271', 'NOM_COUV': 'Saint-Michel', 'COMP1': '200066231', 'COMP2': 'D9', 'COMP3': 'R76', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8933333333333334}, {'ID': '32397', 'NOM_COUV': 'Saint-Michel',
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "02684",\n  "reason": "L’utilisateur précise « Saint-Michel (département de l’Aisne) » : on sélectionne donc la commune Saint-Michel du département 02 (Aisne), qui correspond au c
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=13 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': 'D86', 'NOM_COUV': 'Vienne', 'COMP1': None, 'COMP2':
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=13
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La recherche vise notamment la commune « Saint-Michel (département de l’Aisne) » ainsi que les communes de Cergy et Lille, mais aucun candidat correspondant à 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Cergy' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '95127', 'NOM_COUV': 'Cergy', 'COMP1': '249500109', 'COMP2': 'D95', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '91129', 'NOM_COUV': 'Cerny', 'COMP1': '249100546', 'COM
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La recherche porte sur « Saint-Michel (département de l’Aisne) » ainsi que Vincennes, Cergy et Lille. Or, dans la liste de candidats fournie, seule la commune 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Lille' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '59350', 'NOM_COUV': 'Lille', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '62516', 'NOM_COUV': 'Lillers', 'COMP1': '200072460', 'C
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quel est le taux de chômage des jeunes à Saint-Michel (département de l’Aisne), et comment se compare-t-il à celui des communes de Vincennes, Cergy et Lille ?' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La question cite 4 communes (Saint-Michel dans l’Aisne, Vincennes, Cergy, Lille). Or, parmi les candidats fournis, seule la commune de Lille est présente (ID 5
+[TERRIBOT][DBG] pipeline.geo.after :: new_context=None
+  Stopping...

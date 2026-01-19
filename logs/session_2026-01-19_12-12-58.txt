@@ -1,0 +1,73 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Quelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: Quelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative, qualité des établissements, encadrement, dispositifs de soutien, conditions ma
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Roubaix' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=6 sample=[{'ID': '59512', 'NOM_COUV': 'Roubaix', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '11324', 'NOM_COUV': 'Roubia', 'COMP1': '200035863', '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Roubaix' candidates_len=6
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59512",\n  "reason": "La recherche est uniquement le nom de ville « Roubaix » : selon la règle 1, on sélectionne la commune (code INSEE à 5 chiffres). Parmi les candidats, « Roub
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix', 'debug_search': [{'Recherche': 'Roubaix', 'Tr
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix', 'debug_search': [{'Recherche': 'Roubaix', 'Tr
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative, qualité des établissements, encadrement, dispositifs de soutien, conditions ma df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative, qualité des établissements, encadrement' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (accès à l’école, offre éducative,' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.46618473850978515
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=125
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=8593 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=8593 preview='✅ TABLE: "DIPL" | VAR: "6-10_AUTREG" | DESC: "Population des 6 à 10 ans scolarisés dans une autre région en France métropolitaine en 2022"\n✅ TABLE: "DIPL" | VAR: "3-5_AUTREG" | DESC: "Population des
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=11961
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Accès à l’école : taux de scolarisation (2022) */\n  TRY_CAST(dipl."P22_SCOL0205" AS DOUBLE) / NULLIF(TRY_CAST(dipl."P22_POP0205" AS DOUBLE), 0) AS "tx_scol
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_NSCOL"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'JOIN'
+[TERRIBOT][SQL] ⚠️ Impossible de décrire 'JOIN': Catalog Error: Table with name JOIN does not exist!
+Did you mean "VOIT"?
+
+LINE 1: DESCRIBE "JOIN"
+                 ^
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_NSCOL"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'JOIN'
+[TERRIBOT][SQL] ⚠️ Impossible de décrire 'JOIN': Catalog Error: Table with name JOIN does not exist!
+Did you mean "VOIT"?
+
+LINE 1: DESCRIBE "JOIN"
+                 ^
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 2/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_COMRES"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'JOIN'
+[TERRIBOT][SQL] ⚠️ Impossible de décrire 'JOIN': Catalog Error: Table with name JOIN does not exist!
+Did you mean "VOIT"?
+
+LINE 1: DESCRIBE "JOIN"
+                 ^
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 3/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "menj" does not have a column named "prim-etab-public"
+[TERRIBOT][FATAL] Exception: BinderException('Binder Error: Values list "menj" does not have a column named "prim-etab-public"\n\nLINE 12:   TRY_CAST(menj."prim-etab-public" AS DOUBLE) AS "nb_etab_primaire_public...\n                    ^')
+Traceback (most recent call last):
+  File "C:\Users\james\Downloads\terribot\app.py", line 1446, in <module>
+    sql_query = generate_and_fix_sql(client, MODEL_NAME, system_prompt, rewritten_prompt, con)
+  File "C:\Users\james\Downloads\terribot\app.py", line 467, in generate_and_fix_sql
+    raise e
+  File "C:\Users\james\Downloads\terribot\app.py", line 426, in generate_and_fix_sql
+    con.execute(f"EXPLAIN {sql_query}")
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+_duckdb.BinderException: Binder Error: Values list "menj" does not have a column named "prim-etab-public"
+
+LINE 12:   TRY_CAST(menj."prim-etab-public" AS DOUBLE) AS "nb_etab_primaire_public...
+                    ^
+
+  Stopping...

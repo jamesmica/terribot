@@ -1,0 +1,179 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+
+========================================
+🛠️ CODE MODIFIÉ DPUIS LA DERNIÈRE EXÉCUTION
+🔴 CODE SUPPRIMÉ :
+   - try:
+   - table_name = f.replace('.parquet', '').replace('-', '_').replace(' ', '_').upper()
+   - file_path = os.path.join(data_dir, f).replace("\\", "/")
+   - 
+   - # --- Ligne à commenter pour alléger les logs ---
+   - # _dbg("db.create_view.try", file=f, table_name=table_name, file_path=file_path)
+   - 
+   - con.execute(f'CREATE OR REPLACE VIEW "{table_name}" AS SELECT * FROM \'{file_path}\'')
+   - 
+   - # On ne garde que le succès final ou on commente aussi
+   - # print(f"✅ Vue créée : {table_name}")
+   - 
+   - except Exception as e_file:
+   - print(f"❌ Erreur sur le fichier {f} : {e_file}")
+   - 
+   - # --- CORRECTION DE LA CORRESPONDANCE ---
+   - # 1. On lit la valeur brute dans le glossaire (ex: "ACT-10")
+   - raw_source = str(row.get('Onglet', row.iloc[1] if len(row) > 1 else 'INCONNU'))
+   - 
+   - # 2. On applique la MÊME normalisation que dans get_db_connection
+   - # Remplacer les tirets et espaces par des underscores
+   - table_name = raw_source.upper().strip().replace('-', '_').replace(' ', '_')
+   - 
+   - result_context += f"✅ TABLE: \"{table_name}\" | VAR: \"{var}\" | DESC: \"{desc}\"\n"
+🟢 CODE AJOUTÉ :
+   + def standardize_name(name):
+   + """Nettoie un nom (fichier ou source) pour en faire un identifiant SQL valide et unique."""
+   + if not isinstance(name, str): return "UNKNOWN"
+   + # 1. On garde que les lettres et chiffres
+   + # 2. On remplace tout le reste par des underscores
+   + # 3. On passe en majuscule
+   + clean = re.sub(r'[^a-zA-Z0-9]', '_', name.upper())
+   + # 4. On évite les doubles underscores (ex: ACT__10 -> ACT_10)
+   + clean = re.sub(r'_+', '_', clean).strip('_')
+   + return clean
+   + 
+   + valid_tables = [] # Liste pour stocker les noms officiels
+   + 
+   + try:
+   + # 1. On nettoie le nom (ex: "act-10.parquet" -> "ACT_10")
+   + raw_name = f.replace('.parquet', '').upper()
+   + # On remplace tout ce qui n'est pas lettre/chiffre par _
+   + table_name = re.sub(r'[^A-Z0-9]', '_', raw_name)
+   + 
+   + file_path = os.path.join(data_dir, f).replace("\\", "/")
+   + con.execute(f'CREATE OR REPLACE VIEW "{table_name}" AS SELECT * FROM \'{file_path}\'')
+   + 
+   + # 2. On ajoute à la liste officielle
+   + valid_tables.append(table_name)
+   + 
+   + except Exception as e_file:
+   + print(f"❌ Erreur sur le fichier {f} : {e_file}")
+   + 
+   + # 3. SAUVEGARDE GLOBALE (C'est la clé !)
+   + st.session_state.valid_tables_list = valid_tables
+   + print(f"[TERRIBOT][DB] 📋 Tables valides enregistrées : {len(valid_tables)}")
+   + from difflib import get_close_matches # Import utile ici
+   + 
+   + # Récupération de la liste officielle (ou vide si pas encore chargée)
+   + valid_tables = st.session_state.get("valid_tables_list", [])
+   + 
+   + # 1. On récupère le "nom théorique" depuis le glossaire (colonne Onglet ou Source)
+   + # Ex: dans le glossaire il y a écrit "ACT-10" ou "Recensement 2010"
+   + raw_source = str(row.get('Onglet', row.iloc[1])).upper()
+   + 
+   + # 2. Nettoyage basique pour aider le matching
+   + candidate_name = re.sub(r'[^A-Z0-9]', '_', raw_source)
+   + 
+   + # 3. MATCHING MAGIQUE : On cherche le vrai nom de table le plus proche
+   + # Si on a "ACT_10" dans le glossaire et "ACT_10" dans les tables -> Match direct
+   + # Si on a "EMPLOI" dans le glossaire et "EMPL" dans les tables -> difflib va aider
+   + 
+   + final_table_name = "UNKNOWN_TABLE"
+   + 
+   + if candidate_name in valid_tables:
+   + final_table_name = candidate_name
+   + else:
+   + # On cherche une ressemblance (cutoff=0.4 permet de trouver "EMPL" depuis "EMPLOI")
+   + matches = get_close_matches(candidate_name, valid_tables, n=1, cutoff=0.4)
+   + if matches:
+   + final_table_name = matches[0]
+   + else:
+   + # Fallback : Si le glossaire dit "RP2020" et qu'on a rien de proche,
+   + # on essaie de trouver si une table contient cette chaine
+   + for t in valid_tables:
+   + if t in candidate_name or candidate_name in t:
+   + final_table_name = t
+   + break
+   + 
+   + # 4. On injecte le nom CERTIFIÉ dans le prompt
+   + result_context += f"✅ TABLE: \"{final_table_name}\" | VAR: \"{var}\" | DESC: \"{desc}\"\n"
+========================================
+
+[TERRIBOT][DB] ▶️ get_db_connection() ENTER
+[TERRIBOT][DBG] db.data_dir :: data_dir='data' exists=True
+[TERRIBOT][DB] 📦 Parquets détectés: 75 -> ['aah.parquet', 'acci.parquet', 'act.parquet', 'act_10.parquet', 'act_5.parquet', 'aeeh.parquet', 'all.parquet', 'all30.parquet', 'apl.parquet', 'artif.parquet']
+[TERRIBOT][DB] 📋 Tables valides enregistrées : 75
+[TERRIBOT][DB] 📦 75 vues créées.
+[TERRIBOT][DBG] db.meta_paths :: glossaire_path='data/Glossaire.txt' territoires_path='data/territoires.txt' glossaire_exists=True territoires_exists=True
+[TERRIBOT][DB] 🔎 FTS init...
+[TERRIBOT][DB] ✅ FTS index created on glossaire
+[TERRIBOT][DB] ✅ get_db_connection() EXIT
+[TERRIBOT][EMB] ▶️ get_glossary_embeddings ENTER
+[TERRIBOT][DBG] emb.df_glossaire :: empty=False rows=2043 cols=['Source', 'Onglet', 'Repère', 'Année de référence', 'Nom au sein de la base de données', 'Intitulé détaillé', 'Onglets', 'Nb thématiques']
+[TERRIBOT][DBG] emb.cleaned :: clean_texts_len=2043 valid_indices_len=2043
+[TERRIBOT][DBG] emb.cache :: cache_path='data\\embeddings_cache.npy' cache_exists=True
+[TERRIBOT][DBG] emb.cache_loaded :: embeddings_shape=(2043, 1536)
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="\nQuelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=False ambiguity=False messages=1
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="assistant: Bonjour ! Quel territoire souhaitez-vous analyser ?\nuser: \nQuelles sont les conditions de scolarisation et d'apprentissage pour les enfants de Roubaix ?" current_geo_name=''
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, lycées), de moyens humains et matériels,
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo=None
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Roubaix' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=6 sample=[{'ID': '59512', 'NOM_COUV': 'Roubaix', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 1.3}, {'ID': '11324', 'NOM_COUV': 'Roubia', 'COMP1': '200035863', '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Roubaix' candidates_len=6
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59512",\n  "reason": "La recherche contient uniquement le nom de ville « Roubaix » : selon la règle 1, on sélectionne la Commune (code INSEE 5 chiffres). Parmi les candidats, « R
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Nord' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': 'D59', 'NOM_COUV': 'Nord', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.45}, {'ID': 'R28', 'NOM_COUV': 'Normandie', 'COMP1': None, 'COMP2': None, '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Nord' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D59",\n  "reason": "La recherche \\"Nord\\" correspond au nom du département « Nord » (code 59). Les autres candidats sont des communes ou EPCI contenant « Nord » dans leur nom, 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='France' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': 'FR', 'NOM_COUV': 'France métropolitaine', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Pays', 'score': 1.0045454545454544}, {'ID': '37110', 'NOM_COUV': 'Francueil', 'COMP1
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='France' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "FR",\n  "reason": "La recherche \\"France\\" correspond au territoire de type \\"Pays\\" proposé : \\"France métropolitaine\\" (ID FR). Les autres candidats sont des communes don
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix, Nord, France', 'debug_search': [{'Recherche': 
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Roubaix', 'target_id': '59512', 'all_ids': ['59512', '200093201', 'D59', 'R32', 'FR'], 'parent_clause': '', 'display_context': 'Roubaix, Nord, France', 'debug_search': [{'Recherche': 
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, lycées), de moyens humains et matériels, df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, l' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en terme' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5008415402522566
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=317
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=8641 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=8641 preview='✅ TABLE: "DIPL" | VAR: "6-10_AUTREG" | DESC: "Population des 6 à 10 ans scolarisés dans une autre région en France métropolitaine en 2022"\n✅ TABLE: "DIPL" | VAR: "11-14_AUTREG" | DESC: "Population d
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=12109
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Volumes scolarisés / population (proxy conditions de scolarisation) */\n  TRY_CAST(dipl."P22_POP0205" AS DOUBLE) AS "P22_POP0205",\n  TRY_CAST(dipl."P22_SCO
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "dipl" does not have a column named "3-5_NSCOL"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'dipl' -> 'DIPL'
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "menj" does not have a column named "prim-etab-public"
+[TERRIBOT][SQL] 🕵️ Alias résolu : 'menj' -> 'MENJ'
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 2/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Volumes scolarisés / population (proxy de la scolarisation) */\n  TRY_CAST(dipl."p22_scol0205" AS DOUBLE) / NULLIF(TRY_CAST(dipl."p22_pop0205" AS DOUBLE), 0 ids=['59512', '200093201', 'D59', 'R32', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'tx_scolarisation_2_5', 'tx_scolarisation_6_10', 'tx_scolarisation_11_14', 'tx_scolarisation_15_17', 'part_non_scolarises_3_5', 'part_non_scolarises_6_10', 'part_non_scolarises_11_1
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D59', 'NOM_COUV': 'Nord', 'tx_scolarisation_2_5': 0.7912051135868196, 'tx_scolarisation_6_10': 0.9757707906407919, 'tx_scolarisation_11_14': 0.9826536511856486, 'tx_scolarisation_15_17': 0.94
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quelles sont les conditions de scolarisation et d’apprentissage des enfants à Roubaix (Nord, France), notamment en termes d’offre éducative (écoles, collèges, l' df_rows=5 df_cols=44
+[TERRIBOT][DBG] chart.numeric_cols :: count=42 sample=['tx_scolarisation_2_5', 'tx_scolarisation_6_10', 'tx_scolarisation_11_14', 'tx_scolarisation_15_17', 'part_non_scolarises_3_5', 'part_non_scolarises_6_10', 'part_non_scolarises_11_14', 'part_non_scol
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=': "DIPL" | VAR: "P22_POP2529" | DESC: "Population de 25 à 29 ans en 2022"\n✅ TABLE: "DIPL" | VAR: "1529_BAC" | DESC: "Population des 15-29 ans Baccalauréat, brevet professionnel ou équivalent en 2022
+[TERRIBOT][DBG] chart.config.raw :: selected=['tx_scolarisation_15_17'] formats_keys=['tx_scolarisation_15_17']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['tx_scolarisation_15_17'] formats={'tx_scolarisation_15_17': {'kind': 'percent', 'decimals': 1, 'label': '15-17 ans', 'title': 'Taux de scolarisation des 15-17 ans'}}
+[TERRIBOT][FATAL] Exception: KeyError('data')
+Traceback (most recent call last):
+  File "C:\Users\james\Downloads\terribot\app.py", line 1518, in <module>
+    auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
+                   ~~~^^^^^^^^
+KeyError: 'data'
+
+  Stopping...

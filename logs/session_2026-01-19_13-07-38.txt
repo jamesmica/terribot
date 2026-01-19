@@ -1,0 +1,67 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'part_jeunes_15_24_2022'] sorted_ids=['2684', '240200600', 'D2', 'R32', 'FR'] selected_metrics=['part_jeunes_15_24_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Comparé à Vincennes, Cergy et Lille ?' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=3
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='ès proche de l’Aisne (-0,2 point)** et **en retrait par rapport à la région (-1,8 point)**.\n\n**Piste pour aller plus loin :** souhaitez-vous un graphique qui compare **la part des 15-24 ans** à **l current_geo_name='Saint-Michel'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑de‑Marne)**, **Cergy (Val‑d’Oise)** et *
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Saint-Michel'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Saint-Michel (Aisne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '9271', 'NOM_COUV': 'Saint-Michel', 'COMP1': '200066231', 'COMP2': 'D9', 'COMP3': 'R76', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8933333333333334}, {'ID': '32397', 'NOM_COUV': 'Saint-Michel',
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑de‑Marne)**, **Cergy (Val‑d’Oise)** et * candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "2684",\n  "reason": "L’utilisateur demande « Saint‑Michel (Aisne) » : Aisne = département 02 (COMP2 = D2). Parmi les candidats, seule la commune Saint‑Michel avec COMP2=D2 corres
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Vincennes (Val-de-Marne)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': '94080', 'NOM_COUV': 'Vincennes', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.875}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑de‑Marne)**, **Cergy (Val‑d’Oise)** et * candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94080",\n  "reason": "Parmi les candidats fournis, le seul territoire correspondant à une commune explicitement citée (Vincennes, Val-de-Marne) est la commune de Vincennes (code 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Cergy (Val-d’Oise)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': '95127', 'NOM_COUV': 'Cergy', 'COMP1': '249500109', 'COMP2': 'D95', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8588235294117647}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑de‑Marne)**, **Cergy (Val‑d’Oise)** et * candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La recherche porte sur plusieurs communes (Saint-Michel dans l’Aisne, Vincennes dans le Val-de-Marne, Cergy dans le Val-d’Oise, Lille dans le Nord). Or la list
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Lille (Nord)' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=2 sample=[{'ID': '59350', 'NOM_COUV': 'Lille', 'COMP1': '200093201', 'COMP2': 'D59', 'COMP3': 'R32', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8833333333333334}, {'ID': '62516', 'NOM_COUV': 'Lillers', 'COMP1': 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑de‑Marne)**, **Cergy (Val‑d’Oise)** et * candidates_len=2
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "59350",\n  "reason": "Parmi les candidats fournis, seul « Lille » correspond exactement à une commune citée dans la recherche (« Lille (Nord) »). L’utilisateur demande des compar
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Saint-Michel', 'target_id': '2684', 'all_ids': ['2684', '240200600', 'D2', 'R32', '94080', '59350', 'FR'], 'parent_clause': '', 'display_context': 'Saint-Michel (Aisne), Vincennes (Va
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Saint-Michel', 'target_id': '2684', 'all_ids': ['2684', '240200600', 'D2', 'R32', '94080', '59350', 'FR'], 'parent_clause': '', 'display_context': 'Saint-Michel (Aisne), Vincennes (Va
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑de‑Marne)**, **Cergy (Val‑d’Oise)** et * df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑d' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison**' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.4959317339807483
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=916
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=7378
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=7378 preview='✅ TABLE: "EVO_10" | VAR: "x15_17_11" | DESC: "Population de 15-17 ans en 2011"\n✅ TABLE: "CMF_10" | VAR: "c11_1524_par" | DESC: "Population des 15-24 ans chez le(s) parents(s) en 2011"\n✅ TABLE: "EVO
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=7 parent_clause='' sys_prompt_len=10704
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_poptot1524" AS DOUBLE) / NULLIF(TRY_CAST(s."pmun2015" AS DOUBLE), 0) AS "part_15_24"\nFROM territoires t\nLEFT JOIN "ACT" a ON t."ID" = a."ID"\nL
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(a."p22_poptot1524" AS DOUBLE) / NULLIF(TRY_CAST(s."pmun2015" AS DOUBLE), 0) AS "part_15_24"\nFROM territoires t\nLEFT JOIN "ACT" a ON t."ID" = a."ID"\nL ids=['2684', '240200600', 'D2', 'R32', '94080', '59350', 'FR'] ids_count=7
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=7 cols=['ID', 'NOM_COUV', 'part_15_24']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D2', 'NOM_COUV': 'Aisne', 'part_15_24': 0.10894570670187473}, {'ID': 'R32', 'NOM_COUV': 'Hauts-de-France', 'part_15_24': 0.12720554347176904}, {'ID': 'FR', 'NOM_COUV': 'France métropolitaine'
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quelle est la **part des 15–24 ans** (jeunes) à **Saint‑Michel (Aisne)**, et comment se situe-t-elle **par comparaison** avec les communes de **Vincennes (Val‑d' df_rows=7 df_cols=3
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['part_15_24']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=': "Votants aux listes départementales en 2015"\n✅ TABLE: "CMF" | VAR: "3ENF25" | DESC: "3 enfants de moins de 25 ans en 2022"\n✅ TABLE: "EVO_10" | VAR: "h20_24_11" | DESC: "Hommes de 20-24 ans en 201
+[TERRIBOT][DBG] chart.config.raw :: selected=['part_15_24'] formats_keys=['part_15_24']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['part_15_24'] formats={'part_15_24': {'kind': 'percent', 'decimals': 1, 'label': '15–24 ans', 'title': 'Part des 15–24 ans dans la population'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=7 df_cols=['ID', 'NOM_COUV', 'part_15_24'] sorted_ids=['2684', '240200600', 'D2', 'R32', '94080', '59350', 'FR'] selected_metrics=['part_15_24']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.sort :: status='failed' reason='Colonne population introuvable dans territoires.txt'
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=7 df_cols=['ID', 'NOM_COUV', 'part_15_24'] formats={'part_15_24': {'kind': 'percent', 'decimals': 1, 'label': '15–24 ans', 'title': 'Part des 15–24 ans dans la population'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1059
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...

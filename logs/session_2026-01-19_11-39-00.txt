@@ -1,0 +1,317 @@
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'dur_moy_trajet_2019_min'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['dur_moy_trajet_2019_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'duree_moyenne_domicile_travail_2019_min', 'part_voiture_2022', 'part_transports_en_commun_2022', 'part_marche_2022', 'part_velo_2022', 'contribution_voiture_min', 'contribution_tra sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['contribution_voiture_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'tot_dpe', 'part_dpe_a', 'part_dpe_b', 'part_dpe_c', 'part_dpe_d', 'part_dpe_e', 'part_dpe_f', 'part_dpe_g'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_g']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='Montre moi la répartition des dpe ' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=7
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='nne départementale.\n\nPour aller plus loin, souhaitez-vous un graphique qui compare **Fontenay-sous-Bois, l’EPT, le Val-de-Marne, l’Île-de-France et la France** sur l’ensemble des classes **DPE A à  current_geo_name='Fontenay-sous-Bois'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Peux-tu me montrer la **répartition des classes DPE (A à G)** des **logements résidentiels à Fontenay-sous-Bois** (et, si disponible, la comparaison avec **l’EPT Paris-Est-Marne et Bois**, le **Val-d
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Fontenay-sous-Bois'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Fontenay-sous-Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '94033', 'NOM_COUV': 'Fontenay-sous-Bois', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9555555555555556}, {'ID': '76275', 'NOM_COUV': 'Fonten
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Fontenay-sous-Bois' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94033",\n  "reason": "La recherche correspond exactement au nom de la commune « Fontenay-sous-Bois » ; selon la règle 1, on sélectionne la commune (code INSEE à 5 chiffres).",\n 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='EPT Paris-Est-Marne et Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': '200057941', 'NOM_COUV': 'EPT Paris-Est-Marne et Bois', 'COMP1': '94017', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'EPCI/Interco', 'score': 0.9303703703703704}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='EPT Paris-Est-Marne et Bois' candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "200057941",\n  "reason": "La recherche mentionne explicitement un EPT (établissement public territorial) « Paris-Est-Marne et Bois », ce qui correspond à un EPCI/Interco. Un seul
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Val-de-Marne' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=14 sample=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.0722222222222222}, {'ID': '11080', 'NOM_COUV': 'Val de Lambronne', 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Val-de-Marne' candidates_len=14
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D94",\n  "reason": "La recherche « Val-de-Marne » correspond au nom d’un département ; parmi les candidats, seul « Val-de-Marne » est de type Département (ID D94).",\n  "is_ambig
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Île-de-France' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=2 sample=[{'ID': '200069953', 'NOM_COUV': "CC des Portes Euréliennes d'Ile de France", 'COMP1': '28015', 'COMP2': 'D28', 'COMP3': 'R24', 'TYPE_TERRITOIRE': 'EPCI/Interco', 'score': 0.5511710511710511}, {'ID': 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Île-de-France' candidates_len=2
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "« Île-de-France » désigne la région (R11), mais aucun candidat n’est la région : ce sont deux EPCI dont le nom contient « Ile de France ». Sans précision (ex. 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='France métropolitaine' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': 'FR', 'NOM_COUV': 'France métropolitaine', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Pays', 'score': 1.1222943722943723}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='France métropolitaine' candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "FR",\n  "reason": "La recherche correspond exactement à l’intitulé « France métropolitaine » et un seul candidat est proposé (ID FR).",\n  "is_ambiguous": false\n}'
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois, EPT Paris-Est-Marne et B
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois, EPT Paris-Est-Marne et B
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Peux-tu me montrer la **répartition des classes DPE (A à G)** des **logements résidentiels à Fontenay-sous-Bois** (et, si disponible, la comparaison avec **l’EPT Paris-Est-Marne et Bois**, le **Val-d df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Peux-tu me montrer la **répartition des classes DPE (A à G)** des **logements résidentiels à Fontenay-sous-Bois** (et, si disponible, la comparaison avec **l’EP' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Peux-tu me montrer la **répartition des classes DPE (A à G)** des **logements résidentiels à Fontenay-sous-Bois** (et, s' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.5878539104185108
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=1554
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=9220 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=9220 preview='✅ TABLE: "RPLS" | VAR: "nb_dpe_realise" | DESC: "Nombre de logements sociaux évalués au DPE en 2024"\n✅ TABLE: "DPE" | VAR: "TOT_DPE" | DESC: "Total des logements évalués DPE (nouveau DPE depuis 2021
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=12583
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(d."TOT_DPE" AS DOUBLE) AS TOT_DPE,\n  TRY_CAST(d."A_DPE" AS DOUBLE) / NULLIF(TRY_CAST(d."TOT_DPE" AS DOUBLE), 0) AS part_dpe_a,\n  TRY_CAST(d."B_DPE" AS
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  TRY_CAST(d."TOT_DPE" AS DOUBLE) AS TOT_DPE,\n\n  TRY_CAST(d."A_DPE" AS DOUBLE) / NULLIF(TRY_CAST(d."TOT_DPE" AS DOUBLE), 0) AS part_dpe_A,\n  TRY_CAST(d."B_DPE ids=['94033', '200057941', 'D94', 'R11', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'TOT_DPE', 'part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': '200057941', 'NOM_COUV': 'EPT Paris-Est-Marne et Bois', 'TOT_DPE': 179932.0, 'part_dpe_A': 0.013505101927394793, 'part_dpe_B': 0.0680923904586177, 'part_dpe_C': 0.26915723717848966, 'part_dpe_
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Peux-tu me montrer la **répartition des classes DPE (A à G)** des **logements résidentiels à Fontenay-sous-Bois** (et, si disponible, la comparaison avec **l’EP' df_rows=5 df_cols=10
+[TERRIBOT][DBG] chart.numeric_cols :: count=8 sample=['TOT_DPE', 'part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='es principales construites entre 2006 et 2019"\n✅ TABLE: "DPETERT" | VAR: "GES_tertiaire_F" | DESC: "Diagnostic de Performance Énergétique F - Gaz à Effet de Serre des locaux non résidentiels en 2025
+[TERRIBOT][DBG] chart.config.raw :: selected=['part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G'] formats_keys=['part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G'] formats={'part_dpe_A': {'kind': 'percent', 'decimals': 1, 'label': 'DPE A', 'title': 'Part des logements résidentiels classés DPE A'}, 'part_dpe_B': {'kind': 'percent', 'decimals': 1, 'label': 'DPE B', 'title
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'TOT_DPE', 'part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=35 is_percent=True is_multi_metric=True y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'TOT_DPE', 'part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G'] formats={'part_dpe_A': {'kind': 'percent', 'decimals': 1, 'label': 'DPE A', 'title': 'Part des logements résidentiels classés DPE A'}, 'part_dpe_B': {'kind': 'percent', 'decimals': 1, 'label': 'DPE B', 'title
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=2346
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'dur_moy_trajet_2019_min'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['dur_moy_trajet_2019_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'duree_moyenne_domicile_travail_2019_min', 'part_voiture_2022', 'part_transports_en_commun_2022', 'part_marche_2022', 'part_velo_2022', 'contribution_voiture_min', 'contribution_tra sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['contribution_voiture_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'tot_dpe', 'part_dpe_a', 'part_dpe_b', 'part_dpe_c', 'part_dpe_d', 'part_dpe_e', 'part_dpe_f', 'part_dpe_g'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_g']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'TOT_DPE', 'part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_A']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process="Quelles sont les principales sources d'émissions polluantes sur mon territoires ? " from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=9
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail="ez-vous un graphique qui compare **la part de “passoires énergétiques” (F+G)** entre Fontenay-sous-Bois, l’EPT, le Val‑de‑Marne, l’Île‑de‑France et la France, avec en complément **la part de logement current_geo_name='Fontenay-sous-Bois'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les principales sources d’émissions polluantes **à Fontenay-sous-Bois** (principaux secteurs responsables de la pollution de l’air sur le territoire) ?'
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Fontenay-sous-Bois'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Fontenay-sous-Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '94033', 'NOM_COUV': 'Fontenay-sous-Bois', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9555555555555556}, {'ID': '76275', 'NOM_COUV': 'Fonten
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Fontenay-sous-Bois' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94033",\n  "reason": "La recherche correspond exactement au nom de la commune « Fontenay-sous-Bois » ; selon la règle, un nom de ville seul renvoie à la Commune (code INSEE 5 chi
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois', 'debug_search': [{'Rech
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois', 'debug_search': [{'Rech
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les principales sources d’émissions polluantes **à Fontenay-sous-Bois** (principaux secteurs responsables de la pollution de l’air sur le territoire) ?' df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les principales sources d’émissions polluantes **à Fontenay-sous-Bois** (principaux secteurs responsables de la pollution de l’air sur le territoir' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les principales sources d’émissions polluantes **à Fontenay-sous-Bois** (principaux secteurs responsables d' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.46341741547044907
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=97
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=8664 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=8664 preview='✅ TABLE: "CO2" | VAR: "CO2-RESI" | DESC: "Emissions de CO2 liées au secteur résidentiel en 2021"\n✅ TABLE: "CO2" | VAR: "CO2-TERT" | DESC: "Emissions de CO2 liées au secteur tertiaire en 2021"\n✅ TAB
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=11927
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(c."CO2_RtesTrans" AS DOUBLE) AS CO2_routes_transport_2021,\n  TRY_CAST(c."CO2_RESI" AS DOUBLE) AS CO2_residentiel_2021,\n  TRY_CAST(c."CO2_TERT" AS DOUB
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "c" does not have a column named "CO2_RtesTrans"
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "c" does not have a column named "CO2_RtesTrans"
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 2/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(c."CO2_RESI" AS DOUBLE) / NULLIF(\n    TRY_CAST(c."CO2_RESI" AS DOUBLE)\n    + TRY_CAST(c."CO2_TERT" AS DOUBLE)\n    + TRY_CAST(c."CO2_INDU" AS DOUBLE)\ ids=['94033', '200057941', 'D94', 'R11', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'part_co2_residentiel': 0.3866773971842894, 'part_co2_tertiaire': 0.25189036754429783, 'part_co2_industrie': 0.1812973904755278, 'part_co2_dechets': 0.180134
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quelles sont les principales sources d’émissions polluantes **à Fontenay-sous-Bois** (principaux secteurs responsables de la pollution de l’air sur le territoir' df_rows=5 df_cols=6
+[TERRIBOT][DBG] chart.numeric_cols :: count=4 sample=['part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='OPap" | DESC: "Population comptée à part en 2025"\n✅ TABLE: "SUP" | VAR: "PTOT1954" | DESC: "Population totale en 1954"\n✅ TABLE: "SUP" | VAR: "PSDC1982" | DESC: "Population sans double compte en 198
+[TERRIBOT][DBG] chart.config.raw :: selected=['part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets'] formats_keys=['part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets'] formats={'part_co2_residentiel': {'kind': 'percent', 'decimals': 1, 'label': 'Résidentiel', 'title': 'Part des émissions de CO₂ – secteur résidentiel'}, 'part_co2_tertiaire': {'kind': 'percent', 'decimals': 1
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=20 is_percent=True is_multi_metric=True y_format='.1%'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets'] formats={'part_co2_residentiel': {'kind': 'percent', 'decimals': 1, 'label': 'Résidentiel', 'title': 'Part des émissions de CO₂ – secteur résidentiel'}, 'part_co2_tertiaire': {'kind': 'percent', 'decimals': 1
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1939
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'dur_moy_trajet_2019_min'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['dur_moy_trajet_2019_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'duree_moyenne_domicile_travail_2019_min', 'part_voiture_2022', 'part_transports_en_commun_2022', 'part_marche_2022', 'part_velo_2022', 'contribution_voiture_min', 'contribution_tra sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['contribution_voiture_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'tot_dpe', 'part_dpe_a', 'part_dpe_b', 'part_dpe_c', 'part_dpe_d', 'part_dpe_e', 'part_dpe_f', 'part_dpe_g'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_g']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'TOT_DPE', 'part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_A']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_co2_residentiel']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='quelle sont les émissions de co2 des trajets domicile travail ?' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=11
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='sommations énergétiques spécifiques à certaines zones.\n\n### Pour aller plus loin\nSouhaitez-vous un graphique qui compare, pour chacun des territoires, la **part “résidentiel + tertiaire” (bâtiment current_geo_name='Fontenay-sous-Bois'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail des habitants de Fontenay‑sous‑Bois** (navettes domicile‑travail), idéalement **ventilées par mode de transport** et/ou présenté
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Fontenay-sous-Bois'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Fontenay-sous-Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '94033', 'NOM_COUV': 'Fontenay-sous-Bois', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9555555555555556}, {'ID': '76275', 'NOM_COUV': 'Fonten
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Fontenay-sous-Bois' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94033",\n  "reason": "La recherche correspond exactement à la commune « Fontenay-sous-Bois » (règle 1 : nom de ville seul => Commune). Les autres candidats sont des communes homo
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois', 'debug_search': [{'Rech
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois', 'debug_search': [{'Rech
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail des habitants de Fontenay‑sous‑Bois** (navettes domicile‑travail), idéalement **ventilées par mode de transport** et/ou présenté df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail des habitants de Fontenay‑sous‑Bois** (navettes domicile‑travail), idéalement **ventilées' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail des habitants de Fontenay‑sous‑Bois** (navettes d' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.6804217722105317
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=974
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=9542 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=9542 preview='✅ TABLE: "DTRACO2" | VAR: "dtra_pop_estimee" | DESC: "Population des navetteurs estimée en 2022"\n✅ TABLE: "DTRACO2" | VAR: "dtra_co2_total_g_semaine" | DESC: "Total de la quantité de CO2 en grammes 
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=12884
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(dtra."dtra_pop_estimee" AS DOUBLE) AS dtra_pop_estimee_2022,\n  TRY_CAST(dtra."dtra_co2_total_g_semaine" AS DOUBLE) AS dtra_co2_total_g_semaine_2022,\n 
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ❌ DuckDB error: Binder Error: Values list "empl" does not have a column named "P22_ACTOCC15P_RTES_TRANS"
+[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint
+[TERRIBOT][SQL] ▶️ attempt 1/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n\n  /* Base navettes domicile-travail (2022) */\n  TRY_CAST(dtra."dtra_pop_estimee" AS DOUBLE) AS dtra_pop_estimee_2022,\n  TRY_CAST(dtra."dtra_co2_total_g_semaine ids=['94033', '200057941', 'D94', 'R11', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'dtra_pop_estimee_2022', 'dtra_co2_total_g_semaine_2022', 'dtra_dist_total_km_semaine_2022', 'dtra_co2_total_g_an_2022', 'dtra_co2_total_t_an_2022', 'dtra_co2_g_semaine_par_navetteu
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'dtra_pop_estimee_2022': 614075.1071918377, 'dtra_co2_total_g_semaine_2022': 2879697280.185773, 'dtra_dist_total_km_semaine_2022': 45304146.57398534, 'dtra_c
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail des habitants de Fontenay‑sous‑Bois** (navettes domicile‑travail), idéalement **ventilées' df_rows=5 df_cols=22
+[TERRIBOT][DBG] chart.numeric_cols :: count=20 sample=['dtra_pop_estimee_2022', 'dtra_co2_total_g_semaine_2022', 'dtra_dist_total_km_semaine_2022', 'dtra_co2_total_g_an_2022', 'dtra_co2_total_t_an_2022', 'dtra_co2_g_semaine_par_navetteur_2022', 'dtra_co2
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail='mmation électrique liés au secteur résidentiel en 2024"\n✅ TABLE: "EVO" | VAR: "ARRIV_MOCO_31" | DESC: "Arrivants l\'année précédente population hors famille dans ménage de plusieurs personnes en 202
+[TERRIBOT][DBG] chart.config.raw :: selected=['dtra_co2_total_t_an_2022'] formats_keys=['dtra_co2_total_t_an_2022']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['dtra_co2_total_t_an_2022'] formats={'dtra_co2_total_t_an_2022': {'kind': 'number', 'decimals': 0, 'label': 'tCO₂/an', 'title': 'Émissions totales de CO₂ liées aux navettes domicile‑travail (tonnes par an, 2022)'}}
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'dtra_pop_estimee_2022', 'dtra_co2_total_g_semaine_2022', 'dtra_dist_total_km_semaine_2022', 'dtra_co2_total_g_an_2022', 'dtra_co2_total_t_an_2022', 'dtra_co2_g_semaine_par_navetteu sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['dtra_co2_total_t_an_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'dtra_pop_estimee_2022', 'dtra_co2_total_g_semaine_2022', 'dtra_dist_total_km_semaine_2022', 'dtra_co2_total_g_an_2022', 'dtra_co2_total_t_an_2022', 'dtra_co2_g_semaine_par_navetteu formats={'dtra_co2_total_t_an_2022': {'kind': 'number', 'decimals': 0, 'label': 'tCO₂/an', 'title': 'Émissions totales de CO₂ liées aux navettes domicile‑travail (tonnes par an, 2022)'}}
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1652
+[TERRIBOT][PIPE] ✅ Pipeline done
+[TERRIBOT] ✅ Script importé / démarrage du fichier
+[TERRIBOT] 📝 Démarrage de l'enregistrement des logs
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'dur_moy_trajet_2019_min'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['dur_moy_trajet_2019_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'duree_moyenne_domicile_travail_2019_min', 'part_voiture_2022', 'part_transports_en_commun_2022', 'part_marche_2022', 'part_velo_2022', 'contribution_voiture_min', 'contribution_tra sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['contribution_voiture_min']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'tot_dpe', 'part_dpe_a', 'part_dpe_b', 'part_dpe_c', 'part_dpe_d', 'part_dpe_e', 'part_dpe_f', 'part_dpe_g'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_g']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'TOT_DPE', 'part_dpe_A', 'part_dpe_B', 'part_dpe_C', 'part_dpe_D', 'part_dpe_E', 'part_dpe_F', 'part_dpe_G'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_dpe_A']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'part_co2_residentiel', 'part_co2_tertiaire', 'part_co2_industrie', 'part_co2_dechets'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['part_co2_residentiel']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=True is_multi_metric=False y_format='.1%'
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'dtra_pop_estimee_2022', 'dtra_co2_total_g_semaine_2022', 'dtra_dist_total_km_semaine_2022', 'dtra_co2_total_g_an_2022', 'dtra_co2_total_t_an_2022', 'dtra_co2_g_semaine_par_navetteu sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['dtra_co2_total_t_an_2022']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT] ===============================
+[TERRIBOT][DBG] pipeline.start :: prompt_to_process='non je veux cette information par habitant' from_trigger=False
+[TERRIBOT][DBG] session.state :: has_geo=True ambiguity=False messages=13
+[TERRIBOT][DBG] pipeline.rewrite.call :: history_tail='*.\n\n---\n\n### Pour aller plus loin\nSouhaitez-vous un graphique qui **compare la répartition des modes de déplacement** (voiture, transports en commun, vélo, marche, etc.) **entre Fontenay-sous-Bo current_geo_name='Fontenay-sous-Bois'
+[TERRIBOT][DBG] pipeline.rewrite.done :: rewritten_prompt='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail**, **ramenées par habitant**, à **Fontenay-sous-Bois** (et, si disponible, aussi pour **Paris‑Est‑Marne et Bois**, le **Val‑de‑M
+[TERRIBOT][DBG] pipeline.geo.before :: force_geo_context=False current_geo='Fontenay-sous-Bois'
+[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Fontenay-sous-Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=11 sample=[{'ID': '94033', 'NOM_COUV': 'Fontenay-sous-Bois', 'COMP1': '200057941', 'COMP2': 'D94', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.9555555555555556}, {'ID': '76275', 'NOM_COUV': 'Fonten
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Fontenay-sous-Bois' candidates_len=11
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "94033",\n  "reason": "La recherche correspond exactement à la commune « Fontenay-sous-Bois » (règle 1 : nom de ville seul => Commune). Candidat avec le meilleur score et libellé 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Paris-Est-Marne et Bois' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=15 sample=[{'ID': '75101', 'NOM_COUV': 'Paris 1er Arrondissement', 'COMP1': '200054781', 'COMP2': 'D75', 'COMP3': 'R11', 'TYPE_TERRITOIRE': 'Commune', 'score': 0.8709191456903128}, {'ID': '75102', 'NOM_COUV': '
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Paris-Est-Marne et Bois' candidates_len=15
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "La recherche « Paris-Est-Marne et Bois » correspond à une intercommunalité (EPCI) de type « Paris-Est Marne & Bois », mais aucun candidat de type EPCI (code IN
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Val-de-Marne' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=14 sample=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Département', 'score': 1.0722222222222222}, {'ID': '11080', 'NOM_COUV': 'Val de Lambronne', 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Val-de-Marne' candidates_len=14
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "D94",\n  "reason": "La recherche \\"Val-de-Marne\\" correspond au nom d’un département ; parmi les candidats, seul D94 est de type \\"Département\\" et porte exactement ce nom.",
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='Île-de-France' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=2 sample=[{'ID': '200069953', 'NOM_COUV': "CC des Portes Euréliennes d'Ile de France", 'COMP1': '28015', 'COMP2': 'D28', 'COMP3': 'R24', 'TYPE_TERRITOIRE': 'EPCI/Interco', 'score': 0.5511710511710511}, {'ID': 
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='Île-de-France' candidates_len=2
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": null,\n  "reason": "« Île-de-France » désigne la région (R11) et non une intercommunalité. Les candidats proposés sont deux EPCI dont le nom contient « Ile de France » mais aucun 
+[TERRIBOT][DBG] geo.broad_candidates.enter :: input_str='France métropolitaine' limit=15
+[TERRIBOT][DBG] geo.broad_candidates.sql :: sql_preview="\n    WITH candidates AS (\n        SELECT \n            ID, \n            NOM_COUV, \n            COMP1, COMP2, COMP3,\n            CASE \n                WHEN length(ID) IN (4,5) THEN 'Commune'\n  
+[TERRIBOT][DBG] geo.broad_candidates.result :: rows=1 sample=[{'ID': 'FR', 'NOM_COUV': 'France métropolitaine', 'COMP1': None, 'COMP2': None, 'COMP3': None, 'TYPE_TERRITOIRE': 'Pays', 'score': 1.1222943722943723}]
+[TERRIBOT][DBG] geo.ai_validate.enter :: user_query='France métropolitaine' candidates_len=1
+[TERRIBOT][DBG] geo.ai_validate.exit :: raw='{\n  "selected_id": "FR",\n  "reason": "La recherche correspond exactement à l’unique candidat « France métropolitaine » (type Pays) avec l’ID FR.",\n  "is_ambiguous": false\n}'
+[TERRIBOT][DBG] pipeline.geo.after :: new_context={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois, Paris-Est-Marne et Bois,
+[TERRIBOT][DBG] pipeline.geo.context_set :: geo={'target_name': 'Fontenay-sous-Bois', 'target_id': '94033', 'all_ids': ['94033', '200057941', 'D94', 'R11', 'FR'], 'parent_clause': '', 'display_context': 'Fontenay-sous-Bois, Paris-Est-Marne et Bois,
+[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start
+[TERRIBOT][DBG] pipeline.rag.inputs :: rewritten_prompt='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail**, **ramenées par habitant**, à **Fontenay-sous-Bois** (et, si disponible, aussi pour **Paris‑Est‑Marne et Bois**, le **Val‑de‑M df_glossaire_rows=2043
+[TERRIBOT][DBG] rag.hybrid.enter :: query='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail**, **ramenées par habitant**, à **Fontenay-sous-Bois** (et, si disponible, aussi pour **P' top_k=80
+[TERRIBOT][DBG] rag.semantic.enter :: query='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail**, **ramenées par habitant**, à **Fontenay-sous-B' top_k=80 threshold=0.35 emb_shape=(2043, 1536) valid_indices_len=2043
+[TERRIBOT][DBG] rag.semantic.sim :: similarities_len=2043 sim_max=0.6453096071008579
+[TERRIBOT][DBG] rag.semantic.after_threshold :: kept_rows=691
+[TERRIBOT][DBG] rag.semantic.return :: final_rows=80
+[TERRIBOT][DBG] rag.hybrid.semantic :: sem_rows=80
+[TERRIBOT][DBG] rag.hybrid.context :: context_len=9576 candidates=80
+[TERRIBOT][RAG] ✅ context built (hybrid)
+[TERRIBOT][DBG] pipeline.rag.done :: glossaire_context_len=9576 preview='✅ TABLE: "DTRACO2" | VAR: "dtra_co2_total_g_semaine" | DESC: "Total de la quantité de CO2 en grammes émise en une semaine de déplacements domicile-travail en 2022"\n✅ TABLE: "DTRACO2" | VAR: "dtra_di
+[TERRIBOT][DBG] pipeline.sql.gen.call :: ids_count=5 parent_clause='' sys_prompt_len=12936
+[TERRIBOT][DBG] pipeline.sql.gen.raw :: sql_query='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(d."dtra_co2_total_g_semaine" AS DOUBLE)\n    / NULLIF(TRY_CAST(d."dtra_pop_estimee" AS DOUBLE), 0) AS co2_domicile_travail_g_semaine_par_habitant\nFROM 
+[TERRIBOT][DBG] sql.fix.enter :: max_retries=3
+[TERRIBOT][SQL] ▶️ attempt 0/3
+[TERRIBOT][SQL] ✅ EXPLAIN OK
+[TERRIBOT][DBG] sql.exec.about_to_run :: sql='SELECT\n  t."ID",\n  t."NOM_COUV",\n  TRY_CAST(d."dtra_co2_total_g_semaine" AS DOUBLE)\n  / NULLIF(TRY_CAST(d."dtra_pop_estimee" AS DOUBLE), 0) AS co2_domicile_travail_g_par_habitant_semaine\nFROM te ids=['94033', '200057941', 'D94', 'R11', 'FR'] ids_count=5
+[TERRIBOT][DBG] sql.exec.result :: empty=False rows=5 cols=['ID', 'NOM_COUV', 'co2_domicile_travail_g_par_habitant_semaine']
+[TERRIBOT][DBG] sql.exec.head :: head=[{'ID': 'D94', 'NOM_COUV': 'Val-de-Marne', 'co2_domicile_travail_g_par_habitant_semaine': 4689.487078143606}, {'ID': 'R11', 'NOM_COUV': 'Île-de-France', 'co2_domicile_travail_g_par_habitant_semaine': 
+[TERRIBOT][PIPE] 📈 get_chart_configuration() start
+[TERRIBOT][DBG] chart.config.enter :: question='Quelles sont les **émissions de CO₂ liées aux trajets domicile‑travail**, **ramenées par habitant**, à **Fontenay-sous-Bois** (et, si disponible, aussi pour **P' df_rows=5 df_cols=3
+[TERRIBOT][DBG] chart.numeric_cols :: count=1 sample=['co2_domicile_travail_g_par_habitant_semaine']
+[TERRIBOT][DBG] chart.config.payload :: payload_keys=['question', 'available_columns', 'data_stats', 'glossaire_sample'] glossaire_tail=' en 2022"\n✅ TABLE: "SUP" | VAR: "POPap" | DESC: "Population comptée à part en 2025"\n✅ TABLE: "LOG" | VAR: "C22_RP_SOUSOCC_TACC" | DESC: "Résidences principales sous-occupation très accentuée en 202
+[TERRIBOT][DBG] chart.config.raw :: selected=['co2_domicile_travail_g_par_habitant_semaine'] formats_keys=['co2_domicile_travail_g_par_habitant_semaine']
+[TERRIBOT][DBG] pipeline.chart_config.done :: selected=['co2_domicile_travail_g_par_habitant_semaine'] formats={'co2_domicile_travail_g_par_habitant_semaine': {'kind': 'number', 'decimals': 0, 'label': 'gCO₂/hab/sem', 'title': 'Émissions de CO₂ liées aux trajets domicile‑travail (grammes de CO₂ par habitant et
+[TERRIBOT][DBG] plot.enter :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'co2_domicile_travail_g_par_habitant_semaine'] sorted_ids=['94033', '200057941', 'D94', 'R11', 'FR'] selected_metrics=['co2_domicile_travail_g_par_habitant_semaine']
+[TERRIBOT][DBG] plot.detect_cols :: label_col='NOM_COUV' date_col=None id_col='ID'
+[TERRIBOT][DBG] plot.ids :: available=5 top_5_ids=['94033', '200057941', 'D94', 'R11', 'FR'] final_order=['94033', '200057941', 'D94', 'R11', 'FR']
+[TERRIBOT][DBG] plot.vega :: melted_rows=5 is_percent=False is_multi_metric=False y_format=',.1f'
+[TERRIBOT][PIPE] 📝 Streaming response start
+[TERRIBOT][DBG] pipeline.stream.inputs :: df_rows=5 df_cols=['ID', 'NOM_COUV', 'co2_domicile_travail_g_par_habitant_semaine'] formats={'co2_domicile_travail_g_par_habitant_semaine': {'kind': 'number', 'decimals': 0, 'label': 'gCO₂/hab/sem', 'title': 'Émissions de CO₂ liées aux trajets domicile‑travail (grammes de CO₂ par habitant et
+[TERRIBOT][DBG] pipeline.stream.done :: response_len=1146
+[TERRIBOT][PIPE] ✅ Pipeline done
+  Stopping...
