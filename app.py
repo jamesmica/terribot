@@ -1667,6 +1667,18 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
              df_melted["Valeur"] = df_melted["Valeur"] / 100.0
 
     # 8. VEGA
+    is_multi_metric = len(new_selected_metrics) > 1
+    is_stacked = False
+    if is_multi_metric and not date_col:
+        try:
+            sums = df_melted.groupby(label_col)["Valeur"].sum().abs()
+            if is_percent and not sums.empty:
+                is_stacked = True
+            elif not sums.empty and (sums.between(90, 110).all() or sums.between(0.9, 1.1).all()):
+                is_stacked = True
+        except Exception as e_stack:
+            _dbg("plot.stack.detect_error", error=str(e_stack))
+
     vega_config = {
         "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
         "axis": {"labelFontSize": 11, "titleFontSize": 12},
@@ -1680,7 +1692,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "legend": {"orient": "bottom"}
     }
     chart = None
-    is_multi_metric = len(new_selected_metrics) > 1
 
     if date_col:
         chart_encoding = {
@@ -1692,8 +1703,16 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         if is_multi_metric: chart_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
         chart = {"config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
     else:
-        if is_multi_metric:
-             chart_encoding = {
+        if is_multi_metric and is_stacked:
+            chart_encoding = {
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+                "color": {"field": "Indicateur", "type": "nominal", "title": "Variable"},
+                "stack": "normalize" if is_percent else True,
+                "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
+            }
+        elif is_multi_metric:
+            chart_encoding = {
                 "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
                 "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
                 "color": color_def,
