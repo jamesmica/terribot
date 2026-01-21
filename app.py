@@ -19,6 +19,9 @@ import difflib
 import subprocess
 import time
 import atexit
+import base64
+import urllib.request
+import urllib.error
 
 # Création du dossier de logs si inexistant
 if not os.path.exists("logs"):
@@ -90,12 +93,69 @@ class PerformanceMetrics:
 metrics = PerformanceMetrics()
 
 # Classe qui dédouble la sortie (Terminal + Fichier)
+def get_github_log_config():
+    """Récupère la configuration de push des logs vers GitHub."""
+    return {
+        "token": os.getenv("GITHUB_TOKEN"),
+        "repo": os.getenv("GITHUB_REPO"),
+        "branch": os.getenv("GITHUB_BRANCH", "main"),
+        "enabled": os.getenv("GITHUB_LOGS_ENABLED", "true").lower() == "true",
+    }
+
+def upload_log_to_github(file_path):
+    """Upload le fichier de log dans le dossier logs/ du repo GitHub via l'API."""
+    config = get_github_log_config()
+    token = config["token"]
+    repo = config["repo"]
+    branch = config["branch"]
+
+    if not config["enabled"] or not token or not repo:
+        return False, "GitHub logs sync disabled or missing config"
+
+    if not os.path.exists(file_path):
+        return False, f"Log file not found: {file_path}"
+
+    file_name = os.path.basename(file_path)
+    remote_path = f"logs/{file_name}"
+    url = f"https://api.github.com/repos/{repo}/contents/{remote_path}"
+
+    with open(file_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+
+    payload = {
+        "message": f"Add session log {file_name}",
+        "content": encoded,
+        "branch": branch,
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "terribot-log-uploader",
+        },
+        method="PUT",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            _ = response.read()
+        return True, "Log uploaded to GitHub"
+    except urllib.error.HTTPError as e:
+        return False, f"GitHub upload failed: {e.code} {e.reason}"
+    except urllib.error.URLError as e:
+        return False, f"GitHub upload failed: {e.reason}"
+
 class DualLogger(object):
     def __init__(self):
         self.terminal = sys.stdout
         # Nom de fichier unique basé sur l'heure de lancement
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.log = open(f"logs/session_{timestamp}.txt", "a", encoding="utf-8")
+        self.log_path = f"logs/session_{timestamp}.txt"
+        self.log = open(self.log_path, "a", encoding="utf-8")
 
         # Écrire les métadonnées git au début du log
         self._write_header()
@@ -152,6 +212,12 @@ class DualLogger(object):
 
         self.log.write(footer)
         self.log.flush()
+
+        success, detail = upload_log_to_github(self.log_path)
+        if success:
+            self.terminal.write(f"[TERRIBOT][LOGS] ✅ {detail}\n")
+        else:
+            self.terminal.write(f"[TERRIBOT][LOGS] ⚠️ {detail}\n")
 
 # On redirige tout print() vers notre Logger
 dual_logger = DualLogger()
@@ -422,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.16 - 21 janvier 2026")
+st.caption("v0.17 - 21 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -850,6 +916,10 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
         raw_source = str(row.get('Onglet', row.iloc[1])).upper()
         
         # 1. Résolution de la TABLE (Code précédent)
+        if raw_source in ("", "NONE", "NAN"):
+            _dbg("rag.hybrid.table_unknown", var=var, raw_source=raw_source)
+            continue
+
         candidate_name = re.sub(r'[^A-Z0-9]', '_', raw_source)
         final_table_name = "UNKNOWN"
         
@@ -864,6 +934,10 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
                         final_table_name = t
                         break
         
+        if final_table_name == "UNKNOWN":
+            _dbg("rag.hybrid.table_unknown", var=var, raw_source=raw_source, candidate=candidate_name)
+            continue
+
         # 2. Résolution de la COLONNE (NOUVEAU & CRITIQUE)
         # Le glossaire dit "3-5_AUTREG", mais la base a peut-être "3_5_AUTREG"
         physical_column = var # Par défaut, on espère que c'est bon
