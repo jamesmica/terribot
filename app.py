@@ -908,7 +908,16 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
     from difflib import get_close_matches
 
     valid_tables = st.session_state.get("valid_tables_list", [])
+    if not valid_tables:
+        try:
+            valid_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+            _dbg("rag.hybrid.tables_fallback", count=len(valid_tables))
+        except Exception as e_tables:
+            _dbg("rag.hybrid.tables_fallback_error", error=str(e_tables))
+            valid_tables = []
     db_schemas = st.session_state.get("db_schemas", {}) # <--- Récupération des schémas
+
+    normalized_table_map = {standardize_name(t): t for t in valid_tables}
 
     result_context = ""
     for var, (score, row) in sorted_vars:
@@ -921,10 +930,11 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
             continue
 
         candidate_name = re.sub(r'[^A-Z0-9]', '_', raw_source)
+        candidate_key = standardize_name(candidate_name)
         final_table_name = "UNKNOWN"
-        
-        if candidate_name in valid_tables:
-            final_table_name = candidate_name
+
+        if candidate_key in normalized_table_map:
+            final_table_name = normalized_table_map[candidate_key]
         else:
             matches = get_close_matches(candidate_name, valid_tables, n=1, cutoff=0.4)
             if matches: final_table_name = matches[0]
