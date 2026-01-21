@@ -19,6 +19,9 @@ import difflib
 import subprocess
 import time
 import atexit
+import base64
+import urllib.request
+import urllib.error
 
 # Création du dossier de logs si inexistant
 if not os.path.exists("logs"):
@@ -90,12 +93,69 @@ class PerformanceMetrics:
 metrics = PerformanceMetrics()
 
 # Classe qui dédouble la sortie (Terminal + Fichier)
+def get_github_log_config():
+    """Récupère la configuration de push des logs vers GitHub."""
+    return {
+        "token": os.getenv("GITHUB_TOKEN"),
+        "repo": os.getenv("GITHUB_REPO"),
+        "branch": os.getenv("GITHUB_BRANCH", "main"),
+        "enabled": os.getenv("GITHUB_LOGS_ENABLED", "true").lower() == "true",
+    }
+
+def upload_log_to_github(file_path):
+    """Upload le fichier de log dans le dossier logs/ du repo GitHub via l'API."""
+    config = get_github_log_config()
+    token = config["token"]
+    repo = config["repo"]
+    branch = config["branch"]
+
+    if not config["enabled"] or not token or not repo:
+        return False, "GitHub logs sync disabled or missing config"
+
+    if not os.path.exists(file_path):
+        return False, f"Log file not found: {file_path}"
+
+    file_name = os.path.basename(file_path)
+    remote_path = f"logs/{file_name}"
+    url = f"https://api.github.com/repos/{repo}/contents/{remote_path}"
+
+    with open(file_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+
+    payload = {
+        "message": f"Add session log {file_name}",
+        "content": encoded,
+        "branch": branch,
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "terribot-log-uploader",
+        },
+        method="PUT",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            _ = response.read()
+        return True, "Log uploaded to GitHub"
+    except urllib.error.HTTPError as e:
+        return False, f"GitHub upload failed: {e.code} {e.reason}"
+    except urllib.error.URLError as e:
+        return False, f"GitHub upload failed: {e.reason}"
+
 class DualLogger(object):
     def __init__(self):
         self.terminal = sys.stdout
         # Nom de fichier unique basé sur l'heure de lancement
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.log = open(f"logs/session_{timestamp}.txt", "a", encoding="utf-8")
+        self.log_path = f"logs/session_{timestamp}.txt"
+        self.log = open(self.log_path, "a", encoding="utf-8")
 
         # Écrire les métadonnées git au début du log
         self._write_header()
@@ -152,6 +212,12 @@ class DualLogger(object):
 
         self.log.write(footer)
         self.log.flush()
+
+        success, detail = upload_log_to_github(self.log_path)
+        if success:
+            self.terminal.write(f"[TERRIBOT][LOGS] ✅ {detail}\n")
+        else:
+            self.terminal.write(f"[TERRIBOT][LOGS] ⚠️ {detail}\n")
 
 # On redirige tout print() vers notre Logger
 dual_logger = DualLogger()
@@ -422,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.16 - 21 janvier 2026")
+    st.caption("v0.17 - 21 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -551,6 +617,7 @@ def style_df(df: pd.DataFrame, specs: dict):
         dec = int(s.get("decimals", 1)) # Par défaut 1 décimale
         
         # --- RÈGLE INTELLIGENTE : 0 décimale si tout est > 100 ---
+        valid_vals = pd.Series(dtype="float64")
         try:
             # On regarde les valeurs non nulles
             valid_vals = df_display[col].dropna().abs()
@@ -563,6 +630,20 @@ def style_df(df: pd.DataFrame, specs: dict):
                     dec = 0
         except: pass
         # ---------------------------------------------------------
+        # Heuristique: inférer les % si la colonne le suggère
+        if kind == "number":
+            try:
+                name_upper = col.upper()
+                percent_hint = any(key in name_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%"])
+                if not valid_vals.empty:
+                    max_val = valid_vals.max()
+                    min_val = valid_vals.min()
+                    if percent_hint and max_val <= 100:
+                        kind = "percent"
+                    elif 0 <= min_val and max_val <= 1.5:
+                        kind = "percent"
+            except Exception:
+                pass
 
         if kind == "currency":
             format_dict[col] = lambda x, d=dec: fr_num(x, d, "€")
@@ -842,7 +923,16 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
     from difflib import get_close_matches
 
     valid_tables = st.session_state.get("valid_tables_list", [])
+    if not valid_tables:
+        try:
+            valid_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+            _dbg("rag.hybrid.tables_fallback", count=len(valid_tables))
+        except Exception as e_tables:
+            _dbg("rag.hybrid.tables_fallback_error", error=str(e_tables))
+            valid_tables = []
     db_schemas = st.session_state.get("db_schemas", {}) # <--- Récupération des schémas
+
+    normalized_table_map = {standardize_name(t): t for t in valid_tables}
 
     result_context = ""
     for var, (score, row) in sorted_vars:
@@ -850,11 +940,16 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
         raw_source = str(row.get('Onglet', row.iloc[1])).upper()
         
         # 1. Résolution de la TABLE (Code précédent)
+        if raw_source in ("", "NONE", "NAN"):
+            _dbg("rag.hybrid.table_unknown", var=var, raw_source=raw_source)
+            continue
+
         candidate_name = re.sub(r'[^A-Z0-9]', '_', raw_source)
+        candidate_key = standardize_name(candidate_name)
         final_table_name = "UNKNOWN"
-        
-        if candidate_name in valid_tables:
-            final_table_name = candidate_name
+
+        if candidate_key in normalized_table_map:
+            final_table_name = normalized_table_map[candidate_key]
         else:
             matches = get_close_matches(candidate_name, valid_tables, n=1, cutoff=0.4)
             if matches: final_table_name = matches[0]
@@ -864,6 +959,10 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
                         final_table_name = t
                         break
         
+        if final_table_name == "UNKNOWN":
+            _dbg("rag.hybrid.table_unknown", var=var, raw_source=raw_source, candidate=candidate_name)
+            continue
+
         # 2. Résolution de la COLONNE (NOUVEAU & CRITIQUE)
         # Le glossaire dit "3-5_AUTREG", mais la base a peut-être "3_5_AUTREG"
         physical_column = var # Par défaut, on espère que c'est bon
@@ -1568,6 +1667,18 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
              df_melted["Valeur"] = df_melted["Valeur"] / 100.0
 
     # 8. VEGA
+    is_multi_metric = len(new_selected_metrics) > 1
+    is_stacked = False
+    if is_multi_metric and not date_col:
+        try:
+            sums = df_melted.groupby(label_col)["Valeur"].sum().abs()
+            if is_percent and not sums.empty:
+                is_stacked = True
+            elif not sums.empty and (sums.between(90, 110).all() or sums.between(0.9, 1.1).all()):
+                is_stacked = True
+        except Exception as e_stack:
+            _dbg("plot.stack.detect_error", error=str(e_stack))
+
     vega_config = {
         "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
         "axis": {"labelFontSize": 11, "titleFontSize": 12},
@@ -1581,7 +1692,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "legend": {"orient": "bottom"}
     }
     chart = None
-    is_multi_metric = len(new_selected_metrics) > 1
 
     if date_col:
         chart_encoding = {
@@ -1593,8 +1703,16 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         if is_multi_metric: chart_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
         chart = {"config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
     else:
-        if is_multi_metric:
-             chart_encoding = {
+        if is_multi_metric and is_stacked:
+            chart_encoding = {
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+                "color": {"field": "Indicateur", "type": "nominal", "title": "Variable"},
+                "stack": "normalize" if is_percent else True,
+                "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
+            }
+        elif is_multi_metric:
+            chart_encoding = {
                 "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
                 "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
                 "color": color_def,
