@@ -468,6 +468,11 @@ def generate_and_fix_sql(client, model, system_prompt, user_prompt, con, max_ret
     """
     Génère le SQL et tente de le corriger en injectant le schéma réel en cas d'erreur.
     Retourne la requête SQL valide ou lève une exception après max_retries.
+
+    AMÉLIORATIONS :
+    - Détection améliorée des erreurs de colonnes manquantes
+    - Injection automatique des schémas complets en cas d'erreur
+    - Messages d'erreur plus explicites
     """
     _dbg("sql.fix.enter", max_retries=max_retries)
 
@@ -477,9 +482,10 @@ def generate_and_fix_sql(client, model, system_prompt, user_prompt, con, max_ret
     ]
 
     sql_query = None
+    db_schemas = st.session_state.get("db_schemas", {})
 
     for attempt in range(max_retries + 1):
-        print(f"[TERRIBOT][SQL] ▶️ attempt {attempt}/{max_retries}")
+        print(f"[TERRIBOT][SQL] ▶️ Tentative {attempt + 1}/{max_retries + 1}")
 
         try:
             # 1. Génération
@@ -496,56 +502,96 @@ def generate_and_fix_sql(client, model, system_prompt, user_prompt, con, max_ret
 
             # 2. Vérification (Dry Run)
             con.execute(f"EXPLAIN {sql_query}")
-            print("[TERRIBOT][SQL] ✅ EXPLAIN OK")
+            print("[TERRIBOT][SQL] ✅ SQL validé avec succès")
             return sql_query
 
         except Exception as e:
-            error_msg = str(e).split("\n")[0][:300]
-            print(f"[TERRIBOT][SQL] ❌ DuckDB error: {error_msg}")
+            error_msg = str(e)
+            error_preview = error_msg.split("\n")[0][:300]
+            print(f"[TERRIBOT][SQL] ❌ Erreur DuckDB : {error_preview}")
 
             if attempt < max_retries:
                 schema_hint = ""
 
-                # Recherche d'erreurs de colonnes manquantes
-                match_col = re.search(r'does not have a column named "([^"]+)"', error_msg)
-                match_table = re.search(r'Values list "([^"]+)"', error_msg)
-                match_table_not_found = re.search(r'Table with name ([^ ]+) does not exist', error_msg)
+                # === DÉTECTION AMÉLIORÉE DES ERREURS ===
 
-                if match_table:
-                    faulty_ref = match_table.group(1)
-                    real_table = faulty_ref
+                # 1. Colonne manquante dans une table
+                match_col = re.search(r'Table (?:with name )?(?:")?([^"]+)(?:")? does not have a column named "([^"]+)"', error_msg)
+                if match_col:
+                    table_name = match_col.group(1)
+                    missing_col = match_col.group(2)
+                    print(f"[TERRIBOT][SQL] 🔍 Colonne manquante détectée : '{missing_col}' dans '{table_name}'")
 
-                    # Résolution d'alias (ex: 'd' -> 'DIPL')
+                    # Résolution d'alias vers vrai nom de table
                     if sql_query:
-                        alias_pattern = r'(?:FROM|JOIN)\s+(?:["\']?)([a-zA-Z0-9_\.\-]+)(?:["\']?)\s+(?:AS\s+)?\b' + re.escape(faulty_ref) + r'\b'
+                        alias_pattern = r'(?:FROM|JOIN)\s+(?:["\']?)([a-zA-Z0-9_\.\-]+)(?:["\']?)\s+(?:AS\s+)?\b' + re.escape(table_name) + r'\b'
                         alias_match = re.search(alias_pattern, sql_query, re.IGNORECASE)
                         if alias_match:
-                            real_table = alias_match.group(1)
-                            print(f"[TERRIBOT][SQL] 🕵️ Alias résolu : '{faulty_ref}' -> '{real_table}'")
+                            table_name = alias_match.group(1).strip('"')
+                            print(f"[TERRIBOT][SQL] 🕵️ Alias résolu : '{match_col.group(1)}' -> '{table_name}'")
 
-                    try:
-                        cols = con.execute(f"DESCRIBE \"{real_table}\"").fetchall()
-                        col_names = [c[0] for c in cols]
-                        schema_hint = f"\n\n🚨 INFO CRITIQUE : L'alias '{faulty_ref}' correspond à la table '{real_table}'. Colonnes RÉELLES : {', '.join(col_names[:50])}..."
-                    except Exception as desc_err:
-                        _dbg("sql.fix.describe_error", table=real_table, error=str(desc_err))
+                    # Récupération du schéma complet
+                    if table_name in db_schemas:
+                        col_names = db_schemas[table_name]
+                    else:
+                        try:
+                            cols = con.execute(f'DESCRIBE "{table_name}"').fetchall()
+                            col_names = [c[0] for c in cols]
+                        except:
+                            col_names = []
 
-                elif match_table_not_found:
-                    missing_table = match_table_not_found.group(1)
+                    if col_names:
+                        # Recherche de colonnes similaires
+                        from difflib import get_close_matches
+                        suggestions = get_close_matches(missing_col, col_names, n=5, cutoff=0.4)
+
+                        # Formatage des colonnes avec guillemets
+                        cols_formatted = ', '.join([f'"{c}"' for c in col_names[:100]])
+                        suggestions_formatted = ', '.join([f'"{s}"' for s in suggestions])
+
+                        schema_hint = f"\n\n🚨 ERREUR : La colonne \"{missing_col}\" n'existe pas dans la table \"{table_name}\".\n"
+                        schema_hint += f"📋 Colonnes RÉELLES disponibles dans \"{table_name}\" :\n"
+                        schema_hint += f"   {cols_formatted}\n"
+                        if suggestions:
+                            schema_hint += f"\n💡 Colonnes similaires suggérées : {suggestions_formatted}\n"
+                        schema_hint += "\n⚠️ UTILISE EXACTEMENT les noms de colonnes ci-dessus (avec guillemets doubles)."
+
+                # 2. Table référencée qui n'existe pas
+                match_table_not_found = re.search(r'Table with name ([^ ]+) does not exist', error_msg)
+                if match_table_not_found and not schema_hint:
+                    missing_table = match_table_not_found.group(1).strip('"')
                     valid_tables = st.session_state.get("valid_tables_list", [])
-                    # Suggestion de tables similaires
                     from difflib import get_close_matches
                     suggestions = get_close_matches(missing_table.upper(), valid_tables, n=3, cutoff=0.4)
-                    schema_hint = f"\n\n🚨 La table '{missing_table}' n'existe pas. Tables disponibles similaires : {suggestions}"
+                    schema_hint = f"\n\n🚨 ERREUR : La table \"{missing_table}\" n'existe pas.\n"
+                    schema_hint += f"📋 Tables disponibles : {', '.join(valid_tables)}\n"
+                    if suggestions:
+                        schema_hint += f"💡 Tables similaires suggérées : {', '.join(suggestions)}"
 
-                print("[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint")
+                # 3. Erreur générique - injection de tous les schémas des tables utilisées
+                if not schema_hint and sql_query:
+                    # Extraction des tables utilisées dans le SQL
+                    tables_in_query = re.findall(r'(?:FROM|JOIN)\s+["\']?([a-zA-Z0-9_\.\-]+)["\']?', sql_query, re.IGNORECASE)
+                    tables_in_query = [t.strip('"') for t in tables_in_query if t.lower() != 'territoires']
+
+                    if tables_in_query:
+                        schema_hint = "\n\n🚨 ERREUR SQL détectée. Voici les schémas COMPLETS des tables que tu utilises :\n"
+                        for table in tables_in_query:
+                            if table in db_schemas:
+                                cols = db_schemas[table]
+                                cols_formatted = ', '.join([f'"{c}"' for c in cols[:100]])
+                                schema_hint += f'\n📋 TABLE "{table}" - Colonnes : {cols_formatted}\n'
+
+                print("[TERRIBOT][SQL] 🛠️ Demande de correction avec schéma complet")
                 if sql_query:
                     messages.append({"role": "assistant", "content": sql_query})
-                fix_prompt = f"Erreur DuckDB : {error_msg}. {schema_hint}\nCorrige la requête SQL. Utilise les guillemets doubles pour les noms de colonnes. Ne réponds que le SQL."
+
+                fix_prompt = f"❌ Erreur DuckDB :\n{error_preview}\n{schema_hint}\n\n🔧 CORRIGE la requête SQL :\n- Vérifie que TOUTES les colonnes utilisées existent dans les schémas fournis\n- Utilise TOUJOURS des guillemets doubles pour les noms de colonnes\n- Ne modifie PAS les noms de colonnes, utilise-les EXACTEMENT comme dans le schéma\n\nNe réponds que le SQL corrigé."
                 messages.append({"role": "user", "content": fix_prompt})
             else:
-                _dbg("sql.fix.max_retries_reached", error=error_msg)
-                raise e
+                _dbg("sql.fix.max_retries_reached", error=error_preview)
+                print(f"[TERRIBOT][SQL] ⛔ Nombre maximum de tentatives atteint ({max_retries + 1})")
+                raise Exception(f"Impossible de générer un SQL valide après {max_retries + 1} tentatives. Dernière erreur : {error_preview}")
 
     return sql_query
 
@@ -753,6 +799,51 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
 
     _dbg("rag.hybrid.context", context_len=len(result_context))
     return result_context
+
+def extract_table_schemas_from_context(glossaire_context, con):
+    """
+    Extrait les noms de tables mentionnées dans le glossaire_context
+    et retourne leurs schémas complets (toutes les colonnes).
+    Cela permet de donner à l'IA TOUS les noms de colonnes disponibles,
+    pour éviter les hallucinations.
+    """
+    import re
+
+    # Extraction des noms de tables depuis le contexte
+    # Format: ✅ TABLE: "NOM_TABLE" | VAR: "colonne" | DESC: "..."
+    table_pattern = r'TABLE:\s*"([^"]+)"'
+    table_names = set(re.findall(table_pattern, glossaire_context))
+
+    schemas_dict = {}
+    db_schemas = st.session_state.get("db_schemas", {})
+
+    for table_name in table_names:
+        if table_name in db_schemas:
+            schemas_dict[table_name] = db_schemas[table_name]
+        else:
+            # Fallback: récupération directe depuis DuckDB
+            try:
+                cols = con.execute(f'DESCRIBE "{table_name}"').fetchall()
+                schemas_dict[table_name] = [c[0] for c in cols]
+            except Exception as e:
+                print(f"[SCHEMA] ⚠️ Impossible de récupérer le schéma de {table_name}: {e}")
+                schemas_dict[table_name] = []
+
+    # Construction du texte de schéma
+    schema_text = "\n\n📊 SCHÉMAS COMPLETS DES TABLES (Colonnes réelles disponibles) :\n"
+    for table_name, columns in schemas_dict.items():
+        if columns:
+            # Limiter à 100 colonnes pour ne pas surcharger le prompt
+            cols_display = columns[:100]
+            remaining = len(columns) - 100
+            cols_formatted = ', '.join([f'"{c}"' for c in cols_display])
+            schema_text += f'\n🗂️ TABLE: "{table_name}"\n'
+            schema_text += f'   Colonnes: {cols_formatted}'
+            if remaining > 0:
+                schema_text += f' ... et {remaining} autres colonnes'
+            schema_text += '\n'
+
+    return schema_text
 
 # --- 6. MOTEUR DE DONNÉES (Unifié) ---
 
@@ -1760,26 +1851,34 @@ if prompt_to_process:
                     ids_sql = ", ".join([f"'{str(i)}'" for i in geo_context['all_ids']])
                     parent_clause = geo_context.get('parent_clause', '')
                     status_container.update(label="🔢 Je récupère les données chiffrées...")
+
+                    # Extraction des schémas complets des tables utilisées
+                    table_schemas = extract_table_schemas_from_context(glossaire_context, con)
+
                     system_prompt = f"""
                     Tu es Terribot.
-                    
+
                     CONTEXTE DONNÉES (Glossaire) :
                     {glossaire_context}
-                    
+                    {table_schemas}
+
                     SCHEMA TABLE "TERRITOIRES" (alias t) :
                     - "ID" (VARCHAR) : Code INSEE
                     - "NOM_COUV" (VARCHAR) : Nom de la commune
-                    
+
                     MISSION : Répondre à "{rewritten_prompt}" via UNE SEULE requête SQL.
                     
                     🚨 RÈGLES CRITIQUES (A RESPECTER ABSOLUMENT) :
-                    
+
                     1. VARIABLES ET TABLES (ANTI-HALLUCINATION) :
-                    - Utilise **UNIQUEMENT** les variables listées dans le CONTEXTE ci-dessus.
+                    - 🔴 IMPÉRATIF : Utilise **UNIQUEMENT** les colonnes listées dans le CONTEXTE DONNÉES et les SCHÉMAS COMPLETS ci-dessus.
+                    - 🔴 VÉRIFIE que chaque colonne que tu utilises existe dans le schéma de sa table.
                     - Si une variable 2022 (ex: P22_...) n'est pas dans la liste, NE L'INVENTE PAS. Utilise l'année disponible la plus proche (ex: P20_... ou P19_...).
                     - Le contexte t'indique la table source (ex: ✅ TABLE: "ACT_10"). Utilise ce nom exact dans ton JOIN.
+                    - Avant d'utiliser une colonne, VÉRIFIE qu'elle existe dans le schéma de cette table fourni ci-dessus.
                     - Jointure : `FROM territoires t LEFT JOIN "NOM_TABLE" d ON t."ID" = d."ID"`
                     - Choisis toujours la variable la PLUS RÉCENTE disponible.
+                    - ⛔ N'INVENTE JAMAIS de noms de colonnes qui n'existent pas dans les schémas fournis.
                     
                     2. PÉRIMÈTRE GÉOGRAPHIQUE :
                     - Copie STRICTEMENT cette clause WHERE :
@@ -1812,21 +1911,14 @@ if prompt_to_process:
 
                     _dbg("pipeline.sql.gen.call", ids_count=len(geo_context.get("all_ids", [])), parent_clause=parent_clause, sys_prompt_len=len(system_prompt))
 
-                    response = client.chat.completions.create(
-                        model=MODEL_NAME,
-                        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": rewritten_prompt}],
-                        temperature=0
-                    )
-                    sql_query_raw = response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
-                    sql_query = sql_query_raw.split(";")[0]
+                    # Génération SQL avec retry automatique et injection de schéma en cas d'erreur
+                    sql_query = generate_and_fix_sql(client, MODEL_NAME, system_prompt, rewritten_prompt, con)
                     _dbg("pipeline.sql.gen.raw", sql_query=sql_query[:500])
 
                     debug_container["sql_query"] = sql_query
-                    
+
                     with st.expander("💻 Trace : Génération SQL (IA)", expanded=False):
                         st.code(sql_query, language="sql")
-
-                    sql_query = generate_and_fix_sql(client, MODEL_NAME, system_prompt, rewritten_prompt, con)
                     _dbg("sql.exec.about_to_run", sql=sql_query[:500], ids=geo_context.get("all_ids", [])[:10], ids_count=len(geo_context.get("all_ids", [])))
 
                     debug_container["sql_query"] = sql_query
