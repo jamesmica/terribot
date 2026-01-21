@@ -1512,7 +1512,12 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     selected_metrics = config.get("selected_columns", [])
     format_specs = config.get("formats", {})
     
-    color_range = ["#EB2C30", "#F38331", "#97D422", "#1DB5C5", "#5C368D"]
+    base_palette = ["#EB2C30", "#F38331", "#97D422", "#1DB5C5", "#5C368D"]
+    extra_palette = [
+        "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2",
+        "#B279A2", "#FF9DA6", "#9D755D", "#BAB0AC", "#2F4B7C",
+        "#A05195", "#D45087", "#F95D6A", "#FFA600"
+    ]
     
     cols = df.columns.tolist()
     label_col = next((c for c in cols if c.upper() in ["NOM_COUV", "TERRITOIRE", "LIBELLE", "VILLE"]), None)
@@ -1669,6 +1674,18 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     # 8. VEGA
     is_multi_metric = len(new_selected_metrics) > 1
     is_stacked = False
+    y_scale = None
+    try:
+        value_stats = df_melted["Valeur"].dropna().abs()
+        if not is_percent and not value_stats.empty:
+            min_val = value_stats.min()
+            max_val = value_stats.max()
+            if min_val > 0 and max_val / min_val >= 1000:
+                y_scale = {"type": "log"}
+                _dbg("plot.scale.log", min_val=min_val, max_val=max_val)
+    except Exception as e_scale:
+        _dbg("plot.scale.detect_error", error=str(e_scale))
+
     if is_multi_metric and not date_col:
         try:
             sums = df_melted.groupby(label_col)["Valeur"].sum().abs()
@@ -1684,10 +1701,16 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "axis": {"labelFontSize": 11, "titleFontSize": 12},
         "legend": {"labelFontSize": 11, "titleFontSize": 12, "orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
     }
+    color_domain = sorted_labels
+    if is_multi_metric and is_stacked:
+        color_domain = new_selected_metrics
+    palette = base_palette + extra_palette
+    if len(color_domain) > len(palette):
+        palette = palette * ((len(color_domain) // len(palette)) + 1)
     color_def = {
-        "field": label_col, 
-        "type": "nominal", 
-        "scale": {"domain": sorted_labels, "range": color_range}, 
+        "field": label_col,
+        "type": "nominal",
+        "scale": {"domain": color_domain, "range": palette[:len(color_domain)]},
         "title": "",
         "legend": {"orient": "bottom"}
     }
@@ -1696,7 +1719,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     if date_col:
         chart_encoding = {
             "x": {"field": date_col, "type": "ordinal", "title": "Année"},
-            "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+            "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
             "color": color_def,
             "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
         }
@@ -1706,15 +1729,15 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         if is_multi_metric and is_stacked:
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
-                "color": {"field": "Indicateur", "type": "nominal", "title": "Variable"},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
+                "color": {"field": "Indicateur", "type": "nominal", "title": "Variable", "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}},
                 "stack": "normalize" if is_percent else True,
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
-            chart_encoding = {
+             chart_encoding = {
                 "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
                 "color": color_def,
                 "xOffset": {"field": label_col},
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
@@ -1722,7 +1745,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         else:
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},  # <--- CORRECTION 1 : Affiche le nom complet (jusqu'à 500px)
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
                 "color": color_def,
                 "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
             }
