@@ -617,6 +617,7 @@ def style_df(df: pd.DataFrame, specs: dict):
         dec = int(s.get("decimals", 1)) # Par défaut 1 décimale
         
         # --- RÈGLE INTELLIGENTE : 0 décimale si tout est > 100 ---
+        valid_vals = pd.Series(dtype="float64")
         try:
             # On regarde les valeurs non nulles
             valid_vals = df_display[col].dropna().abs()
@@ -629,6 +630,20 @@ def style_df(df: pd.DataFrame, specs: dict):
                     dec = 0
         except: pass
         # ---------------------------------------------------------
+        # Heuristique: inférer les % si la colonne le suggère
+        if kind == "number":
+            try:
+                name_upper = col.upper()
+                percent_hint = any(key in name_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%"])
+                if not valid_vals.empty:
+                    max_val = valid_vals.max()
+                    min_val = valid_vals.min()
+                    if percent_hint and max_val <= 100:
+                        kind = "percent"
+                    elif 0 <= min_val and max_val <= 1.5:
+                        kind = "percent"
+            except Exception:
+                pass
 
         if kind == "currency":
             format_dict[col] = lambda x, d=dec: fr_num(x, d, "€")
