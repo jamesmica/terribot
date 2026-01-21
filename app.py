@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.17 - 21 janvier 2026")
+    st.caption("v0.18 - 21 janvier 2026")
     st.divider()
     
     # Bouton Reset
