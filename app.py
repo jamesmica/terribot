@@ -1732,7 +1732,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     if date_col:
         chart_encoding = {
             "x": {"field": date_col, "type": "ordinal", "title": "Année"},
-            "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+            "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
             "color": color_def,
             "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
         }
@@ -1755,7 +1755,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         elif is_multi_metric:
              chart_encoding = {
                 "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
                 "color": color_def,
                 "xOffset": {"field": label_col},
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
@@ -1763,7 +1763,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         else:
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},  # <--- CORRECTION 1 : Affiche le nom complet (jusqu'à 500px)
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
                 "color": color_def,
                 "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
             }
