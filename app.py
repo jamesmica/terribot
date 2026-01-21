@@ -347,11 +347,8 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
     """
     Fusionne la sélection des variables et la détection des formats et labels courts.
     """
-    _dbg("chart.config.enter", question=question[:160], df_rows=len(df), df_cols=len(df.columns))
-
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
     numeric_cols = [c for c in numeric_cols if c.upper() not in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]]
-    _dbg("chart.numeric_cols", count=len(numeric_cols), sample=numeric_cols[:15])
 
     if not numeric_cols: return {"selected_columns": [], "formats": {}}
 
@@ -391,14 +388,11 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
     """
 
     try:
-        _dbg("chart.config.payload", payload_keys=list(payload.keys()), glossaire_tail=(payload["glossaire_sample"][-200:] if payload.get("glossaire_sample") else ""))
-
         resp = client.chat.completions.create(
             model=model, temperature=0, response_format={"type": "json_object"},
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
         )
         data = json.loads(resp.choices[0].message.content)
-        _dbg("chart.config.raw", selected=data.get("selected_columns"), formats_keys=list((data.get("formats") or {}).keys())[:10])
 
         if not data.get("selected_columns"): data["selected_columns"] = [numeric_cols[0]]
         data["selected_columns"] = [c for c in data["selected_columns"] if c in df.columns]
@@ -657,9 +651,6 @@ def semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top
         _dbg("rag.semantic.skip", reason="no_embeddings_or_glossaire")
         return pd.DataFrame()
 
-    _dbg("rag.semantic.enter", query=query[:120], top_k=top_k, threshold=threshold,
-         emb_shape=getattr(glossary_embeddings, "shape", None), valid_indices_len=len(valid_indices))
-
     try:
         # Création de l'embedding de la requête
         query_resp = client.embeddings.create(input=[query[:1000]], model=EMBEDDING_MODEL, timeout=30)
@@ -674,12 +665,8 @@ def semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top
         df_results = df_results.iloc[:min_len]
         df_results['similarity'] = similarities[:min_len]
 
-        _dbg("rag.semantic.sim", similarities_len=len(similarities),
-             sim_max=float(np.max(similarities)) if len(similarities) else None)
-
         # 1. FILTRE PAR SEUIL (RAG Threshold)
         df_results = df_results[df_results['similarity'] > threshold]
-        _dbg("rag.semantic.after_threshold", kept_rows=len(df_results))
 
         if df_results.empty:
             # Si aucun résultat au-dessus du seuil, on prend les top résultats quand même
@@ -695,8 +682,6 @@ def semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top
             df_results = df_results[mask_content]
         except Exception as e_filter:
             _dbg("rag.semantic.filter_error", error=str(e_filter))
-
-        _dbg("rag.semantic.return", final_rows=min(top_k, len(df_results)))
         return df_results.sort_values('similarity', ascending=False).head(top_k)
 
     except Exception as e:
@@ -704,12 +689,10 @@ def semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top
         return pd.DataFrame()
 
 def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_indices, top_k=80):
-    candidates = {} 
-    _dbg("rag.hybrid.enter", query=query[:160], top_k=top_k)
+    candidates = {}
 
     # 1. RECHERCHE VECTORIELLE
     df_sem = semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top_k=top_k, threshold=0.35)
-    _dbg("rag.hybrid.semantic", sem_rows=len(df_sem))
 
     for _, row in df_sem.iterrows():
         var = row['Nom au sein de la base de données']
@@ -797,7 +780,6 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
         # L'IA reçoit directement le nom qui marche. Plus besoin de deviner.
         result_context += f"✅ TABLE: \"{final_table_name}\" | VAR: \"{physical_column}\" | DESC: \"{desc}\"\n"
 
-    _dbg("rag.hybrid.context", context_len=len(result_context))
     return result_context
 
 def extract_table_schemas_from_context(glossaire_context, con):
@@ -1030,9 +1012,7 @@ def get_broad_candidates(con, input_str, limit=15):
     """
 
     try:
-        _dbg("geo.broad_candidates.sql", sql_preview=sql[:300])
         df_candidates = con.execute(sql).df()
-        _dbg("geo.broad_candidates.result", rows=len(df_candidates), sample=df_candidates.head(3).to_dict(orient="records"))
 
         # NOUVEAU : Si aucun résultat et que ça ressemble à une région, on cherche spécifiquement
         if df_candidates.empty:
@@ -1309,7 +1289,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
     if config is None: config = {}
-    _dbg("plot.enter", df_rows=len(df), df_cols=list(df.columns)[:12], sorted_ids=sorted_ids[:10], selected_metrics=(config or {}).get("selected_columns"))
+    # Log supprimé pour réduire verbosité
 
     selected_metrics = config.get("selected_columns", [])
     format_specs = config.get("formats", {})
@@ -1320,7 +1300,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     label_col = next((c for c in cols if c.upper() in ["NOM_COUV", "TERRITOIRE", "LIBELLE", "VILLE"]), None)
     date_col = next((c for c in cols if c.upper() in ["AN", "ANNEE", "YEAR", "DATE"]), None)
     id_col = next((c for c in cols if c.upper() == "ID"), None)
-    _dbg("plot.detect_cols", label_col=label_col, date_col=date_col, id_col=id_col)
 
     if not selected_metrics or not label_col: return
 
@@ -1512,7 +1491,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
-    _dbg("plot.vega", melted_rows=len(df_melted), is_percent=is_percent, is_multi_metric=is_multi_metric, y_format=y_format)
     chart["title"] = {
         "text": f"{title_y}",
         "anchor": "middle", 
