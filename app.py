@@ -1651,6 +1651,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     original_metric = selected_metrics[0]
     spec = format_specs.get(original_metric, {})
     title_y = spec.get("title", spec.get("label", "Valeur"))
+    title_suffix = ""
     
     y_format = ",.1f"
     is_percent = spec.get("kind") == "percent"
@@ -1674,17 +1675,28 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     # 8. VEGA
     is_multi_metric = len(new_selected_metrics) > 1
     is_stacked = False
-    y_scale = None
+    normalize_ratio = False
     try:
         value_stats = df_melted["Valeur"].dropna().abs()
         if not is_percent and not value_stats.empty:
             min_val = value_stats.min()
             max_val = value_stats.max()
             if min_val > 0 and max_val / min_val >= 1000:
-                y_scale = {"type": "log"}
-                _dbg("plot.scale.log", min_val=min_val, max_val=max_val)
+                if not date_col:
+                    normalize_ratio = True
+                    _dbg("plot.scale.ratio", min_val=min_val, max_val=max_val)
+                else:
+                    _dbg("plot.scale.skewed_trend", min_val=min_val, max_val=max_val)
     except Exception as e_scale:
         _dbg("plot.scale.detect_error", error=str(e_scale))
+
+    if normalize_ratio:
+        max_val = df_melted["Valeur"].abs().max()
+        if max_val:
+            df_melted["Valeur"] = df_melted["Valeur"] / max_val
+            is_percent = True
+            y_format = ".1%"
+            title_suffix = " (ratio % du max)"
 
     if is_multi_metric and not date_col:
         try:
@@ -1729,9 +1741,14 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         if is_multi_metric and is_stacked:
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
+                "y": {
+                    "field": "Valeur",
+                    "type": "quantitative",
+                    "title": "",
+                    "axis": {"format": y_format},
+                    "stack": "normalize" if is_percent else "zero"
+                },
                 "color": {"field": "Indicateur", "type": "nominal", "title": "Variable", "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}},
-                "stack": "normalize" if is_percent else True,
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
@@ -1752,7 +1769,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
     chart["title"] = {
-        "text": f"{title_y}",
+        "text": f"{title_y}{title_suffix}",
         "anchor": "middle", 
         "fontSize": 16,
         "offset": 10
