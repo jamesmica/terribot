@@ -16,10 +16,78 @@ import sys
 import datetime
 import os
 import difflib
+import subprocess
+import time
+import atexit
 
 # Création du dossier de logs si inexistant
 if not os.path.exists("logs"):
     os.makedirs("logs")
+
+def get_git_metadata():
+    """Récupère les métadonnées git pour le suivi de version"""
+    metadata = {}
+    try:
+        # Commit hash
+        metadata['commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'],
+                                                      stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        metadata['commit_short'] = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                                            stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        # Branche
+        metadata['branch'] = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                                                      stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        # Auteur et date du dernier commit
+        metadata['commit_author'] = subprocess.check_output(['git', 'log', '-1', '--format=%an'],
+                                                             stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        metadata['commit_date'] = subprocess.check_output(['git', 'log', '-1', '--format=%ai'],
+                                                           stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        # Message du commit
+        metadata['commit_message'] = subprocess.check_output(['git', 'log', '-1', '--format=%s'],
+                                                              stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        # Statut (modifié ou non)
+        status = subprocess.check_output(['git', 'status', '--porcelain'],
+                                         stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        metadata['has_local_changes'] = len(status) > 0
+    except Exception as e:
+        metadata['error'] = str(e)
+    return metadata
+
+# Classe pour tracker les métriques de performance
+class PerformanceMetrics:
+    def __init__(self):
+        self.start_time = time.time()
+        self.sql_queries = 0
+        self.sql_success = 0
+        self.sql_errors = 0
+        self.api_calls = 0
+        self.responses_generated = 0
+
+    def log_sql_query(self, success=True):
+        self.sql_queries += 1
+        if success:
+            self.sql_success += 1
+        else:
+            self.sql_errors += 1
+
+    def log_api_call(self):
+        self.api_calls += 1
+
+    def log_response(self):
+        self.responses_generated += 1
+
+    def get_summary(self):
+        elapsed = time.time() - self.start_time
+        return {
+            'session_duration_seconds': round(elapsed, 2),
+            'sql_queries_total': self.sql_queries,
+            'sql_success': self.sql_success,
+            'sql_errors': self.sql_errors,
+            'api_calls': self.api_calls,
+            'responses_generated': self.responses_generated
+        }
+
+# Instance globale des métriques
+metrics = PerformanceMetrics()
 
 # Classe qui dédouble la sortie (Terminal + Fichier)
 class DualLogger(object):
@@ -28,6 +96,35 @@ class DualLogger(object):
         # Nom de fichier unique basé sur l'heure de lancement
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.log = open(f"logs/session_{timestamp}.txt", "a", encoding="utf-8")
+
+        # Écrire les métadonnées git au début du log
+        self._write_header()
+
+    def _write_header(self):
+        """Écrit l'en-tête du log avec les métadonnées"""
+        git_info = get_git_metadata()
+
+        header = "=" * 80 + "\n"
+        header += "SESSION LOG - TERRIBOT\n"
+        header += "=" * 80 + "\n"
+        header += f"Session started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        header += "\n--- GIT METADATA ---\n"
+
+        if 'error' in git_info:
+            header += f"⚠️ Git info unavailable: {git_info['error']}\n"
+        else:
+            header += f"Commit:        {git_info['commit_short']} ({git_info['commit']})\n"
+            header += f"Branch:        {git_info['branch']}\n"
+            header += f"Commit Author: {git_info['commit_author']}\n"
+            header += f"Commit Date:   {git_info['commit_date']}\n"
+            header += f"Commit Msg:    {git_info['commit_message']}\n"
+            header += f"Local Changes: {'Yes ⚠️' if git_info['has_local_changes'] else 'No'}\n"
+
+        header += "=" * 80 + "\n\n"
+
+        # Écrire dans le fichier uniquement (pas dans le terminal)
+        self.log.write(header)
+        self.log.flush()
 
     def write(self, message):
         self.terminal.write(message)
@@ -39,8 +136,29 @@ class DualLogger(object):
         self.terminal.flush()
         self.log.flush()
 
+    def write_footer(self):
+        """Écrit les métriques de performance à la fin du log"""
+        metrics_summary = metrics.get_summary()
+
+        footer = "\n" + "=" * 80 + "\n"
+        footer += "SESSION METRICS\n"
+        footer += "=" * 80 + "\n"
+        footer += f"Session Duration:     {metrics_summary['session_duration_seconds']}s\n"
+        footer += f"SQL Queries:          {metrics_summary['sql_queries_total']} "
+        footer += f"(✅ {metrics_summary['sql_success']} / ❌ {metrics_summary['sql_errors']})\n"
+        footer += f"API Calls:            {metrics_summary['api_calls']}\n"
+        footer += f"Responses Generated:  {metrics_summary['responses_generated']}\n"
+        footer += "=" * 80 + "\n"
+
+        self.log.write(footer)
+        self.log.flush()
+
 # On redirige tout print() vers notre Logger
-sys.stdout = DualLogger()
+dual_logger = DualLogger()
+sys.stdout = dual_logger
+
+# Enregistrer l'écriture du footer à la fin
+atexit.register(dual_logger.write_footer)
 
 print(f"[TERRIBOT] 📝 Démarrage de l'enregistrement des logs")
 
@@ -1141,6 +1259,7 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
             temperature=0,
             response_format={"type": "json_object"}
         )
+        metrics.log_api_call()
         raw_response = response.choices[0].message.content
         _dbg("geo.ai_validate.exit", raw=raw_response[:400])
 
@@ -1906,8 +2025,13 @@ if prompt_to_process:
                     debug_container["sql_query"] = sql_query
 
                     if con:
-                        df = con.execute(sql_query).df()
-                        _dbg("sql.exec.result", empty=df.empty, rows=len(df), cols=list(df.columns))
+                        try:
+                            df = con.execute(sql_query).df()
+                            metrics.log_sql_query(success=True)
+                            _dbg("sql.exec.result", empty=df.empty, rows=len(df), cols=list(df.columns))
+                        except Exception as e:
+                            metrics.log_sql_query(success=False)
+                            raise e
                         
                         if not df.empty:
                             _dbg("sql.exec.head", head=df.head(3).to_dict(orient="records"))
@@ -1948,25 +2072,27 @@ if prompt_to_process:
                         messages=[
                             {"role": "system", "content": f"""
                             Tu es Terribot, un expert en analyse territoriale s'adressant à des élus et agents  des collectivités locales en France.
-                            
+
                             TON RÔLE :
                             Traduire les données brutes ci-jointes en une réponse naturelle, fluide et professionnelle.
                             Proposer une piste de réflexion pour aller plus loin, sous forme d'une question pour proposer un autre graphique.
-                            
+
                             RÈGLES D'OR (À RESPECTER STRICTEMENT) :
                             1. ⛔ NE JAMAIS mentionner "le tableau", "vos données", "la colonne", "l'extrait" ou "la ligne". Fais comme si tu connaissais ces chiffres par cœur.
                             2. ⛔ NE JAMAIS citer les noms techniques des variables (ex: "taux_chomage_15_64" ou "indicateur_voisins"). Utilise le langage courant ("Taux de chômage").
                             3. ⛔ SI une colonne contient des 0 et des 1 (booléens), NE LES CITE PAS. Interprète-les (ex: "C'est supérieur à la moyenne").
                             4. CONTEXTUALISE : Si des villes demandées sont absentes des données, dis simplement "Je dispose des données pour X et Y" sans dire "dans le fichier fourni".
                             5. STRUCTURE : Va à l'essentiel.
-                            
+
                             Unités des données : {json.dumps(chart_config.get('formats', {}))}
                             """},
                             {"role": "user", "content": df.to_string()}
                         ],
                         stream=True
                     )
+                    metrics.log_api_call()
                     full_response_text = message_placeholder.write_stream(stream)
+                    metrics.log_response()
                     _dbg("pipeline.stream.done", response_len=len(full_response_text) if full_response_text else 0)
                     print("[TERRIBOT][PIPE] ✅ Pipeline done")
 
