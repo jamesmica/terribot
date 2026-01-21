@@ -304,7 +304,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.15 - 19 janvier 2026")
+    st.caption("v0.16 - 21 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -463,70 +463,91 @@ def style_df(df: pd.DataFrame, specs: dict):
     return df_display.style.format(format_dict)
 
 
-    # --- NOUVEAU : FONCTION DE RÉPARATION SQL ---
+    # --- FONCTION DE RÉPARATION SQL ---
 def generate_and_fix_sql(client, model, system_prompt, user_prompt, con, max_retries=3):
-    """Génère le SQL et tente de le corriger en injectant le schéma réel en cas d'erreur."""
+    """
+    Génère le SQL et tente de le corriger en injectant le schéma réel en cas d'erreur.
+    Retourne la requête SQL valide ou lève une exception après max_retries.
+    """
     _dbg("sql.fix.enter", max_retries=max_retries)
 
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ]
-    
+
+    sql_query = None
+
     for attempt in range(max_retries + 1):
         print(f"[TERRIBOT][SQL] ▶️ attempt {attempt}/{max_retries}")
-        
+
         try:
             # 1. Génération
             response = client.chat.completions.create(
-                model=model, messages=messages, temperature=0
+                model=model, messages=messages, temperature=0, timeout=60
             )
             sql_query_raw = response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
-            sql_query = sql_query_raw.split(";")[0]
-            
+            sql_query = sql_query_raw.split(";")[0].strip()
+
+            # Vérification basique que c'est du SQL
+            if not sql_query.upper().startswith("SELECT"):
+                _dbg("sql.fix.invalid_sql", sql_preview=sql_query[:100])
+                raise ValueError("La réponse n'est pas une requête SELECT valide")
+
             # 2. Vérification (Dry Run)
             con.execute(f"EXPLAIN {sql_query}")
             print("[TERRIBOT][SQL] ✅ EXPLAIN OK")
-            return sql_query 
-            
+            return sql_query
+
         except Exception as e:
-            error_msg = str(e).split("\n")[0]
+            error_msg = str(e).split("\n")[0][:300]
             print(f"[TERRIBOT][SQL] ❌ DuckDB error: {error_msg}")
 
             if attempt < max_retries:
                 schema_hint = ""
-                # On cherche si l'erreur mentionne une table ou un alias (ex: Values list "d"...)
+
+                # Recherche d'erreurs de colonnes manquantes
+                match_col = re.search(r'does not have a column named "([^"]+)"', error_msg)
                 match_table = re.search(r'Values list "([^"]+)"', error_msg)
-                
+                match_table_not_found = re.search(r'Table with name ([^ ]+) does not exist', error_msg)
+
                 if match_table:
                     faulty_ref = match_table.group(1)
                     real_table = faulty_ref
-                    
-                    # --- AMÉLIORATION : Résolution d'alias (ex: 'd' -> 'DIPL') ---
-                    # On cherche dans le SQL un motif du type : JOIN "MA_TABLE" d  ou  JOIN MA_TABLE AS d
-                    # Le regex cherche un mot (la table) juste avant l'alias fautif
-                    alias_pattern = r'(?:FROM|JOIN)\s+(?:["\']?)([a-zA-Z0-9_\.\-]+)(?:["\']?)\s+(?:AS\s+)?\b' + re.escape(faulty_ref) + r'\b'
-                    alias_match = re.search(alias_pattern, sql_query, re.IGNORECASE)
-                    
-                    if alias_match:
-                        real_table = alias_match.group(1)
-                        print(f"[TERRIBOT][SQL] 🕵️ Alias résolu : '{faulty_ref}' -> '{real_table}'")
+
+                    # Résolution d'alias (ex: 'd' -> 'DIPL')
+                    if sql_query:
+                        alias_pattern = r'(?:FROM|JOIN)\s+(?:["\']?)([a-zA-Z0-9_\.\-]+)(?:["\']?)\s+(?:AS\s+)?\b' + re.escape(faulty_ref) + r'\b'
+                        alias_match = re.search(alias_pattern, sql_query, re.IGNORECASE)
+                        if alias_match:
+                            real_table = alias_match.group(1)
+                            print(f"[TERRIBOT][SQL] 🕵️ Alias résolu : '{faulty_ref}' -> '{real_table}'")
 
                     try:
-                        # On récupère les colonnes réelles de la VRAIE table
                         cols = con.execute(f"DESCRIBE \"{real_table}\"").fetchall()
                         col_names = [c[0] for c in cols]
-                        # On donne un indice précis à l'IA
-                        schema_hint = f"\n\n🚨 INFO CRITIQUE : L'alias '{faulty_ref}' correspond à la table '{real_table}'. Voici ses colonnes RÉELLES : {', '.join(col_names[:50])}..."
+                        schema_hint = f"\n\n🚨 INFO CRITIQUE : L'alias '{faulty_ref}' correspond à la table '{real_table}'. Colonnes RÉELLES : {', '.join(col_names[:50])}..."
                     except Exception as desc_err:
-                        print(f"[TERRIBOT][SQL] ⚠️ Impossible de décrire '{real_table}': {desc_err}")
-                
+                        _dbg("sql.fix.describe_error", table=real_table, error=str(desc_err))
+
+                elif match_table_not_found:
+                    missing_table = match_table_not_found.group(1)
+                    valid_tables = st.session_state.get("valid_tables_list", [])
+                    # Suggestion de tables similaires
+                    from difflib import get_close_matches
+                    suggestions = get_close_matches(missing_table.upper(), valid_tables, n=3, cutoff=0.4)
+                    schema_hint = f"\n\n🚨 La table '{missing_table}' n'existe pas. Tables disponibles similaires : {suggestions}"
+
                 print("[TERRIBOT][SQL] 🛠️ Asking model to fix SQL with Schema Hint")
-                messages.append({"role": "assistant", "content": sql_query})
-                fix_prompt = f"Erreur DuckDB : {error_msg}. {schema_hint}\nCorrige la requête SQL. Utilise les guillemets doubles pour les noms de colonnes avec tirets. Ne réponds que le SQL."
+                if sql_query:
+                    messages.append({"role": "assistant", "content": sql_query})
+                fix_prompt = f"Erreur DuckDB : {error_msg}. {schema_hint}\nCorrige la requête SQL. Utilise les guillemets doubles pour les noms de colonnes. Ne réponds que le SQL."
                 messages.append({"role": "user", "content": fix_prompt})
             else:
+                _dbg("sql.fix.max_retries_reached", error=error_msg)
                 raise e
+
+    return sql_query
 
 # --- 5. FONCTIONS VECTORIELLES ---
 @st.cache_resource
@@ -583,31 +604,58 @@ def get_glossary_embeddings(df_glossaire):
         return None, []
 
 def semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top_k=80, threshold=0.38):
-    if glossary_embeddings is None or df_glossaire.empty: return pd.DataFrame()
+    """
+    Recherche sémantique dans le glossaire via embeddings.
+    """
+    if glossary_embeddings is None or df_glossaire.empty:
+        _dbg("rag.semantic.skip", reason="no_embeddings_or_glossaire")
+        return pd.DataFrame()
+
     _dbg("rag.semantic.enter", query=query[:120], top_k=top_k, threshold=threshold,
-     emb_shape=getattr(glossary_embeddings, "shape", None), valid_indices_len=len(valid_indices))
+         emb_shape=getattr(glossary_embeddings, "shape", None), valid_indices_len=len(valid_indices))
 
     try:
-        query_resp = client.embeddings.create(input=[query], model=EMBEDDING_MODEL)
+        # Création de l'embedding de la requête
+        query_resp = client.embeddings.create(input=[query[:1000]], model=EMBEDDING_MODEL, timeout=30)
         query_vec = np.array(query_resp.data[0].embedding)
+
+        # Calcul des similarités
         similarities = np.dot(glossary_embeddings, query_vec)
-        
+
+        # Construction du DataFrame de résultats
         df_results = df_glossaire.iloc[valid_indices].copy()
         min_len = min(len(df_results), len(similarities))
         df_results = df_results.iloc[:min_len]
         df_results['similarity'] = similarities[:min_len]
-        _dbg("rag.semantic.sim", similarities_len=len(similarities), sim_max=float(np.max(similarities)) if len(similarities) else None)
+
+        _dbg("rag.semantic.sim", similarities_len=len(similarities),
+             sim_max=float(np.max(similarities)) if len(similarities) else None)
 
         # 1. FILTRE PAR SEUIL (RAG Threshold)
         df_results = df_results[df_results['similarity'] > threshold]
         _dbg("rag.semantic.after_threshold", kept_rows=len(df_results))
 
-        # 2. Filtres techniques (PAS DE BOOSTING ICI)
-        mask_content = ~df_results.iloc[:, 4].astype(str).str.contains(r'IRIS|QPV', case=False, regex=True)
-        _dbg("rag.semantic.return", final_rows=min(top_k, len(df_results)))
+        if df_results.empty:
+            # Si aucun résultat au-dessus du seuil, on prend les top résultats quand même
+            _dbg("rag.semantic.threshold_fallback", threshold=threshold)
+            df_results = df_glossaire.iloc[valid_indices].copy().iloc[:min_len]
+            df_results['similarity'] = similarities[:min_len]
+            df_results = df_results.nlargest(top_k, 'similarity')
 
-        return df_results[mask_content].sort_values('similarity', ascending=False).head(top_k)
-    except: return pd.DataFrame()
+        # 2. Filtres techniques (exclusion IRIS/QPV)
+        try:
+            var_col = df_results.columns[4] if len(df_results.columns) > 4 else df_results.columns[0]
+            mask_content = ~df_results[var_col].astype(str).str.contains(r'IRIS|QPV', case=False, regex=True, na=False)
+            df_results = df_results[mask_content]
+        except Exception as e_filter:
+            _dbg("rag.semantic.filter_error", error=str(e_filter))
+
+        _dbg("rag.semantic.return", final_rows=min(top_k, len(df_results)))
+        return df_results.sort_values('similarity', ascending=False).head(top_k)
+
+    except Exception as e:
+        _dbg("rag.semantic.error", error=str(e))
+        return pd.DataFrame()
 
 def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_indices, top_k=80):
     candidates = {} 
@@ -830,55 +878,145 @@ def search_territory_smart(con, input_str):
 def get_broad_candidates(con, input_str, limit=15):
     """
     Récupère une liste large de candidats potentiels via DuckDB (FTS + Fuzzy).
+    Inclut une recherche spécifique pour les régions.
     """
     _dbg("geo.broad_candidates.enter", input_str=input_str, limit=limit)
     clean_input = clean_search_term(input_str)
-    
+
+    # NOUVEAU : Liste des régions françaises connues pour fallback
+    REGIONS_MAPPING = {
+        "ile de france": "R11", "ile-de-france": "R11", "idf": "R11",
+        "centre val de loire": "R24", "bourgogne franche comte": "R27",
+        "normandie": "R28", "hauts de france": "R32", "grand est": "R44",
+        "pays de la loire": "R52", "bretagne": "R53", "nouvelle aquitaine": "R75",
+        "occitanie": "R76", "auvergne rhone alpes": "R84", "paca": "R93",
+        "provence alpes cote d azur": "R93", "corse": "R94"
+    }
+
+    # Vérification directe si c'est une région connue
+    region_id = REGIONS_MAPPING.get(clean_input.replace('-', ' ').replace("'", " "))
+    if region_id:
+        _dbg("geo.broad_candidates.region_direct", clean_input=clean_input, region_id=region_id)
+        try:
+            sql_region = f"SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = '{region_id}'"
+            df_region = con.execute(sql_region).df()
+            if not df_region.empty:
+                df_region['TYPE_TERRITOIRE'] = 'Région'
+                df_region['score'] = 1.5  # Score élevé pour match direct
+                return df_region.to_dict(orient='records')
+        except Exception as e:
+            _dbg("geo.broad_candidates.region_error", error=str(e))
+
     # SQL : On cherche large (Fuzzy + Contient)
-    # CORRECTION CRITIQUE : Séparation des types dans le CASE pour éviter 'Conversion Error'
     sql = f"""
     WITH candidates AS (
-        SELECT 
-            ID, 
-            NOM_COUV, 
+        SELECT
+            ID,
+            NOM_COUV,
             COMP1, COMP2, COMP3,
-            CASE 
+            CASE
                 WHEN length(ID) IN (4,5) THEN 'Commune'
                 WHEN length(ID) = 9 THEN 'EPCI/Interco'
                 WHEN ID = 'FR' THEN 'Pays'
-                -- CORRECTION ICI : On vérifie d'abord la longueur, PUIS les IDs spécifiques textuels
-                WHEN length(ID) IN (2,3) OR ID IN ('D971','D972','D973','D974','D976') THEN 'Département'
-                -- AJOUT : Gestion explicite des Régions (souvent Rxx ou longueur 2/3 selon la source)
-                WHEN ID LIKE 'R%' THEN 'Région' 
+                WHEN ID LIKE 'D%' THEN 'Département'
+                WHEN ID LIKE 'R%' THEN 'Région'
                 ELSE 'Autre'
             END as TYPE_TERRITOIRE,
-            
+
             -- BOOST DE SCORE :
-            -- 1. Base Jaro-Winkler
-            jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') 
-            -- 2. Bonus si c'est une Région ou un Département (IDs courts ou R..)
-            + (CASE WHEN length(ID) <= 3 OR ID LIKE 'R%' THEN 0.15 ELSE 0 END) 
-            -- 3. Bonus Match Exact
+            jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}')
+            + (CASE WHEN ID LIKE 'R%' THEN 0.2 ELSE 0 END)
+            + (CASE WHEN ID LIKE 'D%' THEN 0.15 ELSE 0 END)
             + (CASE WHEN lower(NOM_COUV) = '{clean_input}' THEN 0.3 ELSE 0 END)
             as score
         FROM territoires
-        WHERE strip_accents(lower(NOM_COUV)) LIKE '%{clean_input}%' 
-           OR jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') > 0.85
+        WHERE strip_accents(lower(NOM_COUV)) LIKE '%{clean_input}%'
+           OR jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') > 0.80
     )
-    SELECT * FROM candidates 
-    ORDER BY score DESC 
+    SELECT * FROM candidates
+    ORDER BY score DESC
     LIMIT {limit}
     """
-    
+
     try:
         _dbg("geo.broad_candidates.sql", sql_preview=sql[:300])
         df_candidates = con.execute(sql).df()
         _dbg("geo.broad_candidates.result", rows=len(df_candidates), sample=df_candidates.head(3).to_dict(orient="records"))
 
+        # NOUVEAU : Si aucun résultat et que ça ressemble à une région, on cherche spécifiquement
+        if df_candidates.empty:
+            # Recherche étendue sur les régions
+            sql_regions = f"""
+            SELECT ID, NOM_COUV, COMP1, COMP2, COMP3, 'Région' as TYPE_TERRITOIRE,
+                   jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') as score
+            FROM territoires
+            WHERE ID LIKE 'R%'
+              AND jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') > 0.6
+            ORDER BY score DESC
+            LIMIT 5
+            """
+            try:
+                df_regions = con.execute(sql_regions).df()
+                if not df_regions.empty:
+                    _dbg("geo.broad_candidates.regions_fallback", rows=len(df_regions))
+                    return df_regions.to_dict(orient='records')
+            except:
+                pass
+
         return df_candidates.to_dict(orient='records')
     except Exception as e:
         print(f"❌ Erreur SQL Candidates: {e}")
+        _dbg("geo.broad_candidates.error", error=str(e))
         return []
+
+def normalize_geo_id(raw_id, candidates):
+    """
+    Normalise un ID retourné par l'IA pour matcher avec la base de données.
+    Gère les cas : "04112" -> "4112", "04" -> "D4", "11" -> "R11"
+    """
+    if not raw_id:
+        return None
+
+    raw_id = str(raw_id).strip()
+    candidate_ids = [str(c.get('ID', '')) for c in candidates]
+
+    # 1. Match exact
+    if raw_id in candidate_ids:
+        return raw_id
+
+    # 2. Match sans zéro initial (communes: "04112" -> "4112")
+    stripped = raw_id.lstrip('0')
+    if stripped in candidate_ids:
+        return stripped
+
+    # 3. Match avec préfixe D (départements: "04" ou "94" -> "D4" ou "D94")
+    if raw_id.isdigit() and len(raw_id) <= 3:
+        # Essayer avec D + code
+        d_code = f"D{raw_id.lstrip('0')}"
+        if d_code in candidate_ids:
+            return d_code
+        # Essayer D + code complet (pour DOM: 971 -> D971)
+        d_full = f"D{raw_id}"
+        if d_full in candidate_ids:
+            return d_full
+
+    # 4. Match avec préfixe R (régions: "11" -> "R11")
+    if raw_id.isdigit() and len(raw_id) <= 2:
+        r_code = f"R{raw_id}"
+        if r_code in candidate_ids:
+            return r_code
+
+    # 5. Fuzzy match : chercher si un candidat contient l'ID (ex: "4112" dans ["4112", "28232"])
+    for cid in candidate_ids:
+        cid_stripped = str(cid).lstrip('0').replace('D', '').replace('R', '')
+        raw_stripped = raw_id.lstrip('0').replace('D', '').replace('R', '')
+        if cid_stripped == raw_stripped:
+            return cid
+
+    # 6. Fallback : retourner le premier candidat avec le meilleur score
+    _dbg("geo.normalize.fallback", raw_id=raw_id, candidates_sample=candidate_ids[:5])
+    return None
+
 
 def ai_validate_territory(client, model, user_query, candidates, full_sentence_context=""):
     """
@@ -890,19 +1028,24 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
 
     system_prompt = """
     Tu es un expert géographe rattaché au code officiel géographique (INSEE).
-    
+
     TA MISSION :
     Identifier le territoire unique qui correspond à la recherche de l'utilisateur parmi une liste de candidats.
-    
+
     RÈGLES DE DÉCISION :
     1. Si l'utilisateur tape juste le nom d'une ville (ex: "Dunkerque"), c'est TOUJOURS la "Commune" (ID 4 ou 5 chiffres). Pas l'EPCI.
     2. Si l'utilisateur précise "Agglo", "Metropole", "Communauté", "CU", "Grand...", c'est l'"EPCI/Interco" (ID 9 chiffres).
     3. Si l'utilisateur tape un numéro (ex: "59"), c'est le Département.
     4. En cas de doute total (ex: homonymes parfaits dans deux départements sans contexte), renvoie "AMBIGUITE".
-    
+
+    ⚠️ IMPORTANT - UTILISE EXACTEMENT L'ID DU CANDIDAT :
+    - Si le candidat a l'ID "4112", réponds "4112" (PAS "04112")
+    - Si le candidat a l'ID "D4", réponds "D4" (PAS "04" ou "4")
+    - Si le candidat a l'ID "R11", réponds "R11" (PAS "11")
+
     FORMAT DE RÉPONSE JSON ATTENDU :
     {
-        "selected_id": "code_insee_choisi" OU null,
+        "selected_id": "code_insee_exact_du_candidat" OU null,
         "reason": "explication courte",
         "is_ambiguous": true/false
     }
@@ -910,9 +1053,9 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
 
     user_message = f"""
     CONTEXTE GLOBAL (Phrase utilisateur) : "{full_sentence_context}"
-    
+
     TERME RECHERCHÉ ACTUELLEMENT : "{user_query}"
-    
+
     Candidats trouvés en base pour "{user_query}" :
     {json.dumps(candidates, ensure_ascii=False, indent=2)}
     """
@@ -927,80 +1070,150 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
             temperature=0,
             response_format={"type": "json_object"}
         )
-        _dbg("geo.ai_validate.exit", raw=response.choices[0].message.content[:400])
+        raw_response = response.choices[0].message.content
+        _dbg("geo.ai_validate.exit", raw=raw_response[:400])
 
-        return json.loads(response.choices[0].message.content)
+        result = json.loads(raw_response)
+
+        # NORMALISATION CRITIQUE : L'IA peut retourner "04112" mais la base a "4112"
+        if result and result.get("selected_id"):
+            original_id = result["selected_id"]
+            normalized_id = normalize_geo_id(original_id, candidates)
+
+            if normalized_id and normalized_id != original_id:
+                _dbg("geo.ai_validate.normalized", original=original_id, normalized=normalized_id)
+                result["selected_id"] = normalized_id
+            elif not normalized_id and candidates:
+                # Fallback : prendre le premier candidat si l'ID IA ne matche rien
+                fallback_id = str(candidates[0].get('ID', ''))
+                _dbg("geo.ai_validate.fallback", original=original_id, fallback=fallback_id)
+                result["selected_id"] = fallback_id
+
+        return result
     except Exception as e:
+        _dbg("geo.ai_validate.error", error=str(e))
         return None
 
 def analyze_territorial_scope(con, rewritten_prompt):
-    # 1. Extraction (inchangé)
+    """
+    Analyse le prompt pour extraire et résoudre les territoires mentionnés.
+    Retourne un contexte géographique complet avec IDs et noms.
+    """
+    # 1. Extraction des lieux via IA
     try:
         extraction = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "Extrais les lieux géographiques exacts. JSON: {\"lieux\": [\"Lieu 1\", \"Lieu 2\"]}"},
+                {"role": "system", "content": "Extrais les lieux géographiques exacts mentionnés. JSON: {\"lieux\": [\"Lieu 1\", \"Lieu 2\"]}"},
                 {"role": "user", "content": rewritten_prompt}
             ],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            timeout=30
         )
         lieux_cites = json.loads(extraction.choices[0].message.content).get("lieux", [])
-    except: return None
+        _dbg("geo.analyze.extraction", lieux=lieux_cites)
+    except Exception as e:
+        _dbg("geo.analyze.extraction_error", error=str(e))
+        return None
 
-    if not lieux_cites: return None
-    
-    # --- CORRECTION : BOUCLE SUR TOUS LES LIEUX ---
+    if not lieux_cites:
+        return None
+
+    # 2. Résolution de chaque lieu
     found_ids = []
     target_name = None
     target_id = None
     debug_info = []
-
-    # On considère le premier cité comme le "Sujet Principal" pour le titre
     first_pass = True
 
     for lieu in lieux_cites:
-        # Recherche large pour CE lieu
-        candidates = get_broad_candidates(con, lieu)
-        
-        # Validation IA pour CE lieu
-        ai_decision = ai_validate_territory(client, MODEL_NAME, lieu, candidates, full_sentence_context=rewritten_prompt)
-        
-        if ai_decision and ai_decision.get("selected_id"):
-             sel_id = ai_decision["selected_id"]
-             # On retrouve le nom officiel
-             winner = next((c for c in candidates if str(c['ID']).lstrip('0') == str(sel_id).lstrip('0')), None)
-             
-             if winner:
-                 found_ids.append(str(winner['ID']))
-                 debug_info.append({"Recherche": lieu, "Trouvé": winner['NOM_COUV'], "ID": winner['ID']})
-                 
-                 # Si c'est le premier (Grande-Synthe), on garde ses infos comme "Target"
-                 if first_pass:
-                     target_id = str(winner['ID'])
-                     target_name = winner['NOM_COUV']
-                     # On ajoute aussi ses parents (EPCI, Dept) pour le contexte global
-                     comps = [str(winner[c]) for c in ['COMP1', 'COMP2', 'COMP3'] if winner[c]]
-                     found_ids.extend(comps)
-                     first_pass = False
+        try:
+            # Recherche large pour CE lieu
+            candidates = get_broad_candidates(con, lieu)
 
-    # Si on n'a rien trouvé du tout
-    if not found_ids: return None
+            if not candidates:
+                _dbg("geo.analyze.no_candidates", lieu=lieu)
+                debug_info.append({"Recherche": lieu, "Trouvé": "Aucun candidat", "ID": None})
+                continue
 
-    # On ajoute toujours France pour référence
+            # Validation IA pour CE lieu
+            ai_decision = ai_validate_territory(client, MODEL_NAME, lieu, candidates, full_sentence_context=rewritten_prompt)
+
+            if ai_decision and ai_decision.get("selected_id"):
+                sel_id = str(ai_decision["selected_id"])
+
+                # Recherche du candidat correspondant (avec plusieurs stratégies de matching)
+                winner = None
+
+                # Stratégie 1: Match exact
+                winner = next((c for c in candidates if str(c['ID']) == sel_id), None)
+
+                # Stratégie 2: Match sans zéro initial
+                if not winner:
+                    winner = next((c for c in candidates if str(c['ID']).lstrip('0') == sel_id.lstrip('0')), None)
+
+                # Stratégie 3: Match en ignorant préfixe D/R
+                if not winner:
+                    sel_id_clean = sel_id.replace('D', '').replace('R', '').lstrip('0')
+                    for c in candidates:
+                        cid_clean = str(c['ID']).replace('D', '').replace('R', '').lstrip('0')
+                        if cid_clean == sel_id_clean:
+                            winner = c
+                            break
+
+                # Stratégie 4: Fallback sur le premier candidat si aucun match
+                if not winner and candidates:
+                    winner = candidates[0]
+                    _dbg("geo.analyze.fallback_first", lieu=lieu, fallback_id=winner['ID'])
+
+                if winner:
+                    winner_id = str(winner['ID'])
+                    found_ids.append(winner_id)
+                    debug_info.append({"Recherche": lieu, "Trouvé": winner['NOM_COUV'], "ID": winner_id})
+
+                    # Premier lieu = cible principale
+                    if first_pass:
+                        target_id = winner_id
+                        target_name = winner['NOM_COUV']
+                        # Ajouter les parents (EPCI, Dept, Région) pour comparaison
+                        for comp_key in ['COMP1', 'COMP2', 'COMP3']:
+                            comp_val = winner.get(comp_key)
+                            if comp_val and str(comp_val).lower() not in ['none', 'nan', 'null', '']:
+                                found_ids.append(str(comp_val))
+                        first_pass = False
+            else:
+                # Pas de décision IA ou ambiguïté
+                _dbg("geo.analyze.no_decision", lieu=lieu, ai_response=ai_decision)
+                debug_info.append({"Recherche": lieu, "Trouvé": "Non résolu", "ID": None})
+
+        except Exception as e_lieu:
+            _dbg("geo.analyze.lieu_error", lieu=lieu, error=str(e_lieu))
+            debug_info.append({"Recherche": lieu, "Trouvé": f"Erreur: {e_lieu}", "ID": None})
+            continue
+
+    # 3. Finalisation
+    if not found_ids:
+        _dbg("geo.analyze.no_results")
+        return None
+
+    # Ajouter France pour référence nationale
     found_ids.append('FR')
-    
-    # Dédoublonnage propre
-    unique_ids = list(dict.fromkeys([x for x in found_ids if x]))
 
-    return {
+    # Dédoublonnage en préservant l'ordre
+    unique_ids = list(dict.fromkeys([x for x in found_ids if x and str(x).lower() not in ['none', 'nan', 'null', '']]))
+
+    result = {
         "target_name": target_name or lieux_cites[0],
         "target_id": target_id or unique_ids[0],
-        "all_ids": unique_ids, # <--- Contient maintenant Grande-Synthe, Dunkerque ET Coudekerque
-        "parent_clause": "", 
+        "all_ids": unique_ids,
+        "parent_clause": "",
         "display_context": ", ".join(lieux_cites),
         "debug_search": debug_info,
         "lieux_cites": lieux_cites
     }
+
+    _dbg("geo.analyze.result", target=result["target_name"], ids_count=len(unique_ids))
+    return result
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
@@ -1046,36 +1259,73 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         # A. La Cible est TOUJOURS le premier élément de la liste 'candidates'
         # (car analyze_territorial_scope met toujours le target_id en premier)
         target_id = candidates[0]
-        
+
         # B. Les Comparateurs sont le reste de la liste
-        comparators = candidates[1:] 
-        
+        comparators = candidates[1:]
+
         # C. On ne trie QUE les comparateurs
         if con and comparators:
             try:
                 valid_tables = st.session_state.get("valid_tables_list", [])
-                evo_table = next((t for t in valid_tables if "EVO" in t), None)
-                
-                if evo_table:
-                    # Recherche colonne POP (inchangée)
-                    evo_cols = [c[0].upper() for c in con.execute(f"DESCRIBE \"{evo_table}\"").fetchall()]
-                    pop_candidates = [c for c in evo_cols if "POP" in c and any(char.isdigit() for char in c)]
-                    pop_col = sorted(pop_candidates)[-1] if pop_candidates else None
-                    if not pop_col: pop_col = next((c for c in evo_cols if c in ["POP", "PMUN", "PTOT", "POPULATION"]), None)
+                db_schemas = st.session_state.get("db_schemas", {})
 
-                    if pop_col:
-                        ids_sql = ", ".join([f"'{i}'" for i in comparators])
-                        # Tri Ascendant des comparateurs uniquement
-                        q_sort = f"""
-                            SELECT t.ID 
-                            FROM territoires t
-                            LEFT JOIN "{evo_table}" e ON t.ID = e.ID
-                            WHERE t.ID IN ({ids_sql}) 
-                            ORDER BY TRY_CAST(e."{pop_col}" AS DOUBLE) ASC
-                        """
-                        # On récupère la liste triée
-                        comparators = [str(x[0]) for x in con.execute(q_sort).fetchall()]
-                        _dbg("plot.sort", status="success", col=pop_col)
+                # Recherche de la table contenant la population (EVO prioritaire, puis SUP)
+                pop_table = None
+                pop_col = None
+
+                # Liste des tables candidates pour la population
+                candidate_tables = [t for t in valid_tables if any(x in t for x in ["EVO", "SUP", "POP"])]
+
+                for table_name in candidate_tables:
+                    if table_name in db_schemas:
+                        cols = db_schemas[table_name]
+                    else:
+                        try:
+                            cols = [c[0] for c in con.execute(f"DESCRIBE \"{table_name}\"").fetchall()]
+                        except:
+                            continue
+
+                    # Chercher une colonne population récente
+                    cols_upper = [c.upper() for c in cols]
+                    pop_candidates = [c for c, cu in zip(cols, cols_upper)
+                                      if ("POP" in cu or "PMUN" in cu or "PTOT" in cu)
+                                      and any(char.isdigit() for char in c)]
+
+                    if pop_candidates:
+                        # Trier par année décroissante (P22 > P20 > P16)
+                        pop_candidates_sorted = sorted(pop_candidates, key=lambda x: ''.join(filter(str.isdigit, x)), reverse=True)
+                        pop_col = pop_candidates_sorted[0]
+                        pop_table = table_name
+                        break
+
+                    # Fallback sur colonne générique
+                    if not pop_col:
+                        for c, cu in zip(cols, cols_upper):
+                            if cu in ["POP", "PMUN", "PTOT", "POPULATION", "POP_MUNI", "POP_MOCO_40"]:
+                                pop_col = c
+                                pop_table = table_name
+                                break
+                        if pop_col:
+                            break
+
+                if pop_table and pop_col:
+                    ids_sql = ", ".join([f"'{i}'" for i in comparators])
+                    q_sort = f"""
+                        SELECT t.ID
+                        FROM territoires t
+                        LEFT JOIN "{pop_table}" e ON t.ID = e.ID
+                        WHERE t.ID IN ({ids_sql})
+                        ORDER BY TRY_CAST(e."{pop_col}" AS DOUBLE) ASC
+                    """
+                    try:
+                        sorted_result = con.execute(q_sort).fetchall()
+                        if sorted_result:
+                            comparators = [str(x[0]) for x in sorted_result]
+                            _dbg("plot.sort", status="success", table=pop_table, col=pop_col)
+                    except Exception as e_sort:
+                        _dbg("plot.sort", status="query_failed", error=str(e_sort))
+                else:
+                    _dbg("plot.sort", status="failed", reason="Colonne population introuvable")
             except Exception as e:
                 _dbg("plot.sort", status="error", msg=str(e))
 
@@ -1656,7 +1906,30 @@ if prompt_to_process:
                     })
 
             except Exception as e:
-                st.error(f"Erreur : {e}")
-                print("[TERRIBOT][FATAL] Exception:", repr(e))
                 import traceback
-                print(traceback.format_exc())
+                error_trace = traceback.format_exc()
+                error_msg = str(e)
+
+                # Log détaillé pour debug
+                print("[TERRIBOT][FATAL] Exception:", repr(e))
+                print(error_trace)
+                _dbg("pipeline.error", error_type=type(e).__name__, error_msg=error_msg[:200])
+
+                # Message utilisateur adapté selon le type d'erreur
+                if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                    st.error("⏱️ La requête a pris trop de temps. Réessayez avec une question plus simple.")
+                elif "rate limit" in error_msg.lower() or "429" in error_msg:
+                    st.error("🚦 Trop de requêtes. Attendez quelques secondes et réessayez.")
+                elif "api" in error_msg.lower() or "openai" in error_msg.lower():
+                    st.error("🔌 Erreur de connexion à l'IA. Vérifiez votre clé API.")
+                elif "sql" in error_msg.lower() or "duckdb" in error_msg.lower():
+                    st.error("📊 Erreur lors de la récupération des données. La variable demandée n'existe peut-être pas.")
+                else:
+                    st.error(f"❌ Une erreur s'est produite : {error_msg[:150]}")
+
+                # Sauvegarde de l'erreur dans l'historique pour debug
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": "⚠️ Je n'ai pas pu traiter votre demande. Essayez de reformuler votre question.",
+                    "debug_info": {"error": error_msg, "trace": error_trace[-500:]}
+                })
