@@ -1853,7 +1853,11 @@ if prompt_to_process:
                     status_container.update(label="🔢 Je récupère les données chiffrées...")
 
                     # Extraction des schémas complets des tables utilisées
-                    table_schemas = extract_table_schemas_from_context(glossaire_context, con)
+                    try:
+                        table_schemas = extract_table_schemas_from_context(glossaire_context, con)
+                    except Exception as e:
+                        print(f"[TERRIBOT][SCHEMA] ⚠️ Erreur extraction schémas: {e}")
+                        table_schemas = ""  # Fallback: continuer sans les schémas complets
 
                     system_prompt = f"""
                     Tu es Terribot.
@@ -1947,16 +1951,16 @@ if prompt_to_process:
                 # A. Affichage du Graphique (une seule fois ici via le placeholder)
                 if not df.empty:
                     with chart_placeholder:
-                # On récupère les IDs finaux depuis le debug_container
+                        # On récupère les IDs finaux depuis le debug_container
                         current_ids = debug_container.get("final_ids", [])
-                        
                         auto_plot_data(df, current_ids, config=chart_config, con=con)
-                
-                with data_placeholder:
+
+                    # B. Affichage des données brutes (seulement si df n'est pas vide)
+                    with data_placeholder:
                         with st.expander("📊 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
-                
-                # B. Streaming du Texte
+
+                # C. Streaming du Texte
                 if not df.empty:
                     print("[TERRIBOT][PIPE] 📝 Streaming response start")
                     _dbg("pipeline.stream.inputs", df_rows=len(df), df_cols=list(df.columns), formats=chart_config.get("formats"))
