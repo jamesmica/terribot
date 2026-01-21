@@ -617,6 +617,7 @@ def style_df(df: pd.DataFrame, specs: dict):
         dec = int(s.get("decimals", 1)) # Par défaut 1 décimale
         
         # --- RÈGLE INTELLIGENTE : 0 décimale si tout est > 100 ---
+        valid_vals = pd.Series(dtype="float64")
         try:
             # On regarde les valeurs non nulles
             valid_vals = df_display[col].dropna().abs()
@@ -629,6 +630,20 @@ def style_df(df: pd.DataFrame, specs: dict):
                     dec = 0
         except: pass
         # ---------------------------------------------------------
+        # Heuristique: inférer les % si la colonne le suggère
+        if kind == "number":
+            try:
+                name_upper = col.upper()
+                percent_hint = any(key in name_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%"])
+                if not valid_vals.empty:
+                    max_val = valid_vals.max()
+                    min_val = valid_vals.min()
+                    if percent_hint and max_val <= 100:
+                        kind = "percent"
+                    elif 0 <= min_val and max_val <= 1.5:
+                        kind = "percent"
+            except Exception:
+                pass
 
         if kind == "currency":
             format_dict[col] = lambda x, d=dec: fr_num(x, d, "€")
@@ -908,7 +923,16 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
     from difflib import get_close_matches
 
     valid_tables = st.session_state.get("valid_tables_list", [])
+    if not valid_tables:
+        try:
+            valid_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+            _dbg("rag.hybrid.tables_fallback", count=len(valid_tables))
+        except Exception as e_tables:
+            _dbg("rag.hybrid.tables_fallback_error", error=str(e_tables))
+            valid_tables = []
     db_schemas = st.session_state.get("db_schemas", {}) # <--- Récupération des schémas
+
+    normalized_table_map = {standardize_name(t): t for t in valid_tables}
 
     result_context = ""
     for var, (score, row) in sorted_vars:
@@ -921,10 +945,11 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
             continue
 
         candidate_name = re.sub(r'[^A-Z0-9]', '_', raw_source)
+        candidate_key = standardize_name(candidate_name)
         final_table_name = "UNKNOWN"
-        
-        if candidate_name in valid_tables:
-            final_table_name = candidate_name
+
+        if candidate_key in normalized_table_map:
+            final_table_name = normalized_table_map[candidate_key]
         else:
             matches = get_close_matches(candidate_name, valid_tables, n=1, cutoff=0.4)
             if matches: final_table_name = matches[0]
@@ -1674,7 +1699,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     vega_config = {
         "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
         "axis": {"labelFontSize": 11, "titleFontSize": 12},
-        "legend": {"labelFontSize": 11, "titleFontSize": 12, "orient": "bottom"}
+        "legend": {"labelFontSize": 11, "titleFontSize": 12, "orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
     }
     color_domain = sorted_labels
     if is_multi_metric and is_stacked:
@@ -1702,11 +1727,11 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         chart = {"config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
     else:
         if is_multi_metric and is_stacked:
-            y_stack = "normalize" if is_percent else True
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale, "stack": y_stack},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
                 "color": {"field": "Indicateur", "type": "nominal", "title": "Variable", "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}},
+                "stack": "normalize" if is_percent else True,
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
