@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18 - 21 janvier 2026")
+    st.caption("v0.19 - 21 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1673,6 +1673,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
              df_melted["Valeur"] = df_melted["Valeur"] / 100.0
 
     # 8. VEGA
+    y_scale = None
     is_multi_metric = len(new_selected_metrics) > 1
     is_stacked = False
     normalize_ratio = False
