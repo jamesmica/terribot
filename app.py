@@ -16,80 +16,10 @@ import sys
 import datetime
 import os
 import difflib
-import atexit
-import base64
-import requests
 
 # Création du dossier de logs si inexistant
 if not os.path.exists("logs"):
     os.makedirs("logs")
-
-def push_log_to_github(log_file_path, log_filename):
-    """
-    Pousse un fichier de log vers GitHub via l'API GitHub.
-
-    Args:
-        log_file_path: Chemin local du fichier de log
-        log_filename: Nom du fichier sur GitHub (ex: session_2026-01-21_12-00-00.txt)
-    """
-    try:
-        # Récupérer le token GitHub depuis les secrets Streamlit
-        # Format attendu dans .streamlit/secrets.toml:
-        # GITHUB_TOKEN = "ghp_xxxxx"
-        # GITHUB_REPO = "username/repo"
-
-        if not hasattr(st, 'secrets'):
-            print("[TERRIBOT][GITHUB] ⚠️ Streamlit secrets non disponibles, log non poussé vers GitHub")
-            return
-
-        github_token = st.secrets.get("GITHUB_TOKEN", "")
-        github_repo = st.secrets.get("GITHUB_REPO", "")
-
-        if not github_token or not github_repo:
-            print("[TERRIBOT][GITHUB] ⚠️ GITHUB_TOKEN ou GITHUB_REPO manquant dans secrets, log non poussé")
-            return
-
-        # Lire le contenu du fichier de log
-        with open(log_file_path, 'r', encoding='utf-8') as f:
-            log_content = f.read()
-
-        # Encoder le contenu en base64 (requis par l'API GitHub)
-        content_base64 = base64.b64encode(log_content.encode('utf-8')).decode('utf-8')
-
-        # Construire l'URL de l'API GitHub
-        api_url = f"https://api.github.com/repos/{github_repo}/contents/logs/{log_filename}"
-
-        # Préparer les headers
-        headers = {
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-
-        # Vérifier si le fichier existe déjà (pour récupérer le SHA si besoin)
-        response = requests.get(api_url, headers=headers)
-
-        # Préparer le payload
-        payload = {
-            "message": f"Add log file {log_filename}",
-            "content": content_base64,
-            "branch": "main"  # ou la branche que vous utilisez
-        }
-
-        # Si le fichier existe déjà, ajouter le SHA pour la mise à jour
-        if response.status_code == 200:
-            payload["sha"] = response.json()["sha"]
-            payload["message"] = f"Update log file {log_filename}"
-
-        # Créer ou mettre à jour le fichier sur GitHub
-        response = requests.put(api_url, headers=headers, json=payload)
-
-        if response.status_code in [200, 201]:
-            print(f"[TERRIBOT][GITHUB] ✅ Log poussé vers GitHub: logs/{log_filename}")
-        else:
-            print(f"[TERRIBOT][GITHUB] ❌ Erreur lors du push: {response.status_code} - {response.text}")
-
-    except Exception as e:
-        print(f"[TERRIBOT][GITHUB] ❌ Exception lors du push vers GitHub: {e}")
 
 # Classe qui dédouble la sortie (Terminal + Fichier)
 class DualLogger(object):
@@ -97,9 +27,7 @@ class DualLogger(object):
         self.terminal = sys.stdout
         # Nom de fichier unique basé sur l'heure de lancement
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.log_filename = f"session_{timestamp}.txt"
-        self.log_file_path = f"logs/{self.log_filename}"
-        self.log = open(self.log_file_path, "a", encoding="utf-8")
+        self.log = open(f"logs/session_{timestamp}.txt", "a", encoding="utf-8")
 
     def write(self, message):
         self.terminal.write(message)
@@ -111,24 +39,10 @@ class DualLogger(object):
         self.terminal.flush()
         self.log.flush()
 
-    def close_and_push(self):
-        """Ferme le fichier de log et le pousse vers GitHub"""
-        try:
-            self.log.flush()
-            self.log.close()
-            print(f"[TERRIBOT] 📤 Envoi du log vers GitHub...")
-            push_log_to_github(self.log_file_path, self.log_filename)
-        except Exception as e:
-            print(f"[TERRIBOT] ❌ Erreur lors de la fermeture/push du log: {e}")
-
 # On redirige tout print() vers notre Logger
-dual_logger = DualLogger()
-sys.stdout = dual_logger
+sys.stdout = DualLogger()
 
-# Enregistrer la fonction de fermeture/push pour qu'elle s'exécute à la fin
-atexit.register(dual_logger.close_and_push)
-
-print(f"[TERRIBOT] 📝 Démarrage de l'enregistrement des logs (local + GitHub)")
+print(f"[TERRIBOT] 📝 Démarrage de l'enregistrement des logs")
 
 def log_code_changes():
     """

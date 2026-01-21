@@ -3,4 +3,3 @@ openai
 duckdb
 pandas
 numpy
-requests
