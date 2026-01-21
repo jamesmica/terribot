@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.19 - 21 janvier 2026")
+    st.caption("v0.20 - 21 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1699,7 +1699,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             y_format = ".1%"
             title_suffix = " (ratio % du max)"
 
-    if is_multi_metric and not date_col:
+    if is_multi_metric and not date_col and not normalize_ratio:
         try:
             sums = df_melted.groupby(label_col)["Valeur"].sum().abs()
             if is_percent and not sums.empty:
