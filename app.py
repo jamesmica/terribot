@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18.4 - 22 janvier 2026")
+    st.caption("v0.18.5 - 22 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1651,10 +1651,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     original_metric = selected_metrics[0]
     spec = format_specs.get(original_metric, {})
     title_y = spec.get("title", spec.get("label", "Valeur"))
-    
-    y_format = ",.1f"
+
+    y_format = ",.0f"  # Pas de décimales par défaut
     is_percent = spec.get("kind") == "percent"
-    if is_percent: y_format = ".1%"
+    if is_percent: y_format = ".0%"  # Pourcentages sans décimales
     elif spec.get("kind") == "currency": y_format = ",.0f"
 
     # 6. MELT
@@ -1676,6 +1676,26 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         df_melted = df_melted[df_melted[label_col].isin(
             df_plot[df_plot[id_col].isin(keep_ids)][label_col].unique()
         )]
+
+        # Normaliser la courbe France pour comparaison avec le territoire cible
+        territories_in_data = df_melted[label_col].unique()
+        if len(territories_in_data) == 2:
+            # Identifier le territoire cible et la France
+            france_label = [lbl for lbl in territories_in_data if "France" in lbl or "FR" in lbl]
+            target_label = [lbl for lbl in territories_in_data if lbl not in france_label]
+
+            if france_label and target_label:
+                france_label = france_label[0]
+                target_label = target_label[0]
+
+                # Calculer le ratio moyen pour normaliser
+                target_mean = df_melted[df_melted[label_col] == target_label]["Valeur"].mean()
+                france_mean = df_melted[df_melted[label_col] == france_label]["Valeur"].mean()
+
+                if france_mean > 0:
+                    ratio = target_mean / france_mean
+                    # Appliquer le ratio aux valeurs de France pour mise à l'échelle
+                    df_melted.loc[df_melted[label_col] == france_label, "Valeur"] *= ratio
 
     # 7. HEURISTIQUE DE CORRECTION DU % (1600% -> 16%)
     if is_percent:
@@ -1705,7 +1725,13 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     vega_config = {
         "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
         "axis": {"labelFontSize": 11, "titleFontSize": 12},
-        "legend": {"labelFontSize": 11, "titleFontSize": 12, "orient": "bottom"}
+        "legend": {
+            "labelFontSize": 11,
+            "titleFontSize": 12,
+            "orient": "bottom",
+            "layout": {"bottom": {"anchor": "middle"}}
+        },
+        "background": "white"
     }
     color_domain = sorted_labels
     if is_multi_metric and is_stacked:
@@ -1735,7 +1761,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             else:
                 color_map_line.append("#1DB5C5")  # Bleu turquoise pour cible
 
-        chart_encoding = {
+        # Créer deux layers: un pour cible (avec points) et un pour France (sans points)
+        base_encoding = {
             "x": {"field": date_col, "type": "ordinal", "title": "Année"},
             "y": y_axis_def,
             "color": {
@@ -1743,12 +1770,35 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
                 "type": "nominal",
                 "scale": {"domain": labels_in_data, "range": color_map_line},
                 "title": None,
-                "legend": {"orient": "bottom"}
-            },
-            "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
+                "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
+            }
         }
-        if is_multi_metric: chart_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
-        chart = {"config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
+        if is_multi_metric: base_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
+
+        # Layer pour le territoire cible (avec points)
+        target_label = [lbl for lbl in labels_in_data if "France" not in lbl and "FR" not in lbl]
+        france_label = [lbl for lbl in labels_in_data if "France" in lbl or "FR" in lbl]
+
+        layers = []
+        if target_label:
+            target_encoding = base_encoding.copy()
+            target_encoding["tooltip"] = [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
+            layers.append({
+                "transform": [{"filter": f"datum['{label_col}'] == '{target_label[0]}'"}],
+                "mark": {"type": "line", "point": True, "tooltip": True},
+                "encoding": target_encoding
+            })
+
+        if france_label:
+            france_encoding = base_encoding.copy()
+            france_encoding["tooltip"] = [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
+            layers.append({
+                "transform": [{"filter": f"datum['{label_col}'] == '{france_label[0]}'"}],
+                "mark": {"type": "line", "point": False, "tooltip": True},
+                "encoding": france_encoding
+            })
+
+        chart = {"config": vega_config, "layer": layers}
     else:
         if is_multi_metric and is_stacked:
             y_stack = "normalize" if is_percent else True
@@ -1757,27 +1807,33 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
                 "y": y_axis_def,
-                "color": {"field": "Indicateur", "type": "nominal", "title": None, "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}, "legend": {"orient": "bottom"}},
-                "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
+                "color": {"field": "Indicateur", "type": "nominal", "title": None, "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}, "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}},
+                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
             if y_scale: y_axis_def["scale"] = y_scale
+            # Ajouter layout à color_def pour ce cas
+            color_def_multi = color_def.copy()
+            color_def_multi["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
             chart_encoding = {
                 "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
                 "y": y_axis_def,
-                "color": color_def,
+                "color": color_def_multi,
                 "xOffset": {"field": label_col},
-                "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
+                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         else:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
             if y_scale: y_axis_def["scale"] = y_scale
+            # Ajouter layout à color_def pour ce cas
+            color_def_simple = color_def.copy()
+            color_def_simple["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": -45}, "title": None},
                 "y": y_axis_def,
-                "color": color_def,
-                "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
+                "color": color_def_simple,
+                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Valeur", "format": y_format}]
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
