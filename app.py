@@ -2238,28 +2238,6 @@ for msg in st.session_state.messages:
         # 2. DEBUG COMPLET (Reconstitué)
         # On cherche la liste d'étapes "steps" qu'on a sauvegardée
         debug_steps = msg.get("debug_info", {}).get("steps", [])
-        
-        if debug_steps:
-            with st.expander("🧠 Trace de raisonnement (Terminé)", expanded=False):
-                for step in debug_steps:
-                    col_icon, col_txt = st.columns([1, 15])
-                    with col_icon: st.write(step['icon'])
-                    with col_txt:
-                        st.markdown(f"**{step['label']}**")
-                        if step['type'] == 'text':
-                            st.caption(step['content'])
-                        elif step['type'] == 'code':
-                            st.code(step['content'], language="sql")
-                        elif step['type'] == 'json':
-                            st.json(step['content'])
-                        elif step['type'] == 'table':
-                            st.dataframe(pd.DataFrame(step['content']), hide_index=True)
-                    st.divider()
-        
-        # Fallback pour les anciens messages (compatibilité)
-        elif "debug_info" in msg and msg["debug_info"]:
-             with st.expander("🔧 Détails techniques (Ancien)", expanded=False):
-                 st.write(msg["debug_info"])
 
         # 3. GRAPHIQUE & DATA (Reste identique)
         if "data" in msg and not msg["data"].empty:
