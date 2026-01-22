@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18 - 21 janvier 2026")
+    st.caption("v0.18 - 22 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1727,7 +1727,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
         }
         if is_multi_metric: chart_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
-        chart = {"config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
+        chart = {"width": "container", "config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
     else:
         if is_multi_metric and is_stacked:
             y_stack = "normalize" if is_percent else True
@@ -1752,15 +1752,15 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
                 "color": color_def,
                 "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
             }
-        chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
+        chart = {"width": "container", "config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
     chart["title"] = {
         "text": f"{title_y}",
-        "anchor": "middle", 
+        "anchor": "middle",
         "fontSize": 16,
         "offset": 10
     }
-    st.vega_lite_chart(df_melted, chart, width='stretch')
+    st.vega_lite_chart(df_melted, chart, use_container_width=True)
 
 
 # --- 9. UI PRINCIPALE ---
