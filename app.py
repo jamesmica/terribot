@@ -1486,8 +1486,12 @@ def analyze_territorial_scope(con, rewritten_prompt):
                         # Ajouter les parents (EPCI, Dept, Région) pour comparaison
                         for comp_key in ['COMP1', 'COMP2', 'COMP3']:
                             comp_val = winner.get(comp_key)
-                            if comp_val and str(comp_val).lower() not in ['none', 'nan', 'null', '']:
-                                found_ids.append(str(comp_val))
+                            # Vérifier que la valeur n'est pas None, vide ou NaN
+                            if comp_val is not None and comp_val != '' and not pd.isna(comp_val):
+                                comp_val_str = str(comp_val).strip()
+                                if comp_val_str and comp_val_str.lower() not in ['none', 'nan', 'null']:
+                                    found_ids.append(comp_val_str)
+                                    _dbg("geo.analyze.parent_added", comp_key=comp_key, comp_val=comp_val_str)
                         first_pass = False
             else:
                 # Pas de décision IA ou ambiguïté
@@ -1520,7 +1524,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
         "lieux_cites": lieux_cites
     }
 
-    _dbg("geo.analyze.result", target=result["target_name"], ids_count=len(unique_ids))
+    _dbg("geo.analyze.result", target=result["target_name"], ids_count=len(unique_ids), all_ids=unique_ids)
     return result
 
 # --- 8.1. PALETTES & CARTES EPCI (VEGA LITE) ---
@@ -1561,28 +1565,44 @@ def render_epci_choropleth(
         df_rows=len(df),
         df_ids=df["ID"].astype(str).unique().tolist()[:10] if "ID" in df.columns else []
     )
-    try:
-        epci_id = con.execute(
-            "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
-            [str(commune_id)]
+
+    # Détecter si l'ID passé est une commune ou un EPCI
+    commune_id_str = str(commune_id)
+    is_epci = commune_id_str.isdigit() and len(commune_id_str) == 9
+
+    if is_epci:
+        # L'ID est déjà un EPCI, on l'utilise directement
+        epci_id = commune_id_str
+        epci_name_row = con.execute(
+            "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
+            [epci_id]
         ).fetchone()
-    except Exception as e:
-        _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
-        st.warning("Impossible de récupérer l'EPCI pour cette commune.")
-        return
+        epci_name = epci_name_row[0] if epci_name_row else commune_name
+        _dbg("map.epci.direct", epci_id=epci_id, epci_name=epci_name)
+    else:
+        # L'ID est une commune, on récupère son EPCI
+        try:
+            epci_id = con.execute(
+                "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
+                [commune_id_str]
+            ).fetchone()
+        except Exception as e:
+            _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
+            st.warning("Impossible de récupérer l'EPCI pour cette commune.")
+            return
 
-    if not epci_id or not epci_id[0]:
-        _dbg("map.epci.missing", commune_id=commune_id)
-        st.info("Aucun EPCI disponible pour cette commune.")
-        return
+        if not epci_id or not epci_id[0]:
+            _dbg("map.epci.missing", commune_id=commune_id)
+            st.info("Aucun EPCI disponible pour cette commune.")
+            return
 
-    epci_id = str(epci_id[0])
-    _dbg("map.epci.found", commune_id=commune_id, epci_id=epci_id)
-    epci_name_row = con.execute(
-        "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
-        [epci_id]
-    ).fetchone()
-    epci_name = epci_name_row[0] if epci_name_row else epci_id
+        epci_id = str(epci_id[0])
+        _dbg("map.epci.found", commune_id=commune_id, epci_id=epci_id)
+        epci_name_row = con.execute(
+            "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
+            [epci_id]
+        ).fetchone()
+        epci_name = epci_name_row[0] if epci_name_row else epci_id
 
     if metric_col not in df.columns:
         _dbg("map.metric.missing", metric_col=metric_col, df_cols=list(df.columns))
@@ -1736,7 +1756,10 @@ def render_epci_choropleth(
         metric_col=metric_col,
         metric_format=metric_format
     )
-    st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
+    if is_epci:
+        st.caption(f"🗺️ Carte EPCI : **{epci_name}**")
+    else:
+        st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
 
     # Calcul du centre de la carte
     coords = []
@@ -2650,10 +2673,10 @@ if prompt_to_process:
                             metric_kind=metric_kind,
                             metric_label=metric_label
                         )
-                    elif not (target_id.isdigit() and len(target_id) in (4, 5)):
+                    elif not (target_id.isdigit() and len(target_id) in (4, 5, 9)):
                         _dbg(
                             "map.eligibility.blocked",
-                            reason="target_not_commune",
+                            reason="target_not_commune_or_epci",
                             target_id=target_id
                         )
                     elif not metric_col:
@@ -2801,8 +2824,12 @@ if last_data_message:
             if col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button"):
                 _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
 
-                if target_id and target_id.isdigit() and len(target_id) in (4, 5):
-                    _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric)
+                # Vérifier si c'est une commune (4-5 chiffres) ou un EPCI (9 chiffres)
+                is_commune = target_id and target_id.isdigit() and len(target_id) in (4, 5)
+                is_epci = target_id and target_id.isdigit() and len(target_id) == 9
+
+                if is_commune or is_epci:
+                    _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric, is_epci=is_epci)
 
                     # Récupérer la requête SQL depuis debug_info si disponible
                     sql_query = debug_info.get("sql_query")
@@ -2818,6 +2845,6 @@ if last_data_message:
                     )
                     _dbg("button.persistent_map.render_done")
                 else:
-                    st.info("La carte est disponible uniquement pour une commune cible.")
+                    st.info("La carte est disponible pour une commune ou un EPCI.")
 else:
     _dbg("ui.persistent_buttons.no_data")
