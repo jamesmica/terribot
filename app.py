@@ -1805,8 +1805,13 @@ def render_epci_choropleth(
         height=map_spec.get("height"),
         color_scale=map_spec.get("encoding", {}).get("color", {}).get("scale", {})
     )
+
+    # Conteneur visible pour la carte
+    st.markdown("---")
+    st.markdown(f"### 🗺️ Carte choroplèthe : {metric_label}")
     st.info(f"🔍 **[MAP LOG]** Appel st.vega_lite_chart() maintenant...")
-    st.vega_lite_chart(map_spec, use_container_width=False)
+    st.vega_lite_chart(map_spec, use_container_width=True)
+    st.markdown("---")
     st.success(f"🔍 **[MAP LOG]** ✅ Carte rendue avec succès!")
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
