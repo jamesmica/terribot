@@ -1840,7 +1840,7 @@ def render_epci_choropleth(
         if code and value is not None:
             choropleth_data[code] = value
 
-    # Ajout de la couche choroplèthe
+    # Ajout de la couche choroplèthe (sans légende automatique)
     folium.Choropleth(
         geo_data=geojson,
         name="choropleth",
@@ -1850,7 +1850,7 @@ def render_epci_choropleth(
         fill_color="YlOrRd",
         fill_opacity=0.7,
         line_opacity=0.5,
-        legend_name=metric_label,
+        legend_name=None,  # Désactiver la légende automatique
     ).add_to(m)
 
     # Fonction de formatage français
@@ -1895,6 +1895,37 @@ def render_epci_choropleth(
                 style_function=lambda x: {"fillOpacity": 0, "weight": 0},
                 tooltip=folium.Tooltip(tooltip_text)
             ).add_to(m)
+
+    # Ajout d'une légende personnalisée avec formatage correct
+    if valid_values:
+        min_val = min(valid_values)
+        max_val = max(valid_values)
+
+        # Formater les valeurs min et max
+        if kind == "percent":
+            min_str = fr_num(min_val, decimals=1, suffix="%", factor=percent_factor)
+            max_str = fr_num(max_val, decimals=1, suffix="%", factor=percent_factor)
+        else:
+            min_str = fr_num(min_val, decimals=0)
+            max_str = fr_num(max_val, decimals=0)
+
+        # Créer une légende HTML
+        legend_html = f'''
+        <div style="position: fixed;
+                    bottom: 50px; right: 50px; width: 200px;
+                    background-color: white; border:2px solid grey; z-index:9999;
+                    font-size:11px; padding: 10px; border-radius: 5px;">
+            <p style="margin: 0 0 5px 0; font-weight: bold;">{metric_title}</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>{min_str}</span>
+                <div style="flex: 1; height: 10px; margin: 0 5px;
+                            background: linear-gradient(to right, #ffffcc, #ffeda0, #fed976, #feb24c, #fd8d3c, #fc4e2a, #e31a1c, #b10026);
+                            border: 1px solid #999;"></div>
+                <span>{max_str}</span>
+            </div>
+        </div>
+        '''
+        m.get_root().html.add_child(folium.Element(legend_html))
 
     # Affichage de la carte
     st.markdown("---")
@@ -2044,7 +2075,13 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     # 5. FORMATS & CONFIG
     original_metric = selected_metrics[0]
     spec = format_specs.get(original_metric, {})
-    title_y = spec.get("title", spec.get("label", "Valeur"))
+
+    # Utiliser chart_title si disponible et multi-métrique, sinon le titre de la première métrique
+    has_multiple_metrics = len(selected_metrics) > 1
+    if has_multiple_metrics and config.get("chart_title"):
+        title_y = config.get("chart_title")
+    else:
+        title_y = spec.get("title", spec.get("label", "Valeur"))
 
     y_format = ",.0f"  # Pas de décimales par défaut
     is_percent = spec.get("kind") == "percent"
@@ -2861,55 +2898,56 @@ if last_data_message:
 
     if numeric_candidates:
         with st.chat_message("assistant", avatar="🤖"):
-            # Fonction pour afficher les labels lisibles au lieu des codes
-            def format_metric_label(col):
-                spec = formats.get(col, {})
-                # Préfère le titre complet pour la sélection (plus descriptif)
-                return spec.get("title") or spec.get("label") or col
+            with st.expander("🔧 Explorer d'autres variables", expanded=False):
+                # Fonction pour afficher les labels lisibles au lieu des codes
+                def format_metric_label(col):
+                    spec = formats.get(col, {})
+                    # Préfère le titre complet pour la sélection (plus descriptif)
+                    return spec.get("title") or spec.get("label") or col
 
-            manual_metric = st.selectbox(
-                "Choisir une colonne pour tracer un graphique ou une carte",
-                numeric_candidates,
-                index=0,
-                format_func=format_metric_label,
-                key="persistent_manual_metric_select"
-            )
-            col_left, col_right = st.columns(2)
-            manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
-            manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+                manual_metric = st.selectbox(
+                    "Choisir une variable",
+                    numeric_candidates,
+                    index=0,
+                    format_func=format_metric_label,
+                    key="persistent_manual_metric_select"
+                )
+                col_left, col_right = st.columns(2)
+                manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
+                manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
 
-            # Récupérer les IDs depuis debug_info si disponible
-            debug_info = last_data_message.get("debug_info", {})
-            current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
+                # Récupérer les IDs depuis debug_info si disponible
+                debug_info = last_data_message.get("debug_info", {})
+                current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
 
-            if col_left.button("📊 Tracer le graphique", key="persistent_manual_chart_button"):
-                _dbg("button.persistent_chart.clicked", metric=manual_metric)
-                auto_plot_data(df, current_ids, config=manual_config, con=con)
+                if col_left.button("📊 Tracer le graphique", key="persistent_manual_chart_button"):
+                    _dbg("button.persistent_chart.clicked", metric=manual_metric)
+                    auto_plot_data(df, current_ids, config=manual_config, con=con)
 
-            if col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button"):
-                _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
+                if col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button"):
+                    _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
 
-                # Vérifier si c'est une commune (4-5 chiffres) ou un EPCI (9 chiffres)
-                is_commune = target_id and target_id.isdigit() and len(target_id) in (4, 5)
-                is_epci = target_id and target_id.isdigit() and len(target_id) == 9
+                    # Vérifier si c'est une commune (4-5 chiffres) ou un EPCI (9 chiffres)
+                    is_commune = target_id and target_id.isdigit() and len(target_id) in (4, 5)
+                    is_epci = target_id and target_id.isdigit() and len(target_id) == 9
 
-                if is_commune or is_epci:
-                    _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric, is_epci=is_epci)
+                    if is_commune or is_epci:
+                        _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric, is_epci=is_epci)
 
-                    # Récupérer la requête SQL depuis debug_info si disponible
-                    sql_query = debug_info.get("sql_query")
+                        # Récupérer la requête SQL depuis debug_info si disponible
+                        sql_query = debug_info.get("sql_query")
 
-                    render_epci_choropleth(
-                        con,
-                        df,
-                        target_id,
-                        geo_context.get("target_name", target_id),
-                        manual_metric,
-                        manual_spec,
-                        sql_query=sql_query
-                    )
-                    _dbg("button.persistent_map.render_done")
-                else:
-                    st.info("La carte est disponible pour une commune ou un EPCI.")
+                        render_epci_choropleth(
+                            con,
+                            df,
+                            target_id,
+                            geo_context.get("target_name", target_id),
+                            manual_metric,
+                            manual_spec,
+                            sql_query=sql_query
+                        )
+                        _dbg("button.persistent_map.render_done")
+                    else:
+                        st.info("La carte est disponible pour une commune ou un EPCI.")
 else:
     _dbg("ui.persistent_buttons.no_data")
