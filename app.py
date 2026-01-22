@@ -478,6 +478,13 @@ st.markdown("""
         box-shadow: var(--shadow-soft);
     }
 
+    div[data-testid="stChatInput"] {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-light);
+        border-radius: 10px;
+        box-shadow: var(--shadow-soft);
+    }
+
     textarea[data-testid="stChatInputTextArea"] {
         color: var(--text-primary);
         background-color: var(--bg-secondary);
@@ -497,12 +504,46 @@ st.markdown("""
         box-shadow: var(--shadow-subtle);
     }
 
+    div[data-testid="stDataFrame"] {
+        background-color: var(--bg-secondary);
+        color: var(--text-primary);
+    }
+
+    div[data-testid="stDataFrame"] [role="columnheader"] {
+        background-color: var(--bg-muted);
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-light);
+    }
+
+    div[data-testid="stDataFrame"] [role="gridcell"],
+    div[data-testid="stDataFrame"] [role="rowheader"] {
+        background-color: var(--bg-secondary);
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-light);
+    }
+
+    div[data-testid="stDataFrame"] [role="gridcell"] a {
+        color: var(--accent);
+    }
+
     /* Expanders avec style moderne */
     .streamlit-expanderHeader {
         background-color: var(--bg-muted);
         border-radius: 8px;
         border: 1px solid var(--border-light);
         color: var(--text-primary);
+    }
+
+    details[data-testid="stExpander"] > summary {
+        background-color: var(--bg-muted);
+        border-radius: 8px;
+        border: 1px solid var(--border-light);
+        color: var(--text-primary);
+    }
+
+    details[data-testid="stExpander"] > summary svg,
+    .streamlit-expanderHeader svg {
+        color: var(--text-secondary);
     }
 
     .streamlit-expanderContent {
