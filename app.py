@@ -1561,7 +1561,16 @@ def fetch_geojson(url):
         return None
 
 
-def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric_spec, diagnostic=True):
+def render_epci_choropleth(
+    con,
+    df,
+    commune_id,
+    commune_name,
+    metric_col,
+    metric_spec,
+    diagnostic=True,
+    sql_query=None
+):
     _dbg(
         "map.render.start",
         commune_id=commune_id,
@@ -1611,7 +1620,32 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         ).fetchall()
     ]
     _dbg("map.epci.commune_ids", epci_id=epci_id, count=len(commune_ids))
-    df_epci = df[df["ID"].astype(str).isin([str(cid) for cid in commune_ids])].copy()
+    df_epci_source = df
+    if sql_query:
+        ids_sql = ", ".join([f"'{str(cid)}'" for cid in commune_ids])
+        epci_sql = re.sub(
+            r'(WHERE\s*\(t\."ID"\s+IN\s*)\([^\)]*\)',
+            rf'\1({ids_sql})',
+            sql_query,
+            flags=re.IGNORECASE
+        )
+        if epci_sql != sql_query:
+            try:
+                df_epci_source = con.execute(epci_sql).df()
+                _dbg(
+                    "map.data.sql_refetch",
+                    epci_id=epci_id,
+                    rows=len(df_epci_source),
+                    sql_preview=epci_sql[:300]
+                )
+            except Exception as e:
+                _dbg("map.data.sql_refetch_error", epci_id=epci_id, error=str(e))
+        else:
+            _dbg("map.data.sql_refetch_skip", epci_id=epci_id, reason="no_where_match")
+
+    df_epci = df_epci_source[
+        df_epci_source["ID"].astype(str).isin([str(cid) for cid in commune_ids])
+    ].copy()
     _dbg(
         "map.data.filtered",
         epci_id=epci_id,
@@ -2596,7 +2630,15 @@ if prompt_to_process:
 
                     if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
                         with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
-                            render_epci_choropleth(con, df, target_id, geo_context.get("target_name", target_id), metric_col, metric_spec)
+                            render_epci_choropleth(
+                                con,
+                                df,
+                                target_id,
+                                geo_context.get("target_name", target_id),
+                                metric_col,
+                                metric_spec,
+                                sql_query=sql_query
+                            )
                     elif not map_allowed:
                         _dbg(
                             "map.eligibility.blocked",
@@ -2646,7 +2688,8 @@ if prompt_to_process:
                                     target_id,
                                     geo_context.get("target_name", target_id),
                                     manual_metric,
-                                    manual_spec
+                                    manual_spec,
+                                    sql_query=sql_query
                                 )
                             else:
                                 st.info("La carte est disponible uniquement pour une commune cible.")
