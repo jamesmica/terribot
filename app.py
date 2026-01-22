@@ -1731,7 +1731,7 @@ def render_epci_choropleth(
         sample_values=df_epci["valeur"].dropna().head(5).tolist()
     )
     value_map = {
-        str(row["ID"]): row["valeur"]
+        str(row["ID"]): float(row["valeur"])
         for _, row in df_epci.iterrows()
         if pd.notna(row["valeur"])
     }
