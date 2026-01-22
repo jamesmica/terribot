@@ -406,96 +406,9 @@ con = get_db_connection()
 
 st.markdown("""
 <style>
-    /* Thème général clair et moderne */
-    .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-    }
-
-    /* Sidebar avec fond clair */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
-        border-right: 1px solid #e0e4e8;
-    }
-
-    /* Messages de chat avec fond clair */
-    [data-testid="stChatMessageContainer"] {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
-
-    /* Zone de saisie avec style moderne */
-    .stChatInput {
-        padding-bottom: 20px;
-        background-color: #ffffff;
-        border-radius: 10px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-    }
-
-    /* DataFrames avec bordure subtile */
-    .stDataFrame {
-        border: 1px solid #e0e4e8;
-        border-radius: 8px;
-        background-color: #ffffff;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-    }
-
-    /* Expanders avec style moderne */
-    .streamlit-expanderHeader {
-        background-color: #f8f9fc;
-        border-radius: 8px;
-        border: 1px solid #e0e4e8;
-    }
-
-    /* Style pour les étapes de raisonnement */
-    .reasoning-step {
-        font-size: 0.85em;
-        color: #2c3e50;
-        background-color: #f8f9fc;
-        border-left: 3px solid #3498db;
-        padding: 10px 15px;
-        margin-bottom: 10px;
-        border-radius: 4px;
-    }
-
-    /* Boutons avec style moderne */
-    div.stButton > button:first-child {
-        border-radius: 8px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 10px 24px;
-        font-weight: 500;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-    }
-
-    div.stButton > button:first-child:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-    }
-
-    /* Titre principal avec style */
-    h1 {
-        color: #2c3e50;
-        font-weight: 700;
-    }
-
-    /* Sous-titres */
-    h2, h3, h4 {
-        color: #34495e;
-    }
-
     /* Cache le menu et footer */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-
-    /* Améliorer les tooltips */
-    [data-testid="stTooltipIcon"] {
-        color: #667eea;
-    }
 </style>
 """, unsafe_allow_html=True)
 
