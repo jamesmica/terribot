@@ -1608,6 +1608,7 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
             [epci_id]
         ).fetchall()
     ]
+    _dbg("map.epci.commune_ids", epci_id=epci_id, count=len(commune_ids))
     df_epci = df[df["ID"].astype(str).isin([str(cid) for cid in commune_ids])].copy()
     if metric_col in df_epci.columns:
         df_epci["valeur"] = pd.to_numeric(df_epci[metric_col], errors="coerce")
@@ -1643,11 +1644,24 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
             )
         return
 
+    _dbg(
+        "map.geojson.loaded",
+        epci_id=epci_id,
+        features=len(geojson.get("features", []))
+    )
     value_map = {
         str(row["ID"]): row["valeur"]
         for _, row in df_epci.iterrows()
         if pd.notna(row["valeur"])
     }
+    _dbg(
+        "map.data.stats",
+        epci_id=epci_id,
+        rows=len(df_epci),
+        values=len(value_map),
+        min_value=df_epci["valeur"].min(),
+        max_value=df_epci["valeur"].max()
+    )
     for feature in geojson.get("features", []):
         code = str(feature.get("properties", {}).get("code", ""))
         feature.setdefault("properties", {})["value"] = value_map.get(code)
@@ -1692,6 +1706,7 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         }
     }
 
+    _dbg("map.render.chart", epci_id=epci_id, metric_col=metric_col)
     st.vega_lite_chart(map_spec, use_container_width=False)
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
