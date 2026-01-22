@@ -1573,7 +1573,6 @@ def render_epci_choropleth(
     diagnostic=True,
     sql_query=None
 ):
-    st.info(f"🔍 **[MAP LOG]** Début du rendu de carte pour commune {commune_id} ({commune_name}), métrique: {metric_col}")
     _dbg(
         "map.render.start",
         commune_id=commune_id,
@@ -1591,17 +1590,14 @@ def render_epci_choropleth(
     except Exception as e:
         _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
         st.warning("Impossible de récupérer l'EPCI pour cette commune.")
-        st.error(f"🔍 **[MAP LOG]** Erreur SQL EPCI: {str(e)}")
         return
 
     if not epci_id or not epci_id[0]:
         _dbg("map.epci.missing", commune_id=commune_id)
         st.info("Aucun EPCI disponible pour cette commune.")
-        st.warning(f"🔍 **[MAP LOG]** EPCI non trouvé pour commune {commune_id}")
         return
 
     epci_id = str(epci_id[0])
-    st.success(f"🔍 **[MAP LOG]** EPCI trouvé: {epci_id}")
     _dbg("map.epci.found", commune_id=commune_id, epci_id=epci_id)
     epci_name_row = con.execute(
         "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
@@ -1612,14 +1608,11 @@ def render_epci_choropleth(
     if metric_col not in df.columns:
         _dbg("map.metric.missing", metric_col=metric_col, df_cols=list(df.columns))
         st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
-        st.warning(f"🔍 **[MAP LOG]** Colonne métrique '{metric_col}' manquante. Colonnes disponibles: {list(df.columns)}")
         if diagnostic:
             st.caption(
                 f"Diagnostic : colonne '{metric_col}' absente des données retournées."
             )
         return
-    else:
-        st.success(f"🔍 **[MAP LOG]** Colonne métrique '{metric_col}' trouvée dans les données")
 
     commune_ids = [
         row[0]
@@ -1655,7 +1648,6 @@ def render_epci_choropleth(
     df_epci = df_epci_source[
         df_epci_source["ID"].astype(str).isin([str(cid) for cid in commune_ids])
     ].copy()
-    st.info(f"🔍 **[MAP LOG]** Données filtrées: {len(df_epci)} lignes pour {len(commune_ids)} communes EPCI")
     _dbg(
         "map.data.filtered",
         epci_id=epci_id,
@@ -1677,7 +1669,6 @@ def render_epci_choropleth(
     if df_epci.empty:
         _dbg("map.data.empty", epci_id=epci_id, metric_col=metric_col)
         st.info("Aucune donnée disponible pour les communes de cet EPCI.")
-        st.error(f"🔍 **[MAP LOG]** DataFrame EPCI vide - ARRÊT")
         if diagnostic:
             st.caption(
                 f"Diagnostic : aucune commune EPCI trouvée dans les données pour '{metric_col}'."
@@ -1686,30 +1677,23 @@ def render_epci_choropleth(
     if df_epci["valeur"].notna().sum() == 0:
         _dbg("map.data.no_values", epci_id=epci_id, metric_col=metric_col)
         st.info("Aucune valeur exploitable pour les communes de cet EPCI.")
-        st.error(f"🔍 **[MAP LOG]** Toutes les valeurs sont nulles - ARRÊT")
         if diagnostic:
             st.caption(
                 f"Diagnostic : toutes les valeurs de '{metric_col}' sont nulles ou non numériques."
             )
         return
 
-    st.success(f"🔍 **[MAP LOG]** Données valides: {df_epci['valeur'].notna().sum()} valeurs non-nulles")
-
-    st.info(f"🔍 **[MAP LOG]** Récupération GeoJSON depuis geo.api.gouv.fr pour EPCI {epci_id}...")
     geojson = fetch_geojson(
         f"https://geo.api.gouv.fr/epcis/{epci_id}/communes?format=geojson&geometry=contour&fields=code,nom"
     )
     if not geojson:
         _dbg("map.geojson.unavailable", epci_id=epci_id)
         st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
-        st.error(f"🔍 **[MAP LOG]** GeoJSON non disponible - ARRÊT")
         if diagnostic:
             st.caption(
                 "Diagnostic : GeoJSON indisponible via geo.api.gouv.fr (réseau ou service temporairement bloqué)."
             )
         return
-
-    st.success(f"🔍 **[MAP LOG]** GeoJSON chargé avec {len(geojson.get('features', []))} communes")
     _dbg(
         "map.geojson.loaded",
         epci_id=epci_id,
@@ -1795,7 +1779,6 @@ def render_epci_choropleth(
     else:
         center_lat, center_lon = 49.9, 2.3  # Fallback
 
-    st.info(f"🔍 **[MAP LOG]** Création de la carte Folium (centre: {center_lat:.4f}, {center_lon:.4f})")
     _dbg("map.render.folium", epci_id=epci_id, metric_col=metric_col, center_lat=center_lat, center_lon=center_lon)
 
     # Création de la carte Folium
@@ -1834,7 +1817,8 @@ def render_epci_choropleth(
 
         if value is not None:
             if kind == "percent":
-                value_str = f"{value:.1%}"
+                # Les valeurs sont déjà en pourcentage (ex: 26 pour 26%), pas besoin de multiplier par 100
+                value_str = f"{value:.1f} %"
             else:
                 value_str = f"{value:,.0f}"
 
@@ -1846,16 +1830,10 @@ def render_epci_choropleth(
                 tooltip=folium.Tooltip(tooltip_text)
             ).add_to(m)
 
-    # Conteneur visible pour la carte avec style distinct
+    # Affichage de la carte
     st.markdown("---")
     st.markdown(f"### 🗺️ Carte choroplèthe : {metric_label}")
-    st.info(f"🔍 **[MAP LOG]** Affichage de la carte Folium maintenant...")
-
-    # Affichage de la carte
-    with st.container():
-        folium_static(m, width=800, height=600)
-
-    st.success("🔍 **[MAP LOG]** ✅ Carte Folium rendue avec succès!")
+    folium_static(m, width=800, height=600)
     st.markdown("---")
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
@@ -2712,62 +2690,7 @@ if prompt_to_process:
                     elif not metric_col:
                         _dbg("map.eligibility.blocked", reason="missing_metric_col")
 
-                    # B. Affichage des données brutes (seulement si df n'est pas vide)
-                    numeric_candidates = []
-                    for col in df.columns:
-                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                            continue
-                        series = pd.to_numeric(df[col], errors="coerce")
-                        if series.notna().any():
-                            numeric_candidates.append(col)
-
-                    if numeric_candidates:
-                        _dbg("ui.actions_rapides.enter", numeric_candidates=numeric_candidates, target_id=target_id)
-                        st.subheader("Actions rapides")
-                        manual_metric = st.selectbox(
-                            "Choisir une colonne pour tracer un graphique ou une carte",
-                            numeric_candidates,
-                            index=0,
-                            key="manual_metric_select"
-                        )
-                        _dbg("ui.actions_rapides.metric_selected", manual_metric=manual_metric)
-                        col_left, col_right = st.columns(2)
-                        manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
-                        manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
-
-                        if col_left.button("📊 Tracer le graphique", key="manual_chart_button"):
-                            auto_plot_data(df, current_ids, config=manual_config, con=con)
-
-                        map_button_clicked = col_right.button("🗺️ Voir la carte", key="manual_map_button")
-                        _dbg(
-                            "button.map.state",
-                            clicked=map_button_clicked,
-                            target_id=target_id,
-                            target_id_isdigit=target_id.isdigit() if target_id else False,
-                            target_id_len=len(target_id) if target_id else 0,
-                            manual_metric=manual_metric
-                        )
-                        if map_button_clicked:
-                            st.info(f"🔍 **[BUTTON LOG]** Bouton carte cliqué! target_id={target_id}, manual_metric={manual_metric}")
-                            _dbg("button.map.clicked", target_id=target_id, manual_metric=manual_metric)
-                            if target_id.isdigit() and len(target_id) in (4, 5):
-                                st.success(f"🔍 **[BUTTON LOG]** Conditions OK, appel render_epci_choropleth...")
-                                _dbg("button.map.calling_render", target_id=target_id, metric=manual_metric)
-                                render_epci_choropleth(
-                                    con,
-                                    df,
-                                    target_id,
-                                    geo_context.get("target_name", target_id),
-                                    manual_metric,
-                                    manual_spec,
-                                    sql_query=sql_query
-                                )
-                                _dbg("button.map.render_done")
-                            else:
-                                st.info("La carte est disponible uniquement pour une commune cible.")
-                                st.warning(f"🔍 **[BUTTON LOG]** Conditions NON remplies: isdigit={target_id.isdigit()}, len={len(target_id)}")
-
-                    # B. Affichage des données brutes (seulement si df n'est pas vide)
+                    # Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
                         with st.expander("📊 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
@@ -2880,10 +2803,17 @@ if last_data_message:
     if numeric_candidates:
         with st.chat_message("assistant", avatar="🤖"):
             st.subheader("Actions rapides")
+
+            # Fonction pour afficher les labels lisibles au lieu des codes
+            def format_metric_label(col):
+                spec = formats.get(col, {})
+                return spec.get("label") or spec.get("title") or col
+
             manual_metric = st.selectbox(
                 "Choisir une colonne pour tracer un graphique ou une carte",
                 numeric_candidates,
                 index=0,
+                format_func=format_metric_label,
                 key="persistent_manual_metric_select"
             )
             col_left, col_right = st.columns(2)
@@ -2898,22 +2828,10 @@ if last_data_message:
                 _dbg("button.persistent_chart.clicked", metric=manual_metric)
                 auto_plot_data(df, current_ids, config=manual_config, con=con)
 
-            map_button_clicked = col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button")
-            _dbg(
-                "button.persistent_map.state",
-                clicked=map_button_clicked,
-                target_id=target_id,
-                target_id_isdigit=target_id.isdigit() if target_id else False,
-                target_id_len=len(target_id) if target_id else 0,
-                manual_metric=manual_metric
-            )
-
-            if map_button_clicked:
-                st.info(f"🔍 **[BUTTON LOG]** Bouton carte cliqué! target_id={target_id}, manual_metric={manual_metric}")
+            if col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button"):
                 _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
 
                 if target_id and target_id.isdigit() and len(target_id) in (4, 5):
-                    st.success(f"🔍 **[BUTTON LOG]** Conditions OK, appel render_epci_choropleth...")
                     _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric)
 
                     # Récupérer la requête SQL depuis debug_info si disponible
@@ -2931,6 +2849,5 @@ if last_data_message:
                     _dbg("button.persistent_map.render_done")
                 else:
                     st.info("La carte est disponible uniquement pour une commune cible.")
-                    st.warning(f"🔍 **[BUTTON LOG]** Conditions NON remplies: isdigit={target_id.isdigit() if target_id else False}, len={len(target_id) if target_id else 0}")
 else:
     _dbg("ui.persistent_buttons.no_data")
