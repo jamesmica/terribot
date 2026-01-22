@@ -3,3 +3,4 @@ openai
 duckdb
 pandas
 numpy
+folium
