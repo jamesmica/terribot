@@ -1894,8 +1894,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         if not values.empty:
             y_min = values.min()
             y_max = values.max()
-            # Ajouter une marge de 10% en haut et en bas
-            margin = (y_max - y_min) * 0.1
+            # Ajouter une marge de 20% en haut et en bas
+            margin = (y_max - y_min) * 0.2
             y_domain = [y_min - margin, y_max + margin]
         else:
             y_domain = None
