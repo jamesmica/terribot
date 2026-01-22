@@ -1514,33 +1514,7 @@ def fetch_geojson(url):
         return None
 
 
-def find_table_for_column(con, column_name):
-    db_schemas = st.session_state.get("db_schemas", {})
-    valid_tables = st.session_state.get("valid_tables_list", [])
-    if not valid_tables:
-        try:
-            tables = con.execute("SHOW TABLES").fetchall()
-            valid_tables = [t[0] for t in tables]
-        except Exception as e:
-            _dbg("map.table_list.error", error=str(e))
-    for table_name in valid_tables:
-        columns = db_schemas.get(table_name)
-        if columns and column_name in columns:
-            return table_name
-    for table_name, columns in db_schemas.items():
-        if column_name in columns:
-            return table_name
-    try:
-        for table_name in valid_tables:
-            cols = [c[0] for c in con.execute(f'DESCRIBE "{table_name}"').fetchall()]
-            if column_name in cols:
-                return table_name
-    except Exception as e:
-        _dbg("map.table_search.error", column=column_name, error=str(e))
-    return None
-
-
-def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spec, diagnostic=True):
+def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric_spec, diagnostic=True):
     try:
         epci_id = con.execute(
             "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
@@ -1562,34 +1536,39 @@ def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spe
     ).fetchone()
     epci_name = epci_name_row[0] if epci_name_row else epci_id
 
-    source_table = find_table_for_column(con, metric_col)
-    if not source_table:
+    if metric_col not in df.columns:
         st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
         if diagnostic:
-            available_tables = st.session_state.get("valid_tables_list", [])
-            if not available_tables:
-                try:
-                    available_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
-                except Exception:
-                    available_tables = []
             st.caption(
-                f"Diagnostic : colonne '{metric_col}' introuvable dans {len(available_tables)} table(s) disponibles."
+                f"Diagnostic : colonne '{metric_col}' absente des données retournées."
             )
         return
 
-    query = f"""
-        SELECT t.ID, t.NOM_COUV, d."{metric_col}" AS valeur
-        FROM territoires t
-        LEFT JOIN "{source_table}" d ON t.ID = d.ID
-        WHERE t.COMP1 = '{epci_id}'
-          AND length(t.ID) IN (4, 5)
-    """
-    df_epci = con.execute(query).df()
+    commune_ids = [
+        row[0]
+        for row in con.execute(
+            "SELECT ID FROM territoires WHERE COMP1 = ? AND length(ID) IN (4, 5)",
+            [epci_id]
+        ).fetchall()
+    ]
+    df_epci = df[df["ID"].astype(str).isin([str(cid) for cid in commune_ids])].copy()
+    if metric_col in df_epci.columns:
+        df_epci["valeur"] = pd.to_numeric(df_epci[metric_col], errors="coerce")
+    else:
+        df_epci["valeur"] = pd.Series(dtype="float64")
+
     if df_epci.empty:
         st.info("Aucune donnée disponible pour les communes de cet EPCI.")
         if diagnostic:
             st.caption(
-                f"Diagnostic : requête EPCI '{epci_id}' OK mais aucune valeur non nulle pour '{metric_col}'."
+                f"Diagnostic : aucune commune EPCI trouvée dans les données pour '{metric_col}'."
+            )
+        return
+    if df_epci["valeur"].notna().sum() == 0:
+        st.info("Aucune valeur exploitable pour les communes de cet EPCI.")
+        if diagnostic:
+            st.caption(
+                f"Diagnostic : toutes les valeurs de '{metric_col}' sont nulles ou non numériques."
             )
         return
 
@@ -2472,7 +2451,44 @@ if prompt_to_process:
 
                     if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
                         with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
-                            render_epci_choropleth(con, target_id, geo_context.get("target_name", target_id), metric_col, metric_spec)
+                            render_epci_choropleth(con, df, target_id, geo_context.get("target_name", target_id), metric_col, metric_spec)
+
+                    # B. Affichage des données brutes (seulement si df n'est pas vide)
+                    numeric_candidates = []
+                    for col in df.columns:
+                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                            continue
+                        series = pd.to_numeric(df[col], errors="coerce")
+                        if series.notna().any():
+                            numeric_candidates.append(col)
+
+                    if numeric_candidates:
+                        st.subheader("Actions rapides")
+                        manual_metric = st.selectbox(
+                            "Choisir une colonne pour tracer un graphique ou une carte",
+                            numeric_candidates,
+                            index=0,
+                            key="manual_metric_select"
+                        )
+                        col_left, col_right = st.columns(2)
+                        manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
+                        manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+
+                        if col_left.button("📊 Tracer le graphique", key="manual_chart_button"):
+                            auto_plot_data(df, current_ids, config=manual_config, con=con)
+
+                        if col_right.button("🗺️ Voir la carte", key="manual_map_button"):
+                            if target_id.isdigit() and len(target_id) in (4, 5):
+                                render_epci_choropleth(
+                                    con,
+                                    df,
+                                    target_id,
+                                    geo_context.get("target_name", target_id),
+                                    manual_metric,
+                                    manual_spec
+                                )
+                            else:
+                                st.info("La carte est disponible uniquement pour une commune cible.")
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
