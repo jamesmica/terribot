@@ -1489,7 +1489,14 @@ def analyze_territorial_scope(con, rewritten_prompt):
     _dbg("geo.analyze.result", target=result["target_name"], ids_count=len(unique_ids))
     return result
 
-# --- 8.1. CARTE EPCI (VEGA LITE) ---
+# --- 8.1. PALETTES & CARTES EPCI (VEGA LITE) ---
+BASE_PALETTE = ["#EB2C30", "#F38331", "#97D422", "#1DB5C5", "#5C368D"]
+EXTRA_PALETTE = [
+    "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2",
+    "#B279A2", "#FF9DA6", "#9D755D", "#BAB0AC", "#2F4B7C",
+    "#A05195", "#D45087", "#F95D6A", "#FFA600"
+]
+
 def fetch_geojson(url):
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
@@ -1521,7 +1528,7 @@ def find_table_for_column(con, column_name):
     return None
 
 
-def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spec):
+def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spec, diagnostic=True):
     try:
         epci_id = con.execute(
             "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
@@ -1546,6 +1553,11 @@ def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spe
     source_table = find_table_for_column(con, metric_col)
     if not source_table:
         st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
+        if diagnostic:
+            available_tables = st.session_state.get("valid_tables_list", [])
+            st.caption(
+                f"Diagnostic : colonne '{metric_col}' introuvable dans {len(available_tables)} table(s) disponibles."
+            )
         return
 
     query = f"""
@@ -1558,6 +1570,10 @@ def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spe
     df_epci = con.execute(query).df()
     if df_epci.empty:
         st.info("Aucune donnée disponible pour les communes de cet EPCI.")
+        if diagnostic:
+            st.caption(
+                f"Diagnostic : requête EPCI '{epci_id}' OK mais aucune valeur non nulle pour '{metric_col}'."
+            )
         return
 
     geojson = fetch_geojson(
@@ -1565,6 +1581,10 @@ def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spe
     )
     if not geojson:
         st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
+        if diagnostic:
+            st.caption(
+                "Diagnostic : GeoJSON indisponible via geo.api.gouv.fr (réseau ou service temporairement bloqué)."
+            )
         return
 
     value_map = {
@@ -1599,7 +1619,7 @@ def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spe
             "color": {
                 "field": "value",
                 "type": "quantitative",
-                "scale": {"scheme": "blues"},
+                "scale": {"range": [BASE_PALETTE[0], BASE_PALETTE[1], EXTRA_PALETTE[0], EXTRA_PALETTE[1]]},
                 "title": metric_label
             },
             "tooltip": [
@@ -1619,12 +1639,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     selected_metrics = config.get("selected_columns", [])
     format_specs = config.get("formats", {})
     
-    base_palette = ["#EB2C30", "#F38331", "#97D422", "#1DB5C5", "#5C368D"]
-    extra_palette = [
-        "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2",
-        "#B279A2", "#FF9DA6", "#9D755D", "#BAB0AC", "#2F4B7C",
-        "#A05195", "#D45087", "#F95D6A", "#FFA600"
-    ]
+    base_palette = BASE_PALETTE
+    extra_palette = EXTRA_PALETTE
     
     cols = df.columns.tolist()
     label_col = next((c for c in cols if c.upper() in ["NOM_COUV", "TERRITOIRE", "LIBELLE", "VILLE"]), None)
@@ -1964,10 +1980,16 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         else:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
             if y_scale: y_axis_def["scale"] = y_scale
+            bar_colors = palette[:len(sorted_labels)] if sorted_labels else palette[:1]
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
                 "y": y_axis_def,
-                "color": {"value": palette[0]},
+                "color": {
+                    "field": label_col,
+                    "type": "nominal",
+                    "scale": {"domain": sorted_labels, "range": bar_colors},
+                    "legend": None
+                },
                 "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Valeur", "format": y_format}]
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
@@ -2437,6 +2459,36 @@ if prompt_to_process:
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
+                        numeric_candidates = [
+                            c for c in df.columns
+                            if pd.api.types.is_numeric_dtype(df[c]) and c.upper() not in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]
+                        ]
+                        if numeric_candidates:
+                            manual_metric = st.selectbox(
+                                "Choisir une colonne pour tracer un graphique ou une carte",
+                                numeric_candidates,
+                                index=0,
+                                key="manual_metric_select"
+                            )
+                            col_left, col_right = st.columns(2)
+                            manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
+                            manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+
+                            if col_left.button("📊 Tracer le graphique", key="manual_chart_button"):
+                                auto_plot_data(df, current_ids, config=manual_config, con=con)
+
+                            if col_right.button("🗺️ Voir la carte", key="manual_map_button"):
+                                if target_id.isdigit() and len(target_id) in (4, 5):
+                                    render_epci_choropleth(
+                                        con,
+                                        target_id,
+                                        geo_context.get("target_name", target_id),
+                                        manual_metric,
+                                        manual_spec
+                                    )
+                                else:
+                                    st.info("La carte est disponible uniquement pour une commune cible.")
+
                         with st.expander("📊 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
 
