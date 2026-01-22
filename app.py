@@ -1489,6 +1489,88 @@ def analyze_territorial_scope(con, rewritten_prompt):
     _dbg("geo.analyze.result", target=result["target_name"], ids_count=len(unique_ids))
     return result
 
+# --- 8.1. CARTE EPCI (VEGA LITE) ---
+def fetch_geojson(url):
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            if response.status != 200:
+                return None
+            return json.loads(response.read().decode("utf-8"))
+    except Exception as e:
+        _dbg("map.fetch.error", url=url, error=str(e))
+        return None
+
+
+def render_epci_map(con, commune_id, commune_name):
+    try:
+        epci_id = con.execute(
+            "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
+            [str(commune_id)]
+        ).fetchone()
+    except Exception as e:
+        _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
+        st.warning("Impossible de récupérer l'EPCI pour cette commune.")
+        return
+
+    if not epci_id or not epci_id[0]:
+        st.info("Aucun EPCI disponible pour cette commune.")
+        return
+
+    epci_id = str(epci_id[0])
+    epci_name_row = con.execute(
+        "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
+        [epci_id]
+    ).fetchone()
+    epci_name = epci_name_row[0] if epci_name_row else epci_id
+
+    epci_geojson = fetch_geojson(
+        f"https://geo.api.gouv.fr/epcis/{epci_id}?format=geojson&geometry=contour"
+    )
+    if not epci_geojson:
+        st.warning("Le fond de carte EPCI est indisponible pour le moment.")
+        return
+
+    commune_data = fetch_geojson(
+        f"https://geo.api.gouv.fr/communes/{commune_id}?fields=centre"
+    )
+    commune_point = None
+    if commune_data and isinstance(commune_data, dict):
+        centre = commune_data.get("centre")
+        if centre and isinstance(centre, dict):
+            coords = centre.get("coordinates")
+            if coords and len(coords) == 2:
+                commune_point = {"lon": coords[0], "lat": coords[1]}
+
+    st.caption(f"🗺️ EPCI : **{epci_name}** (commune : {commune_name})")
+
+    map_layers = [
+        {
+            "data": {"values": epci_geojson, "format": {"type": "geojson"}},
+            "mark": {"type": "geoshape", "fill": "#e8f1fe", "stroke": "#2563eb", "strokeWidth": 1}
+        }
+    ]
+
+    if commune_point:
+        map_layers.append(
+            {
+                "data": {"values": [commune_point]},
+                "mark": {"type": "circle", "color": "#1f2a37", "size": 80},
+                "encoding": {
+                    "longitude": {"field": "lon", "type": "quantitative"},
+                    "latitude": {"field": "lat", "type": "quantitative"}
+                }
+            }
+        )
+
+    map_spec = {
+        "width": 800,
+        "height": 500,
+        "projection": {"type": "mercator"},
+        "layer": map_layers
+    }
+
+    st.vega_lite_chart(map_spec, use_container_width=False)
+
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
     if config is None: config = {}
@@ -1860,7 +1942,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "fontSize": 14
     }
 
-    st.vega_lite_chart(df_melted, chart, use_container_width=True)
+    chart["width"] = 800
+    st.vega_lite_chart(df_melted, chart, use_container_width=False)
 
 
 # --- 9. UI PRINCIPALE ---
@@ -2164,6 +2247,12 @@ if prompt_to_process:
                     if geo_context:
                         debug_container["final_ids"] = geo_context['all_ids']
                     # -------------------------------------------------------
+                    if geo_context:
+                        target_id = str(geo_context.get("target_id", ""))
+                        if target_id.isdigit() and len(target_id) in (4, 5):
+                            with st.expander("🗺️ Carte EPCI", expanded=False):
+                                render_epci_map(con, target_id, geo_context.get("target_name", target_id))
+
                     # 3. RAG (Recherche Variables - Méthode Hybride)
                     status_container.update(label="📚 Je cherche les indicateurs pertinents dans le glossaire...")
                     # On appelle notre nouvelle fonction combinée
