@@ -1815,9 +1815,17 @@ def render_epci_choropleth(
         projection=map_spec.get("projection", {}),
         width=map_spec.get("width"),
         height=map_spec.get("height"),
-        color_scale=map_spec.get("encoding", {}).get("color", {}).get("scale", {})
+        color_scale=map_spec.get("encoding", {}).get("color", {}).get("scale", {}),
+        features=len(geojson_features)
     )
-    st.vega_lite_chart(map_spec, use_container_width=False)
+    try:
+        st.vega_lite_chart(map_spec, use_container_width=False)
+        _dbg("map.render.success", epci_id=epci_id)
+    except Exception as e:
+        _dbg("map.render.error", epci_id=epci_id, error=str(e))
+        st.warning("Impossible d'afficher la carte EPCI pour le moment.")
+        if diagnostic:
+            st.caption(f"Diagnostic : rendu Vega-Lite en échec ({e}).")
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
