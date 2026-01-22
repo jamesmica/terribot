@@ -519,6 +519,34 @@ client = openai.OpenAI(api_key=api_key)
 MODEL_NAME = "gpt-5.2-2025-12-11"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
 EMBEDDING_MODEL = "text-embedding-3-small"
 
+# --- 3.1 HELPERS OPENAI RESPONSES ---
+def build_messages(system_prompt: str, user_prompt: str):
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def extract_response_text(response) -> str:
+    text = getattr(response, "output_text", None)
+    if text:
+        return text
+    try:
+        parts = []
+        for output in response.output:
+            for content in output.content:
+                if hasattr(content, "text"):
+                    parts.append(content.text)
+        return "".join(parts)
+    except Exception:
+        return ""
+
+
+def stream_response_text(response_stream):
+    for event in response_stream:
+        if getattr(event, "type", "") == "response.output_text.delta":
+            yield event.delta
+
 # --- 4. FONCTIONS INTELLIGENTES (FORMATAGE & SÉLECTION) ---
 def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: str, client, model: str):
     """
@@ -565,11 +593,12 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
     """
 
     try:
-        resp = client.chat.completions.create(
-            model=model, temperature=0, response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
+        resp = client.responses.create(
+            model=model,
+            temperature=0,
+            input=build_messages(system_prompt, json.dumps(payload, ensure_ascii=False)),
         )
-        data = json.loads(resp.choices[0].message.content)
+        data = json.loads(extract_response_text(resp))
 
         if not data.get("selected_columns"): data["selected_columns"] = [numeric_cols[0]]
         data["selected_columns"] = [c for c in data["selected_columns"] if c in df.columns]
@@ -675,10 +704,13 @@ def generate_and_fix_sql(client, model, system_prompt, user_prompt, con, max_ret
 
         try:
             # 1. Génération
-            response = client.chat.completions.create(
-                model=model, messages=messages, temperature=0, timeout=60
+            response = client.responses.create(
+                model=model,
+                input=messages,
+                temperature=0,
+                timeout=60,
             )
-            sql_query_raw = response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
+            sql_query_raw = extract_response_text(response).replace("```sql", "").replace("```", "").strip()
             sql_query = sql_query_raw.split(";")[0].strip()
 
             # Vérification basique que c'est du SQL
@@ -1342,17 +1374,13 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
     """
 
     try:
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
+            input=build_messages(system_prompt, user_message),
             temperature=0,
-            response_format={"type": "json_object"}
         )
         metrics.log_api_call()
-        raw_response = response.choices[0].message.content
+        raw_response = extract_response_text(response)
         _dbg("geo.ai_validate.exit", raw=raw_response[:400])
 
         result = json.loads(raw_response)
@@ -1383,16 +1411,15 @@ def analyze_territorial_scope(con, rewritten_prompt):
     """
     # 1. Extraction des lieux via IA
     try:
-        extraction = client.chat.completions.create(
+        extraction = client.responses.create(
             model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "Extrais les lieux géographiques exacts mentionnés. JSON: {\"lieux\": [\"Lieu 1\", \"Lieu 2\"]}"},
-                {"role": "user", "content": rewritten_prompt}
-            ],
-            response_format={"type": "json_object"},
-            timeout=30
+            input=build_messages(
+                "Extrais les lieux géographiques exacts mentionnés. JSON: {\"lieux\": [\"Lieu 1\", \"Lieu 2\"]}",
+                rewritten_prompt,
+            ),
+            timeout=30,
         )
-        lieux_cites = json.loads(extraction.choices[0].message.content).get("lieux", [])
+        lieux_cites = json.loads(extract_response_text(extraction)).get("lieux", [])
         _dbg("geo.analyze.extraction", lieux=lieux_cites)
     except Exception as e:
         _dbg("geo.analyze.extraction_error", error=str(e))
@@ -2209,20 +2236,20 @@ if prompt_to_process:
 
                     _dbg("pipeline.rewrite.call", history_tail=history_text[-400:], current_geo_name=current_geo_name)
 
-                    reformulation = client.chat.completions.create(
+                    reformulation = client.responses.create(
                         model=MODEL_NAME,
-                        messages=[
-                            {"role": "system", "content": f"""
+                        input=build_messages(
+                            f"""
                             Tu es un expert en reformulation. CONTEXTE GEO ACTUEL : '{current_geo_name}'.
                             OBJECTIFS :
                             1. Rendre la question autonome.
                             2. SI "ramène à la population" ou "et pour X ?", REPRENDS le SUJET PRÉCÉDENT.
                             3. Si aucun lieu explicite dans la question, réinjecte '{current_geo_name}'.
-                            """},
-                            {"role": "user", "content": f"Historique:\n{history_text}\n\nDernière question: {prompt_to_process}"}
-                        ]
+                            """,
+                            f"Historique:\n{history_text}\n\nDernière question: {prompt_to_process}",
+                        )
                     )
-                    rewritten_prompt = reformulation.choices[0].message.content
+                    rewritten_prompt = extract_response_text(reformulation)
                     _dbg("pipeline.rewrite.done", rewritten_prompt=rewritten_prompt)
 
                     debug_container["reformulation"] = f"Original: {prompt_to_process}\nReformulé: {rewritten_prompt}"
@@ -2543,10 +2570,10 @@ if prompt_to_process:
                     print("[TERRIBOT][PIPE] 📝 Streaming response start")
                     _dbg("pipeline.stream.inputs", df_rows=len(df), df_cols=list(df.columns), formats=chart_config.get("formats"))
 
-                    stream = client.chat.completions.create(
+                    stream = client.responses.create(
                         model=MODEL_NAME,
-                        messages=[
-                            {"role": "system", "content": f"""
+                        input=build_messages(
+                            f"""
                             Tu es Terribot, un expert en analyse territoriale s'adressant à des élus et agents  des collectivités locales en France.
 
                             TON RÔLE :
@@ -2561,13 +2588,13 @@ if prompt_to_process:
                             5. STRUCTURE : Va à l'essentiel.
 
                             Unités des données : {json.dumps(chart_config.get('formats', {}))}
-                            """},
-                            {"role": "user", "content": df.to_string()}
-                        ],
-                        stream=True
+                            """,
+                            df.to_string(),
+                        ),
+                        stream=True,
                     )
                     metrics.log_api_call()
-                    full_response_text = message_placeholder.write_stream(stream)
+                    full_response_text = message_placeholder.write_stream(stream_response_text(stream))
                     metrics.log_response()
                     _dbg("pipeline.stream.done", response_len=len(full_response_text) if full_response_text else 0)
                     print("[TERRIBOT][PIPE] ✅ Pipeline done")
