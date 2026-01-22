@@ -1756,11 +1756,11 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
 
     chart["title"] = {
         "text": f"{title_y}",
-        "anchor": "middle", 
+        "anchor": "middle",
         "fontSize": 16,
         "offset": 10
     }
-    st.vega_lite_chart(df_melted, chart, width='stretch')
+    st.vega_lite_chart(df_melted, chart, use_container_width=True)
 
 
 # --- 9. UI PRINCIPALE ---
