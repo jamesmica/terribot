@@ -2795,7 +2795,7 @@ if prompt_to_process:
 
                     # Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
-                        with st.expander("📊 Voir les données brutes", expanded=False):
+                        with st.expander("📝 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
 
                 # C. Streaming du Texte
@@ -2904,7 +2904,7 @@ if last_data_message:
     _dbg("ui.persistent_buttons.candidates", count=len(numeric_candidates), target_id=target_id)
 
     if numeric_candidates:
-        with st.expander("🔧 Explorer d'autres variables", expanded=False):
+        with st.expander("📊 Carte et graphique", expanded=False):
             # Fonction pour afficher les labels lisibles au lieu des codes
             def format_metric_label(col):
                 spec = formats.get(col, {})
@@ -2926,7 +2926,7 @@ if last_data_message:
             debug_info = last_data_message.get("debug_info", {})
             current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
 
-            if col_left.button("📊 Tracer le graphique", key="persistent_manual_chart_button"):
+            if col_left.button("📈 Tracer le graphique", key="persistent_manual_chart_button"):
                 _dbg("button.persistent_chart.clicked", metric=manual_metric)
                 auto_plot_data(df, current_ids, config=manual_config, con=con)
 
