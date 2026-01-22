@@ -8,6 +8,8 @@ import numpy as np
 import json
 import re
 import unicodedata
+import folium
+from streamlit_folium import folium_static
 
 print("[TERRIBOT] ✅ Script importé / démarrage du fichier")
 
@@ -1773,57 +1775,88 @@ def render_epci_choropleth(
     )
     st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
 
-    # Vega-Lite spec avec projection adaptée aux données
-    map_spec = {
-        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-        "width": "container",
-        "height": 600,
-        "projection": {
-            "type": "mercator",
-            "fit": geojson
-        },
-        "data": {"values": geojson, "format": {"type": "geojson"}},
-        "transform": [
-            {"calculate": "datum.properties.value", "as": "value"},
-            {"calculate": "datum.properties.nom", "as": "nom_commune"}
-        ],
-        "mark": {"type": "geoshape", "stroke": "#94a3b8", "strokeWidth": 0.6},
-        "encoding": {
-            "color": {
-                "field": "value",
-                "type": "quantitative",
-                "scale": {"range": [BASE_PALETTE[0], BASE_PALETTE[1], EXTRA_PALETTE[0], EXTRA_PALETTE[1]]},
-                "title": metric_label
-            },
-            "tooltip": [
-                {"field": "nom_commune", "title": "Commune"},
-                {"field": "value", "title": metric_title, "format": metric_format}
-            ]
-        }
-    }
+    # Calcul du centre de la carte
+    coords = []
+    for feature in geojson.get("features", []):
+        geometry = feature.get("geometry", {})
+        if geometry.get("type") == "Polygon":
+            for ring in geometry.get("coordinates", []):
+                coords.extend(ring)
+        elif geometry.get("type") == "MultiPolygon":
+            for polygon in geometry.get("coordinates", []):
+                for ring in polygon:
+                    coords.extend(ring)
 
-    st.info(f"🔍 **[MAP LOG]** Préparation du rendu Vega-Lite (largeur: {map_spec.get('width')}, hauteur: {map_spec.get('height')})")
-    _dbg("map.render.chart", epci_id=epci_id, metric_col=metric_col)
-    _dbg(
-        "map.render.spec",
-        projection=map_spec.get("projection", {}),
-        width=map_spec.get("width"),
-        height=map_spec.get("height"),
-        color_scale=map_spec.get("encoding", {}).get("color", {}).get("scale", {})
+    if coords:
+        lons = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        center_lat = (min(lats) + max(lats)) / 2
+        center_lon = (min(lons) + max(lons)) / 2
+    else:
+        center_lat, center_lon = 49.9, 2.3  # Fallback
+
+    st.info(f"🔍 **[MAP LOG]** Création de la carte Folium (centre: {center_lat:.4f}, {center_lon:.4f})")
+    _dbg("map.render.folium", epci_id=epci_id, metric_col=metric_col, center_lat=center_lat, center_lon=center_lon)
+
+    # Création de la carte Folium
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=11,
+        tiles="OpenStreetMap"
     )
+
+    # Préparation des données pour Choropleth
+    # Folium Choropleth attend un dict {code: value}
+    choropleth_data = {}
+    for feature in geojson.get("features", []):
+        code = feature.get("properties", {}).get("code")
+        value = feature.get("properties", {}).get("value")
+        if code and value is not None:
+            choropleth_data[code] = value
+
+    # Ajout de la couche choroplèthe
+    folium.Choropleth(
+        geo_data=geojson,
+        name="choropleth",
+        data=pd.DataFrame(list(choropleth_data.items()), columns=["code", "value"]),
+        columns=["code", "value"],
+        key_on="feature.properties.code",
+        fill_color="YlOrRd",
+        fill_opacity=0.7,
+        line_opacity=0.5,
+        legend_name=metric_label,
+    ).add_to(m)
+
+    # Ajout des tooltips
+    for feature in geojson.get("features", []):
+        nom = feature.get("properties", {}).get("nom", "")
+        value = feature.get("properties", {}).get("value")
+
+        if value is not None:
+            if kind == "percent":
+                value_str = f"{value:.1%}"
+            else:
+                value_str = f"{value:,.0f}"
+
+            tooltip_text = f"<b>{nom}</b><br>{metric_title}: {value_str}"
+
+            folium.GeoJson(
+                feature,
+                style_function=lambda x: {"fillOpacity": 0, "weight": 0},
+                tooltip=folium.Tooltip(tooltip_text)
+            ).add_to(m)
 
     # Conteneur visible pour la carte avec style distinct
     st.markdown("---")
     st.markdown(f"### 🗺️ Carte choroplèthe : {metric_label}")
-    st.info(f"🔍 **[MAP LOG]** Appel st.vega_lite_chart() maintenant...")
+    st.info(f"🔍 **[MAP LOG]** Affichage de la carte Folium maintenant...")
 
-    # Conteneur avec bordure pour rendre la carte très visible
+    # Affichage de la carte
     with st.container():
-        st.vega_lite_chart(map_spec, use_container_width=True)
+        folium_static(m, width=800, height=600)
 
-    st.success("🔍 **[MAP LOG]** 👆 La carte devrait apparaître ci-dessus 👆")
+    st.success("🔍 **[MAP LOG]** ✅ Carte Folium rendue avec succès!")
     st.markdown("---")
-    st.success(f"🔍 **[MAP LOG]** ✅ Carte rendue avec succès!")
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
