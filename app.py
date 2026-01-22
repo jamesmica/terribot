@@ -1864,6 +1864,19 @@ def render_epci_choropleth(
             return (s + (f" {suffix}" if suffix else "")).strip()
         except: return str(x)
 
+    # Déterminer le facteur de conversion pour les pourcentages (une seule fois pour toute la colonne)
+    percent_factor = 1
+    if kind == "percent":
+        # Calculer la moyenne de toutes les valeurs non nulles
+        all_values = [f.get("properties", {}).get("value") for f in geojson.get("features", [])]
+        valid_values = [v for v in all_values if v is not None and not pd.isna(v)]
+        if valid_values:
+            val_mean = sum(abs(v) for v in valid_values) / len(valid_values)
+            # Si la moyenne est < 5, les données sont probablement en décimal (0.26 = 26%)
+            # Sinon elles sont déjà en pourcentage (26 = 26%)
+            percent_factor = 100 if val_mean < 5 else 1
+            _dbg("map.percent.factor", val_mean=val_mean, factor=percent_factor, sample_values=valid_values[:5])
+
     # Ajout des tooltips
     for feature in geojson.get("features", []):
         nom = feature.get("properties", {}).get("nom", "")
@@ -1871,9 +1884,7 @@ def render_epci_choropleth(
 
         if value is not None:
             if kind == "percent":
-                # Utilise le formatage français avec la bonne heuristique
-                # Si la valeur est < 5, c'est probablement en décimal (0.26 = 26%), sinon déjà en %
-                value_str = fr_num(value, decimals=1, suffix="%", factor=100 if abs(value) < 5 else 1)
+                value_str = fr_num(value, decimals=1, suffix="%", factor=percent_factor)
             else:
                 value_str = fr_num(value, decimals=0)
 
@@ -2671,13 +2682,10 @@ if prompt_to_process:
 
                 # --- SORTIE DU CONTEXTE 'with status_container:' ---
                 loader_placeholder.empty()
-                # A. Affichage du Graphique (une seule fois ici via le placeholder)
-                if not df.empty:
-                    with chart_placeholder:
-                        # On récupère les IDs finaux depuis le debug_container
-                        current_ids = debug_container.get("final_ids", [])
-                        auto_plot_data(df, current_ids, config=chart_config, con=con)
 
+                # A. Vérification de l'éligibilité de la carte et affichage
+                map_eligible = False  # Initialisation par défaut
+                if not df.empty:
                     target_id = str(geo_context.get("target_id", ""))
                     selected_cols = chart_config.get("selected_columns", [])
                     formats = chart_config.get("formats", {})
@@ -2685,34 +2693,61 @@ if prompt_to_process:
                     metric_spec = formats.get(metric_col, {}) if metric_col else {}
                     metric_kind = (metric_spec.get("kind") or "").lower()
                     metric_label = (metric_spec.get("label") or metric_col or "").lower()
+
+                    # Vérifier si la carte est éligible
                     map_allowed = metric_kind == "percent" or any(
                         kw in metric_label for kw in ["taux", "part", "ratio", "moyen", "moyenne", "médiane"]
                     )
+                    is_commune_or_epci = target_id and target_id.isdigit() and len(target_id) in (4, 5, 9)
+                    map_eligible = map_allowed and is_commune_or_epci and metric_col
+
                     _dbg(
                         "map.eligibility.check",
                         metric_col=metric_col,
                         metric_kind=metric_kind,
                         metric_label=metric_label,
                         map_allowed=map_allowed,
-                        target_id=target_id
+                        target_id=target_id,
+                        map_eligible=map_eligible
                     )
 
-                    if not map_allowed:
-                        _dbg(
-                            "map.eligibility.blocked",
-                            reason="metric_not_eligible",
-                            metric_col=metric_col,
-                            metric_kind=metric_kind,
-                            metric_label=metric_label
-                        )
-                    elif not (target_id.isdigit() and len(target_id) in (4, 5, 9)):
-                        _dbg(
-                            "map.eligibility.blocked",
-                            reason="target_not_commune_or_epci",
-                            target_id=target_id
-                        )
-                    elif not metric_col:
-                        _dbg("map.eligibility.blocked", reason="missing_metric_col")
+                    # B. Affichage avec expanders mutuellement exclusifs
+                    with chart_placeholder:
+                        current_ids = debug_container.get("final_ids", [])
+
+                        if map_eligible:
+                            # Si la carte est éligible, créer un choix entre graphique et carte
+                            viz_choice = st.radio(
+                                "Visualisation",
+                                ["📊 Graphique", "🗺️ Carte"],
+                                horizontal=True,
+                                key=f"viz_choice_{len(st.session_state.messages)}"
+                            )
+
+                            if viz_choice == "📊 Graphique":
+                                with st.expander("📊 Graphique", expanded=True):
+                                    auto_plot_data(df, current_ids, config=chart_config, con=con)
+                            else:  # Carte
+                                with st.expander("🗺️ Carte", expanded=True):
+                                    render_epci_choropleth(
+                                        con,
+                                        df,
+                                        target_id,
+                                        geo_context.get("target_name", target_id),
+                                        metric_col,
+                                        metric_spec,
+                                        sql_query=debug_container.get("sql_query")
+                                    )
+                        else:
+                            # Pas de carte éligible, afficher uniquement le graphique
+                            auto_plot_data(df, current_ids, config=chart_config, con=con)
+
+                    # Sauvegarder les informations pour les actions rapides
+                    debug_container["map_eligible"] = map_eligible
+                    if map_eligible:
+                        debug_container["map_target_id"] = target_id
+                        debug_container["map_metric_col"] = metric_col
+                        debug_container["map_metric_spec"] = metric_spec
 
                     # Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
