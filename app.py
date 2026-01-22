@@ -1561,7 +1561,16 @@ def fetch_geojson(url):
         return None
 
 
-def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric_spec, diagnostic=True):
+def render_epci_choropleth(
+    con,
+    df,
+    commune_id,
+    commune_name,
+    metric_col,
+    metric_spec,
+    diagnostic=True,
+    sql_query=None
+):
     _dbg(
         "map.render.start",
         commune_id=commune_id,
@@ -1611,7 +1620,32 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         ).fetchall()
     ]
     _dbg("map.epci.commune_ids", epci_id=epci_id, count=len(commune_ids))
-    df_epci = df[df["ID"].astype(str).isin([str(cid) for cid in commune_ids])].copy()
+    df_epci_source = df
+    if sql_query:
+        ids_sql = ", ".join([f"'{str(cid)}'" for cid in commune_ids])
+        epci_sql = re.sub(
+            r'(WHERE\s*\(t\."ID"\s+IN\s*)\([^\)]*\)',
+            rf'\1({ids_sql})',
+            sql_query,
+            flags=re.IGNORECASE
+        )
+        if epci_sql != sql_query:
+            try:
+                df_epci_source = con.execute(epci_sql).df()
+                _dbg(
+                    "map.data.sql_refetch",
+                    epci_id=epci_id,
+                    rows=len(df_epci_source),
+                    sql_preview=epci_sql[:300]
+                )
+            except Exception as e:
+                _dbg("map.data.sql_refetch_error", epci_id=epci_id, error=str(e))
+        else:
+            _dbg("map.data.sql_refetch_skip", epci_id=epci_id, reason="no_where_match")
+
+    df_epci = df_epci_source[
+        df_epci_source["ID"].astype(str).isin([str(cid) for cid in commune_ids])
+    ].copy()
     _dbg(
         "map.data.filtered",
         epci_id=epci_id,
@@ -1659,10 +1693,20 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
             )
         return
 
+    geojson_features = geojson.get("features") if isinstance(geojson, dict) else None
+    if not isinstance(geojson_features, list):
+        _dbg("map.geojson.invalid", epci_id=epci_id, payload_type=str(type(geojson)))
+        st.warning("Le fond de carte des communes EPCI est invalide pour le moment.")
+        if diagnostic:
+            st.caption(
+                "Diagnostic : GeoJSON invalide (features manquantes ou format inattendu)."
+            )
+        return
+
     _dbg(
         "map.geojson.loaded",
         epci_id=epci_id,
-        features=len(geojson.get("features", []))
+        features=len(geojson_features)
     )
     _dbg(
         "map.data.numeric",
@@ -1687,13 +1731,13 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
     )
     missing_values = [
         str(feature.get("properties", {}).get("code", ""))
-        for feature in geojson.get("features", [])
+        for feature in geojson_features
         if str(feature.get("properties", {}).get("code", "")) not in value_map
     ]
     _dbg(
         "map.data.coverage",
         epci_id=epci_id,
-        features=len(geojson.get("features", [])),
+        features=len(geojson_features),
         values=len(value_map),
         missing=len(missing_values),
         missing_sample=missing_values[:10]
@@ -1701,9 +1745,9 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
     if diagnostic and missing_values:
         st.caption(
             f"Diagnostic : données disponibles pour {len(value_map)} commune(s) sur "
-            f"{len(geojson.get('features', []))} dans l'EPCI."
+            f"{len(geojson_features)} dans l'EPCI."
         )
-    for feature in geojson.get("features", []):
+    for feature in geojson_features:
         code = str(feature.get("properties", {}).get("code", ""))
         feature.setdefault("properties", {})["value"] = value_map.get(code)
 
@@ -1727,7 +1771,7 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         "width": 800,
         "height": 500,
         "projection": {"type": "mercator"},
-        "data": {"values": geojson, "format": {"type": "geojson"}},
+        "data": {"values": geojson_features, "format": {"type": "geojson"}},
         "transform": [
             {"calculate": "datum.properties.value", "as": "value"},
             {"calculate": "datum.properties.nom", "as": "nom_commune"}
@@ -2596,7 +2640,15 @@ if prompt_to_process:
 
                     if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
                         with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
-                            render_epci_choropleth(con, df, target_id, geo_context.get("target_name", target_id), metric_col, metric_spec)
+                            render_epci_choropleth(
+                                con,
+                                df,
+                                target_id,
+                                geo_context.get("target_name", target_id),
+                                metric_col,
+                                metric_spec,
+                                sql_query=sql_query
+                            )
                     elif not map_allowed:
                         _dbg(
                             "map.eligibility.blocked",
@@ -2646,7 +2698,8 @@ if prompt_to_process:
                                     target_id,
                                     geo_context.get("target_name", target_id),
                                     manual_metric,
-                                    manual_spec
+                                    manual_spec,
+                                    sql_query=sql_query
                                 )
                             else:
                                 st.info("La carte est disponible uniquement pour une commune cible.")
