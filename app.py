@@ -2360,7 +2360,7 @@ for msg in st.session_state.messages:
                 auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
                 
                 # Affichage Data (Expander)
-                with st.expander("📊 Données brutes"):
+                with st.expander("📝 Données brutes"):
                     # On utilise les formats stockés dans la config
                     formats = saved_config.get("formats", {})
                     st.dataframe(style_df(msg["data"], formats), width='stretch')
