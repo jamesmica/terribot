@@ -2673,6 +2673,7 @@ if prompt_to_process:
                             numeric_candidates.append(col)
 
                     if numeric_candidates:
+                        _dbg("ui.actions_rapides.enter", numeric_candidates=numeric_candidates, target_id=target_id)
                         st.subheader("Actions rapides")
                         manual_metric = st.selectbox(
                             "Choisir une colonne pour tracer un graphique ou une carte",
@@ -2680,6 +2681,7 @@ if prompt_to_process:
                             index=0,
                             key="manual_metric_select"
                         )
+                        _dbg("ui.actions_rapides.metric_selected", manual_metric=manual_metric)
                         col_left, col_right = st.columns(2)
                         manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
                         manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
@@ -2687,8 +2689,21 @@ if prompt_to_process:
                         if col_left.button("📊 Tracer le graphique", key="manual_chart_button"):
                             auto_plot_data(df, current_ids, config=manual_config, con=con)
 
-                        if col_right.button("🗺️ Voir la carte", key="manual_map_button"):
+                        map_button_clicked = col_right.button("🗺️ Voir la carte", key="manual_map_button")
+                        _dbg(
+                            "button.map.state",
+                            clicked=map_button_clicked,
+                            target_id=target_id,
+                            target_id_isdigit=target_id.isdigit() if target_id else False,
+                            target_id_len=len(target_id) if target_id else 0,
+                            manual_metric=manual_metric
+                        )
+                        if map_button_clicked:
+                            st.info(f"🔍 **[BUTTON LOG]** Bouton carte cliqué! target_id={target_id}, manual_metric={manual_metric}")
+                            _dbg("button.map.clicked", target_id=target_id, manual_metric=manual_metric)
                             if target_id.isdigit() and len(target_id) in (4, 5):
+                                st.success(f"🔍 **[BUTTON LOG]** Conditions OK, appel render_epci_choropleth...")
+                                _dbg("button.map.calling_render", target_id=target_id, metric=manual_metric)
                                 render_epci_choropleth(
                                     con,
                                     df,
@@ -2698,8 +2713,10 @@ if prompt_to_process:
                                     manual_spec,
                                     sql_query=sql_query
                                 )
+                                _dbg("button.map.render_done")
                             else:
                                 st.info("La carte est disponible uniquement pour une commune cible.")
+                                st.warning(f"🔍 **[BUTTON LOG]** Conditions NON remplies: isdigit={target_id.isdigit()}, len={len(target_id)}")
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
@@ -2777,3 +2794,94 @@ if prompt_to_process:
                     "content": "⚠️ Je n'ai pas pu traiter votre demande. Essayez de reformuler votre question.",
                     "debug_info": {"error": error_msg, "trace": error_trace[-500:]}
                 })
+
+# --- E. AFFICHAGE PERSISTANT DES BOUTONS "ACTIONS RAPIDES" ---
+# Ce code s'exécute TOUJOURS (même sans nouveau prompt) pour rendre les boutons cliquables
+_dbg("ui.persistent_buttons.check", messages_count=len(st.session_state.messages))
+
+# Trouver le dernier message assistant avec des données
+last_data_message = None
+for msg in reversed(st.session_state.messages):
+    if msg.get("role") == "assistant" and msg.get("data") is not None and not msg["data"].empty:
+        last_data_message = msg
+        break
+
+if last_data_message:
+    _dbg("ui.persistent_buttons.found", has_data=True, has_chart_config=("chart_config" in last_data_message))
+
+    df = last_data_message["data"]
+    chart_config = last_data_message.get("chart_config", {})
+    formats = chart_config.get("formats", {})
+
+    # Récupérer le contexte géographique
+    geo_context = st.session_state.get("current_geo_context", {})
+    target_id = str(geo_context.get("target_id", ""))
+
+    # Trouver les candidats numériques
+    numeric_candidates = []
+    for col in df.columns:
+        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+            continue
+        series = pd.to_numeric(df[col], errors="coerce")
+        if series.notna().any():
+            numeric_candidates.append(col)
+
+    _dbg("ui.persistent_buttons.candidates", count=len(numeric_candidates), target_id=target_id)
+
+    if numeric_candidates:
+        with st.chat_message("assistant", avatar="🤖"):
+            st.subheader("Actions rapides")
+            manual_metric = st.selectbox(
+                "Choisir une colonne pour tracer un graphique ou une carte",
+                numeric_candidates,
+                index=0,
+                key="persistent_manual_metric_select"
+            )
+            col_left, col_right = st.columns(2)
+            manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
+            manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+
+            # Récupérer les IDs depuis debug_info si disponible
+            debug_info = last_data_message.get("debug_info", {})
+            current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
+
+            if col_left.button("📊 Tracer le graphique", key="persistent_manual_chart_button"):
+                _dbg("button.persistent_chart.clicked", metric=manual_metric)
+                auto_plot_data(df, current_ids, config=manual_config, con=con)
+
+            map_button_clicked = col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button")
+            _dbg(
+                "button.persistent_map.state",
+                clicked=map_button_clicked,
+                target_id=target_id,
+                target_id_isdigit=target_id.isdigit() if target_id else False,
+                target_id_len=len(target_id) if target_id else 0,
+                manual_metric=manual_metric
+            )
+
+            if map_button_clicked:
+                st.info(f"🔍 **[BUTTON LOG]** Bouton carte cliqué! target_id={target_id}, manual_metric={manual_metric}")
+                _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
+
+                if target_id and target_id.isdigit() and len(target_id) in (4, 5):
+                    st.success(f"🔍 **[BUTTON LOG]** Conditions OK, appel render_epci_choropleth...")
+                    _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric)
+
+                    # Récupérer la requête SQL depuis debug_info si disponible
+                    sql_query = debug_info.get("sql_query")
+
+                    render_epci_choropleth(
+                        con,
+                        df,
+                        target_id,
+                        geo_context.get("target_name", target_id),
+                        manual_metric,
+                        manual_spec,
+                        sql_query=sql_query
+                    )
+                    _dbg("button.persistent_map.render_done")
+                else:
+                    st.info("La carte est disponible uniquement pour une commune cible.")
+                    st.warning(f"🔍 **[BUTTON LOG]** Conditions NON remplies: isdigit={target_id.isdigit() if target_id else False}, len={len(target_id) if target_id else 0}")
+else:
+    _dbg("ui.persistent_buttons.no_data")
