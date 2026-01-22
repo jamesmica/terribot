@@ -2898,7 +2898,7 @@ if last_data_message:
 
     if numeric_candidates:
         with st.chat_message("assistant", avatar="🤖"):
-            with st.expander("🔧 Explorer d'autres variables", expanded=False):
+            with st.expander("🔧 Carte et graphique", expanded=False):
                 # Fonction pour afficher les labels lisibles au lieu des codes
                 def format_metric_label(col):
                     spec = formats.get(col, {})
