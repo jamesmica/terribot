@@ -1693,10 +1693,20 @@ def render_epci_choropleth(
             )
         return
 
+    geojson_features = geojson.get("features") if isinstance(geojson, dict) else None
+    if not isinstance(geojson_features, list):
+        _dbg("map.geojson.invalid", epci_id=epci_id, payload_type=str(type(geojson)))
+        st.warning("Le fond de carte des communes EPCI est invalide pour le moment.")
+        if diagnostic:
+            st.caption(
+                "Diagnostic : GeoJSON invalide (features manquantes ou format inattendu)."
+            )
+        return
+
     _dbg(
         "map.geojson.loaded",
         epci_id=epci_id,
-        features=len(geojson.get("features", []))
+        features=len(geojson_features)
     )
     _dbg(
         "map.data.numeric",
@@ -1721,13 +1731,13 @@ def render_epci_choropleth(
     )
     missing_values = [
         str(feature.get("properties", {}).get("code", ""))
-        for feature in geojson.get("features", [])
+        for feature in geojson_features
         if str(feature.get("properties", {}).get("code", "")) not in value_map
     ]
     _dbg(
         "map.data.coverage",
         epci_id=epci_id,
-        features=len(geojson.get("features", [])),
+        features=len(geojson_features),
         values=len(value_map),
         missing=len(missing_values),
         missing_sample=missing_values[:10]
@@ -1735,9 +1745,9 @@ def render_epci_choropleth(
     if diagnostic and missing_values:
         st.caption(
             f"Diagnostic : données disponibles pour {len(value_map)} commune(s) sur "
-            f"{len(geojson.get('features', []))} dans l'EPCI."
+            f"{len(geojson_features)} dans l'EPCI."
         )
-    for feature in geojson.get("features", []):
+    for feature in geojson_features:
         code = str(feature.get("properties", {}).get("code", ""))
         feature.setdefault("properties", {})["value"] = value_map.get(code)
 
@@ -1761,7 +1771,7 @@ def render_epci_choropleth(
         "width": 800,
         "height": 500,
         "projection": {"type": "mercator"},
-        "data": {"values": geojson, "format": {"type": "geojson"}},
+        "data": {"values": geojson_features, "format": {"type": "geojson"}},
         "transform": [
             {"calculate": "datum.properties.value", "as": "value"},
             {"calculate": "datum.properties.nom", "as": "nom_commune"}
