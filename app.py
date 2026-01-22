@@ -297,7 +297,16 @@ def _dbg(label, **kw):
         payload = " ".join([f"{k}={repr(v)[:200]}" for k, v in kw.items()])
     except Exception:
         payload = "(payload error)"
-    print(f"[TERRIBOT][DBG] {label} :: {payload}")
+    message = f"[TERRIBOT][DBG] {label} :: {payload}"
+    print(message)
+    try:
+        if "debug_logs" not in st.session_state:
+            st.session_state.debug_logs = []
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        st.session_state.debug_logs.append(f"{timestamp} {message}")
+        st.session_state.debug_logs = st.session_state.debug_logs[-200:]
+    except Exception:
+        pass
 
 # --- 1. CONFIGURATION & STYLE (DOIT ÊTRE EN PREMIER) ---
 st.set_page_config(
@@ -514,6 +523,15 @@ with st.sidebar:
         """)
         
     st.info("💡 **Astuce :** L'IA choisit elle-même la variable du graphique selon votre question.")
+
+    with st.expander("🧾 Logs debug", expanded=False):
+        if st.button("🧹 Effacer les logs", key="clear_debug_logs", width='stretch'):
+            st.session_state.debug_logs = []
+        logs = st.session_state.get("debug_logs", [])
+        if logs:
+            st.text_area("Logs récents", "\n".join(logs), height=220)
+        else:
+            st.caption("Aucun log pour l'instant.")
 
 client = openai.OpenAI(api_key=api_key)
 MODEL_NAME = "gpt-5.2-2025-12-11"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
@@ -1544,6 +1562,13 @@ def fetch_geojson(url):
 
 
 def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric_spec, diagnostic=True):
+    _dbg(
+        "map.render.start",
+        commune_id=commune_id,
+        commune_name=commune_name,
+        metric_col=metric_col,
+        df_cols=list(df.columns)
+    )
     try:
         epci_id = con.execute(
             "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
@@ -1555,10 +1580,12 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         return
 
     if not epci_id or not epci_id[0]:
+        _dbg("map.epci.missing", commune_id=commune_id)
         st.info("Aucun EPCI disponible pour cette commune.")
         return
 
     epci_id = str(epci_id[0])
+    _dbg("map.epci.found", commune_id=commune_id, epci_id=epci_id)
     epci_name_row = con.execute(
         "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
         [epci_id]
@@ -1566,6 +1593,7 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
     epci_name = epci_name_row[0] if epci_name_row else epci_id
 
     if metric_col not in df.columns:
+        _dbg("map.metric.missing", metric_col=metric_col, df_cols=list(df.columns))
         st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
         if diagnostic:
             st.caption(
@@ -1587,6 +1615,7 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         df_epci["valeur"] = pd.Series(dtype="float64")
 
     if df_epci.empty:
+        _dbg("map.data.empty", epci_id=epci_id, metric_col=metric_col)
         st.info("Aucune donnée disponible pour les communes de cet EPCI.")
         if diagnostic:
             st.caption(
@@ -1594,6 +1623,7 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
             )
         return
     if df_epci["valeur"].notna().sum() == 0:
+        _dbg("map.data.no_values", epci_id=epci_id, metric_col=metric_col)
         st.info("Aucune valeur exploitable pour les communes de cet EPCI.")
         if diagnostic:
             st.caption(
@@ -1605,6 +1635,7 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         f"https://geo.api.gouv.fr/epcis/{epci_id}/communes?format=geojson&geometry=contour&fields=code,nom"
     )
     if not geojson:
+        _dbg("map.geojson.unavailable", epci_id=epci_id)
         st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
         if diagnostic:
             st.caption(
@@ -1629,6 +1660,13 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
     else:
         metric_format = ",.0f"
 
+    _dbg(
+        "map.render.ready",
+        epci_id=epci_id,
+        epci_name=epci_name,
+        metric_col=metric_col,
+        metric_format=metric_format
+    )
     st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
     map_spec = {
         "width": 800,
@@ -2484,10 +2522,34 @@ if prompt_to_process:
                     map_allowed = metric_kind == "percent" or any(
                         kw in metric_label for kw in ["taux", "part", "ratio", "moyen", "moyenne", "médiane"]
                     )
+                    _dbg(
+                        "map.eligibility.check",
+                        metric_col=metric_col,
+                        metric_kind=metric_kind,
+                        metric_label=metric_label,
+                        map_allowed=map_allowed,
+                        target_id=target_id
+                    )
 
                     if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
                         with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
                             render_epci_choropleth(con, df, target_id, geo_context.get("target_name", target_id), metric_col, metric_spec)
+                    elif not map_allowed:
+                        _dbg(
+                            "map.eligibility.blocked",
+                            reason="metric_not_eligible",
+                            metric_col=metric_col,
+                            metric_kind=metric_kind,
+                            metric_label=metric_label
+                        )
+                    elif not (target_id.isdigit() and len(target_id) in (4, 5)):
+                        _dbg(
+                            "map.eligibility.blocked",
+                            reason="target_not_commune",
+                            target_id=target_id
+                        )
+                    elif not metric_col:
+                        _dbg("map.eligibility.blocked", reason="missing_metric_col")
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     numeric_candidates = []
@@ -2528,40 +2590,6 @@ if prompt_to_process:
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
-                        numeric_candidates = []
-                        for col in df.columns:
-                            if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                                continue
-                            series = pd.to_numeric(df[col], errors="coerce")
-                            if series.notna().any():
-                                numeric_candidates.append(col)
-
-                        if numeric_candidates:
-                            manual_metric = st.selectbox(
-                                "Choisir une colonne pour tracer un graphique ou une carte",
-                                numeric_candidates,
-                                index=0,
-                                key="manual_metric_select"
-                            )
-                            col_left, col_right = st.columns(2)
-                            manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
-                            manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
-
-                            if col_left.button("📊 Tracer le graphique", key="manual_chart_button"):
-                                auto_plot_data(df, current_ids, config=manual_config, con=con)
-
-                            if col_right.button("🗺️ Voir la carte", key="manual_map_button"):
-                                if target_id.isdigit() and len(target_id) in (4, 5):
-                                    render_epci_choropleth(
-                                        con,
-                                        target_id,
-                                        geo_context.get("target_name", target_id),
-                                        manual_metric,
-                                        manual_spec
-                                    )
-                                else:
-                                    st.info("La carte est disponible uniquement pour une commune cible.")
-
                         with st.expander("📊 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
 
