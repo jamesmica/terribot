@@ -409,6 +409,12 @@ st.markdown("""
     /* Cache le menu et footer */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+
+    /* Max width for Vega-Lite charts */
+    div[data-testid="stVegaLiteChart"] {
+        max-width: 800px;
+        margin: 0 auto;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1511,6 +1517,12 @@ def fetch_geojson(url):
 def find_table_for_column(con, column_name):
     db_schemas = st.session_state.get("db_schemas", {})
     valid_tables = st.session_state.get("valid_tables_list", [])
+    if not valid_tables:
+        try:
+            tables = con.execute("SHOW TABLES").fetchall()
+            valid_tables = [t[0] for t in tables]
+        except Exception as e:
+            _dbg("map.table_list.error", error=str(e))
     for table_name in valid_tables:
         columns = db_schemas.get(table_name)
         if columns and column_name in columns:
@@ -1555,6 +1567,11 @@ def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spe
         st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
         if diagnostic:
             available_tables = st.session_state.get("valid_tables_list", [])
+            if not available_tables:
+                try:
+                    available_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+                except Exception:
+                    available_tables = []
             st.caption(
                 f"Diagnostic : colonne '{metric_col}' introuvable dans {len(available_tables)} table(s) disponibles."
             )
@@ -2001,8 +2018,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "fontSize": 14
     }
 
-    chart["width"] = 800
-    st.vega_lite_chart(df_melted, chart, use_container_width=False)
+    chart["width"] = "container"
+    st.vega_lite_chart(df_melted, chart, use_container_width=True)
 
 
 # --- 9. UI PRINCIPALE ---
@@ -2459,10 +2476,14 @@ if prompt_to_process:
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
-                        numeric_candidates = [
-                            c for c in df.columns
-                            if pd.api.types.is_numeric_dtype(df[c]) and c.upper() not in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]
-                        ]
+                        numeric_candidates = []
+                        for col in df.columns:
+                            if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                                continue
+                            series = pd.to_numeric(df[col], errors="coerce")
+                            if series.notna().any():
+                                numeric_candidates.append(col)
+
                         if numeric_candidates:
                             manual_metric = st.selectbox(
                                 "Choisir une colonne pour tracer un graphique ou une carte",
