@@ -1772,11 +1772,16 @@ def render_epci_choropleth(
         metric_format=metric_format
     )
     st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
+
+    # Vega-Lite spec avec projection adaptée aux données
     map_spec = {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
         "width": "container",
         "height": 600,
-        "autosize": {"type": "fit", "contains": "padding"},
-        "projection": {"type": "mercator"},
+        "projection": {
+            "type": "mercator",
+            "fit": geojson
+        },
         "data": {"values": geojson, "format": {"type": "geojson"}},
         "transform": [
             {"calculate": "datum.properties.value", "as": "value"},
