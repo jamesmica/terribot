@@ -1890,8 +1890,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         if not values.empty:
             y_min = values.min()
             y_max = values.max()
-            # Ajouter une marge de 10% en haut et en bas
-            margin = (y_max - y_min) * 0.1
+            # Ajouter une marge de 20% en haut et en bas
+            margin = (y_max - y_min) * 0.2
             y_domain = [y_min - margin, y_max + margin]
         else:
             y_domain = None
@@ -2492,6 +2492,40 @@ if prompt_to_process:
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
+                        numeric_candidates = []
+                        for col in df.columns:
+                            if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                                continue
+                            series = pd.to_numeric(df[col], errors="coerce")
+                            if series.notna().any():
+                                numeric_candidates.append(col)
+
+                        if numeric_candidates:
+                            manual_metric = st.selectbox(
+                                "Choisir une colonne pour tracer un graphique ou une carte",
+                                numeric_candidates,
+                                index=0,
+                                key="manual_metric_select"
+                            )
+                            col_left, col_right = st.columns(2)
+                            manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
+                            manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+
+                            if col_left.button("📊 Tracer le graphique", key="manual_chart_button"):
+                                auto_plot_data(df, current_ids, config=manual_config, con=con)
+
+                            if col_right.button("🗺️ Voir la carte", key="manual_map_button"):
+                                if target_id.isdigit() and len(target_id) in (4, 5):
+                                    render_epci_choropleth(
+                                        con,
+                                        target_id,
+                                        geo_context.get("target_name", target_id),
+                                        manual_metric,
+                                        manual_spec
+                                    )
+                                else:
+                                    st.info("La carte est disponible uniquement pour une commune cible.")
+
                         with st.expander("📊 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
 
