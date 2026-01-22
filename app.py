@@ -1661,7 +1661,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     id_vars = [label_col]
     if date_col: id_vars.append(date_col)
     df_melted = df_plot.melt(id_vars=id_vars, value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
-    
+
+    # Conversion explicite en numérique (crucial pour Vega-Lite)
+    df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
+
     # 7. HEURISTIQUE DE CORRECTION DU % (1600% -> 16%)
     if is_percent:
         # Si c'est censé être du % mais que la moyenne des valeurs est > 1.5, 
@@ -1699,7 +1702,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     vega_config = {
         "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
         "axis": {"labelFontSize": 11, "titleFontSize": 12},
-        "legend": {"labelFontSize": 11, "titleFontSize": 12, "orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
+        "legend": {"labelFontSize": 11, "titleFontSize": 12, "orient": "bottom"}
     }
     color_domain = sorted_labels
     if is_multi_metric and is_stacked:
@@ -1727,11 +1730,11 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         chart = {"config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
     else:
         if is_multi_metric and is_stacked:
+            y_stack = "normalize" if is_percent else True
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
+                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale, "stack": y_stack},
                 "color": {"field": "Indicateur", "type": "nominal", "title": "Variable", "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}},
-                "stack": "normalize" if is_percent else True,
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
