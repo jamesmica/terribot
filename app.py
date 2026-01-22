@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18.3 - 22 janvier 2026")
+    st.caption("v0.18.4 - 22 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1665,6 +1665,18 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     # Conversion explicite en numérique (crucial pour Vega-Lite)
     df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
 
+    # Pour les graphiques temporels, ne garder que le territoire cible + France
+    if date_col and id_col:
+        target_id = candidates[0] if candidates else None
+        # Trouver l'ID de la France (FR ou France métropolitaine)
+        france_ids = [uid for uid in available_ids if str(uid) in ['FR', 'FRMETRO', 'FXX']]
+        keep_ids = [target_id] if target_id else []
+        if france_ids:
+            keep_ids.extend(france_ids[:1])  # Ajouter seulement la première France trouvée
+        df_melted = df_melted[df_melted[label_col].isin(
+            df_plot[df_plot[id_col].isin(keep_ids)][label_col].unique()
+        )]
+
     # 7. HEURISTIQUE DE CORRECTION DU % (1600% -> 16%)
     if is_percent:
         # Si c'est censé être du % mais que la moyenne des valeurs est > 1.5, 
@@ -1677,17 +1689,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     # 8. VEGA
     is_multi_metric = len(new_selected_metrics) > 1
     is_stacked = False
+    # Désactivation de l'échelle logarithmique
     y_scale = None
-    try:
-        value_stats = df_melted["Valeur"].dropna().abs()
-        if not is_percent and not value_stats.empty:
-            min_val = value_stats.min()
-            max_val = value_stats.max()
-            if min_val > 0 and max_val / min_val >= 1000:
-                y_scale = {"type": "log"}
-                _dbg("plot.scale.log", min_val=min_val, max_val=max_val)
-    except Exception as e_scale:
-        _dbg("plot.scale.detect_error", error=str(e_scale))
 
     if is_multi_metric and not date_col:
         try:
@@ -1714,7 +1717,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "field": label_col,
         "type": "nominal",
         "scale": {"domain": color_domain, "range": palette[:len(color_domain)]},
-        "title": "",
+        "title": None,
         "legend": {"orient": "bottom"}
     }
     chart = None
@@ -1722,10 +1725,26 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     if date_col:
         y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
         if y_scale: y_axis_def["scale"] = y_scale
+
+        # Couleurs spécifiques pour les courbes : bleu turquoise (cible) et orange (France)
+        labels_in_data = df_melted[label_col].unique().tolist()
+        color_map_line = []
+        for lbl in labels_in_data:
+            if "France" in lbl or "FR" in lbl:
+                color_map_line.append("#F38331")  # Orange pour France
+            else:
+                color_map_line.append("#1DB5C5")  # Bleu turquoise pour cible
+
         chart_encoding = {
             "x": {"field": date_col, "type": "ordinal", "title": "Année"},
             "y": y_axis_def,
-            "color": color_def,
+            "color": {
+                "field": label_col,
+                "type": "nominal",
+                "scale": {"domain": labels_in_data, "range": color_map_line},
+                "title": None,
+                "legend": {"orient": "bottom"}
+            },
             "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
         }
         if is_multi_metric: chart_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
@@ -1738,7 +1757,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
                 "y": y_axis_def,
-                "color": {"field": "Indicateur", "type": "nominal", "title": "Variable", "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}},
+                "color": {"field": "Indicateur", "type": "nominal", "title": None, "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}, "legend": {"orient": "bottom"}},
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
@@ -1762,10 +1781,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
-    # Ajouter le titre en haut du graphique
+    # Ajouter le titre en haut du graphique (centré)
     chart["title"] = {
         "text": title_y,
-        "anchor": "start",
+        "anchor": "middle",
         "fontSize": 14
     }
 
