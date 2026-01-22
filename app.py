@@ -1789,7 +1789,7 @@ def render_epci_choropleth(
         "width": 800,
         "height": 500,
         "projection": {"type": "mercator"},
-        "data": {"values": geojson_payload, "format": {"type": "geojson"}},
+        "data": {"values": geojson_features, "format": {"type": "geojson"}},
         "transform": [
             {"calculate": "datum.properties.value", "as": "value"},
             {"calculate": "datum.properties.nom", "as": "nom_commune"}
@@ -1816,9 +1816,11 @@ def render_epci_choropleth(
         width=map_spec.get("width"),
         height=map_spec.get("height"),
         color_scale=map_spec.get("encoding", {}).get("color", {}).get("scale", {}),
-        features=len(geojson_features)
+        features=len(geojson_features),
+        data_values_type=str(type(map_spec.get("data", {}).get("values")))
     )
     try:
+        _dbg("map.render.vega.start", epci_id=epci_id)
         st.vega_lite_chart(map_spec, use_container_width=False)
         _dbg("map.render.success", epci_id=epci_id)
     except Exception as e:
