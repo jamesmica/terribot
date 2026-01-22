@@ -1781,11 +1781,15 @@ def render_epci_choropleth(
         metric_format=metric_format
     )
     st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
+    geojson_payload = {
+        "type": "FeatureCollection",
+        "features": geojson_features
+    }
     map_spec = {
         "width": 800,
         "height": 500,
         "projection": {"type": "mercator"},
-        "data": {"values": geojson_features, "format": {"type": "geojson"}},
+        "data": {"values": geojson_payload, "format": {"type": "geojson"}},
         "transform": [
             {"calculate": "datum.properties.value", "as": "value"},
             {"calculate": "datum.properties.nom", "as": "nom_commune"}
