@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18.1 - 22 janvier 2026")
+    st.caption("v0.18.2 - 22 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1720,9 +1720,11 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     chart = None
 
     if date_col:
+        y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}}
+        if y_scale: y_axis_def["scale"] = y_scale
         chart_encoding = {
             "x": {"field": date_col, "type": "ordinal", "title": "Année"},
-            "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
+            "y": y_axis_def,
             "color": color_def,
             "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
         }
@@ -1731,35 +1733,35 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     else:
         if is_multi_metric and is_stacked:
             y_stack = "normalize" if is_percent else True
+            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}, "stack": y_stack}
+            if y_scale: y_axis_def["scale"] = y_scale
             chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale, "stack": y_stack},
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
+                "y": y_axis_def,
                 "color": {"field": "Indicateur", "type": "nominal", "title": "Variable", "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}},
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
-             chart_encoding = {
+            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}}
+            if y_scale: y_axis_def["scale"] = y_scale
+            chart_encoding = {
                 "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
+                "y": y_axis_def,
                 "color": color_def,
                 "xOffset": {"field": label_col},
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         else:
+            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}}
+            if y_scale: y_axis_def["scale"] = y_scale
             chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None, "labelLimit": 1000},  # <--- CORRECTION 1 : Affiche le nom complet (jusqu'à 500px)
-                "y": {"field": "Valeur", "type": "quantitative", "title": "", "axis": {"format": y_format}, "scale": y_scale},
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": -45}, "title": None},
+                "y": y_axis_def,
                 "color": color_def,
                 "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
-    chart["title"] = {
-        "text": f"{title_y}",
-        "anchor": "middle",
-        "fontSize": 16,
-        "offset": 10
-    }
     st.vega_lite_chart(df_melted, chart, use_container_width=True)
 
 
