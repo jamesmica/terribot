@@ -406,23 +406,95 @@ con = get_db_connection()
 
 st.markdown("""
 <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    .stChatInput {padding-bottom: 20px;}
-    .stDataFrame {border: 1px solid #f0f2f6; border-radius: 5px;}
-    
+    /* Thème général clair et moderne */
+    .stApp {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+    }
+
+    /* Sidebar avec fond clair */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
+        border-right: 1px solid #e0e4e8;
+    }
+
+    /* Messages de chat avec fond clair */
+    [data-testid="stChatMessageContainer"] {
+        background-color: #ffffff;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    /* Zone de saisie avec style moderne */
+    .stChatInput {
+        padding-bottom: 20px;
+        background-color: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+
+    /* DataFrames avec bordure subtile */
+    .stDataFrame {
+        border: 1px solid #e0e4e8;
+        border-radius: 8px;
+        background-color: #ffffff;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    /* Expanders avec style moderne */
+    .streamlit-expanderHeader {
+        background-color: #f8f9fc;
+        border-radius: 8px;
+        border: 1px solid #e0e4e8;
+    }
+
     /* Style pour les étapes de raisonnement */
     .reasoning-step {
         font-size: 0.85em;
-        color: #555;
-        border-left: 3px solid #FF4B4B;
-        padding-left: 10px;
+        color: #2c3e50;
+        background-color: #f8f9fc;
+        border-left: 3px solid #3498db;
+        padding: 10px 15px;
         margin-bottom: 10px;
+        border-radius: 4px;
     }
-    
-    /* Bouton reset custom */
+
+    /* Boutons avec style moderne */
     div.stButton > button:first-child {
         border-radius: 8px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    div.stButton > button:first-child:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+    }
+
+    /* Titre principal avec style */
+    h1 {
+        color: #2c3e50;
+        font-weight: 700;
+    }
+
+    /* Sous-titres */
+    h2, h3, h4 {
+        color: #34495e;
+    }
+
+    /* Cache le menu et footer */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* Améliorer les tooltips */
+    [data-testid="stTooltipIcon"] {
+        color: #667eea;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -488,7 +560,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18.5 - 22 janvier 2026")
+    st.caption("v0.18.6 - 22 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1697,6 +1769,9 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
                     # Appliquer le ratio aux valeurs de France pour mise à l'échelle
                     df_melted.loc[df_melted[label_col] == france_label, "Valeur"] *= ratio
 
+                # Renommer "France" en "Tendance France" dans la légende
+                df_melted.loc[df_melted[label_col] == france_label, label_col] = f"Tendance {france_label}"
+
     # 7. HEURISTIQUE DE CORRECTION DU % (1600% -> 16%)
     if is_percent:
         # Si c'est censé être du % mais que la moyenne des valeurs est > 1.5, 
@@ -1724,12 +1799,26 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
 
     vega_config = {
         "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
-        "axis": {"labelFontSize": 11, "titleFontSize": 12},
+        "axis": {
+            "labelFontSize": 11,
+            "titleFontSize": 12,
+            "labelColor": "#2c3e50",
+            "titleColor": "#2c3e50",
+            "gridColor": "#e8ecf0",
+            "gridOpacity": 0.5,
+            "domainColor": "#cbd5e0"
+        },
         "legend": {
             "labelFontSize": 11,
             "titleFontSize": 12,
+            "labelColor": "#2c3e50",
+            "titleColor": "#2c3e50",
             "orient": "bottom",
             "layout": {"bottom": {"anchor": "middle"}}
+        },
+        "title": {
+            "color": "#2c3e50",
+            "fontSize": 14
         },
         "background": "white"
     }
@@ -1749,14 +1838,28 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     chart = None
 
     if date_col:
+        # Calculer le domaine dynamique pour l'axe Y
+        values = df_melted["Valeur"].dropna()
+        if not values.empty:
+            y_min = values.min()
+            y_max = values.max()
+            # Ajouter une marge de 10% en haut et en bas
+            margin = (y_max - y_min) * 0.1
+            y_domain = [y_min - margin, y_max + margin]
+        else:
+            y_domain = None
+
         y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
-        if y_scale: y_axis_def["scale"] = y_scale
+        if y_domain:
+            y_axis_def["scale"] = {"domain": y_domain}
+        elif y_scale:
+            y_axis_def["scale"] = y_scale
 
         # Couleurs spécifiques pour les courbes : bleu turquoise (cible) et orange (France)
         labels_in_data = df_melted[label_col].unique().tolist()
         color_map_line = []
         for lbl in labels_in_data:
-            if "France" in lbl or "FR" in lbl:
+            if "Tendance" in lbl or "France" in lbl or "FR" in lbl:
                 color_map_line.append("#F38331")  # Orange pour France
             else:
                 color_map_line.append("#1DB5C5")  # Bleu turquoise pour cible
@@ -1775,9 +1878,9 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         }
         if is_multi_metric: base_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
 
-        # Layer pour le territoire cible (avec points)
-        target_label = [lbl for lbl in labels_in_data if "France" not in lbl and "FR" not in lbl]
-        france_label = [lbl for lbl in labels_in_data if "France" in lbl or "FR" in lbl]
+        # Layer pour le territoire cible (avec points et tooltip)
+        target_label = [lbl for lbl in labels_in_data if "Tendance" not in lbl and "France" not in lbl and "FR" not in lbl]
+        france_label = [lbl for lbl in labels_in_data if "Tendance" in lbl or "France" in lbl or "FR" in lbl]
 
         layers = []
         if target_label:
@@ -1790,11 +1893,11 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             })
 
         if france_label:
+            # Pour Tendance France : pas de tooltip
             france_encoding = base_encoding.copy()
-            france_encoding["tooltip"] = [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
             layers.append({
                 "transform": [{"filter": f"datum['{label_col}'] == '{france_label[0]}'"}],
-                "mark": {"type": "line", "point": False, "tooltip": True},
+                "mark": {"type": "line", "point": False, "tooltip": False},
                 "encoding": france_encoding
             })
 
