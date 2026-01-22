@@ -1747,11 +1747,14 @@ def render_epci_choropleth(
         non_numeric=(df_epci["valeur"].isna().sum()),
         sample_values=df_epci["valeur"].dropna().head(5).tolist()
     )
-    value_map = {
-        str(row["ID"]): row["valeur"]
-        for _, row in df_epci.iterrows()
-        if pd.notna(row["valeur"])
-    }
+    value_map = {}
+    for _, row in df_epci.iterrows():
+        if pd.notna(row["valeur"]):
+            code = str(row["ID"])
+            # Ajouter un zéro initial si le code a 4 caractères (ex: 4112 → 04112)
+            if len(code) == 4:
+                code = "0" + code
+            value_map[code] = row["valeur"]
     _dbg(
         "map.data.stats",
         epci_id=epci_id,
@@ -1760,11 +1763,13 @@ def render_epci_choropleth(
         min_value=df_epci["valeur"].min(),
         max_value=df_epci["valeur"].max()
     )
-    missing_values = [
-        str(feature.get("properties", {}).get("code", ""))
-        for feature in geojson.get("features", [])
-        if str(feature.get("properties", {}).get("code", "")) not in value_map
-    ]
+    missing_values = []
+    for feature in geojson.get("features", []):
+        code = str(feature.get("properties", {}).get("code", ""))
+        # Normaliser le code pour la comparaison
+        normalized_code = ("0" + code) if len(code) == 4 else code
+        if normalized_code not in value_map:
+            missing_values.append(code)
     _dbg(
         "map.data.coverage",
         epci_id=epci_id,
@@ -1780,7 +1785,9 @@ def render_epci_choropleth(
         )
     for feature in geojson.get("features", []):
         code = str(feature.get("properties", {}).get("code", ""))
-        feature.setdefault("properties", {})["value"] = value_map.get(code)
+        # Normaliser le code pour la recherche dans value_map
+        normalized_code = ("0" + code) if len(code) == 4 else code
+        feature.setdefault("properties", {})["value"] = value_map.get(normalized_code)
 
     metric_label = metric_spec.get("label", metric_col)
     metric_title = metric_spec.get("title", metric_label)
@@ -2788,7 +2795,7 @@ if prompt_to_process:
 
                     # Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
-                        with st.expander("📊 Voir les données brutes", expanded=False):
+                        with st.expander("📝 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
 
                 # C. Streaming du Texte
@@ -2897,57 +2904,56 @@ if last_data_message:
     _dbg("ui.persistent_buttons.candidates", count=len(numeric_candidates), target_id=target_id)
 
     if numeric_candidates:
-        with st.chat_message("assistant", avatar="🤖"):
-            with st.expander("🔧 Carte et graphique", expanded=False):
-                # Fonction pour afficher les labels lisibles au lieu des codes
-                def format_metric_label(col):
-                    spec = formats.get(col, {})
-                    # Préfère le titre complet pour la sélection (plus descriptif)
-                    return spec.get("title") or spec.get("label") or col
+        with st.expander("📊 Carte et graphique", expanded=False):
+            # Fonction pour afficher les labels lisibles au lieu des codes
+            def format_metric_label(col):
+                spec = formats.get(col, {})
+                # Préfère le titre complet pour la sélection (plus descriptif)
+                return spec.get("title") or spec.get("label") or col
 
-                manual_metric = st.selectbox(
-                    "Choisir une variable",
-                    numeric_candidates,
-                    index=0,
-                    format_func=format_metric_label,
-                    key="persistent_manual_metric_select"
-                )
-                col_left, col_right = st.columns(2)
-                manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
-                manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+            manual_metric = st.selectbox(
+                "Choisir une variable",
+                numeric_candidates,
+                index=0,
+                format_func=format_metric_label,
+                key="persistent_manual_metric_select"
+            )
+            col_left, col_right = st.columns(2)
+            manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
+            manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
 
-                # Récupérer les IDs depuis debug_info si disponible
-                debug_info = last_data_message.get("debug_info", {})
-                current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
+            # Récupérer les IDs depuis debug_info si disponible
+            debug_info = last_data_message.get("debug_info", {})
+            current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
 
-                if col_left.button("📊 Tracer le graphique", key="persistent_manual_chart_button"):
-                    _dbg("button.persistent_chart.clicked", metric=manual_metric)
-                    auto_plot_data(df, current_ids, config=manual_config, con=con)
+            if col_left.button("📈 Tracer le graphique", key="persistent_manual_chart_button"):
+                _dbg("button.persistent_chart.clicked", metric=manual_metric)
+                auto_plot_data(df, current_ids, config=manual_config, con=con)
 
-                if col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button"):
-                    _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
+            if col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button"):
+                _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
 
-                    # Vérifier si c'est une commune (4-5 chiffres) ou un EPCI (9 chiffres)
-                    is_commune = target_id and target_id.isdigit() and len(target_id) in (4, 5)
-                    is_epci = target_id and target_id.isdigit() and len(target_id) == 9
+                # Vérifier si c'est une commune (4-5 chiffres) ou un EPCI (9 chiffres)
+                is_commune = target_id and target_id.isdigit() and len(target_id) in (4, 5)
+                is_epci = target_id and target_id.isdigit() and len(target_id) == 9
 
-                    if is_commune or is_epci:
-                        _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric, is_epci=is_epci)
+                if is_commune or is_epci:
+                    _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric, is_epci=is_epci)
 
-                        # Récupérer la requête SQL depuis debug_info si disponible
-                        sql_query = debug_info.get("sql_query")
+                    # Récupérer la requête SQL depuis debug_info si disponible
+                    sql_query = debug_info.get("sql_query")
 
-                        render_epci_choropleth(
-                            con,
-                            df,
-                            target_id,
-                            geo_context.get("target_name", target_id),
-                            manual_metric,
-                            manual_spec,
-                            sql_query=sql_query
-                        )
-                        _dbg("button.persistent_map.render_done")
-                    else:
-                        st.info("La carte est disponible pour une commune ou un EPCI.")
+                    render_epci_choropleth(
+                        con,
+                        df,
+                        target_id,
+                        geo_context.get("target_name", target_id),
+                        manual_metric,
+                        manual_spec,
+                        sql_query=sql_query
+                    )
+                    _dbg("button.persistent_map.render_done")
+                else:
+                    st.info("La carte est disponible pour une commune ou un EPCI.")
 else:
     _dbg("ui.persistent_buttons.no_data")
