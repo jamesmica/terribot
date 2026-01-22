@@ -514,6 +514,14 @@ with st.sidebar:
             st.warning("Requis pour démarrer.")
             st.stop()
 
+    # Affichage du contexte géographique actuel
+    geo_context = st.session_state.get("current_geo_context")
+    if geo_context:
+        st.divider()
+        target_name = geo_context.get("target_name", "")
+        if target_name:
+            st.info(f"📍 **{target_name}**")
+
 client = openai.OpenAI(api_key=api_key)
 MODEL_NAME = "gpt-5.2-2025-12-11"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -1222,6 +1230,9 @@ def get_broad_candidates(con, input_str, limit=15):
             _dbg("geo.broad_candidates.region_error", error=str(e))
 
     # SQL : On cherche large (Fuzzy + Contient)
+    # Normalisation du terme de recherche pour la comparaison
+    clean_for_sql = clean_input.replace("'", " ").replace("-", " ")
+
     sql = f"""
     WITH candidates AS (
         SELECT
@@ -1238,14 +1249,21 @@ def get_broad_candidates(con, input_str, limit=15):
             END as TYPE_TERRITOIRE,
 
             -- BOOST DE SCORE :
-            jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}')
+            jaro_winkler_similarity(
+                lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')),
+                '{clean_for_sql}'
+            )
             + (CASE WHEN ID LIKE 'R%' THEN 0.2 ELSE 0 END)
             + (CASE WHEN ID LIKE 'D%' THEN 0.15 ELSE 0 END)
-            + (CASE WHEN lower(NOM_COUV) = '{clean_input}' THEN 0.3 ELSE 0 END)
+            + (CASE WHEN length(ID) = 9 AND '{clean_for_sql}' LIKE '%cc %' OR '{clean_for_sql}' LIKE '%ca %' OR '{clean_for_sql}' LIKE '%cu %' OR '{clean_for_sql}' LIKE '%metropole%' THEN 0.25 ELSE 0 END)
+            + (CASE WHEN lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')) = '{clean_for_sql}' THEN 0.3 ELSE 0 END)
             as score
         FROM territoires
-        WHERE strip_accents(lower(NOM_COUV)) LIKE '%{clean_input}%'
-           OR jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') > 0.80
+        WHERE strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))) LIKE '%{clean_for_sql}%'
+           OR jaro_winkler_similarity(
+                lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')),
+                '{clean_for_sql}'
+              ) > 0.75
     )
     SELECT * FROM candidates
     ORDER BY score DESC
@@ -1339,21 +1357,31 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
     if not candidates: return None
 
     system_prompt = """
-    Tu es un expert géographe rattaché au code officiel géographique (INSEE).
+    Tu es un expert géographe rattaché au code officiel géographique (INSEE) et au SIREN des EPCI.
 
     TA MISSION :
     Identifier le territoire unique qui correspond à la recherche de l'utilisateur parmi une liste de candidats.
 
     RÈGLES DE DÉCISION :
     1. Si l'utilisateur tape juste le nom d'une ville (ex: "Dunkerque"), c'est TOUJOURS la "Commune" (ID 4 ou 5 chiffres). Pas l'EPCI.
-    2. Si l'utilisateur précise "Agglo", "Metropole", "Communauté", "CU", "Grand...", c'est l'"EPCI/Interco" (ID 9 chiffres).
+    2. Si l'utilisateur précise explicitement un EPCI (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "CU d'Arras", "Grand Paris", "CA du Bassin d'Arcachon"):
+       - Cherche le candidat de type "EPCI/Interco" (ID 9 chiffres)
+       - Match EXACTEMENT le nom complet mentionné
     3. Si l'utilisateur tape un numéro (ex: "59"), c'est le Département.
     4. En cas de doute total (ex: homonymes parfaits dans deux départements sans contexte), renvoie "AMBIGUITE".
+
+    PRÉFIXES D'EPCI À RECONNAÎTRE :
+    - CC = Communauté de Communes
+    - CA = Communauté d'Agglomération
+    - CU = Communauté Urbaine
+    - Métropole = Métropole
+    - Grand(e) = souvent un EPCI (ex: Grand Paris, Grand Lyon)
 
     ⚠️ IMPORTANT - UTILISE EXACTEMENT L'ID DU CANDIDAT :
     - Si le candidat a l'ID "4112", réponds "4112" (PAS "04112")
     - Si le candidat a l'ID "D4", réponds "D4" (PAS "04" ou "4")
     - Si le candidat a l'ID "R11", réponds "R11" (PAS "11")
+    - Si le candidat a l'ID "200068468", réponds "200068468" (code SIREN EPCI)
 
     FORMAT DE RÉPONSE JSON ATTENDU :
     {
@@ -1413,7 +1441,20 @@ def analyze_territorial_scope(con, rewritten_prompt):
         extraction = client.responses.create(
             model=MODEL_NAME,
             input=build_messages(
-                "Extrais les lieux géographiques exacts mentionnés. JSON: {\"lieux\": [\"Lieu 1\", \"Lieu 2\"]}",
+                """Extrais TOUS les lieux géographiques et territoires mentionnés dans le texte.
+
+                IMPORTANT - Types de territoires à détecter :
+                - Communes (ex: "Paris", "L'Aigle", "Saint-Denis")
+                - EPCI/Intercommunalités (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "Grand Paris", "CU d'Arras")
+                - Départements (ex: "Orne", "61", "Hauts-de-Seine")
+                - Régions (ex: "Normandie", "Île-de-France", "PACA")
+
+                RÈGLES :
+                - Conserve EXACTEMENT le nom complet tel qu'écrit (avec "CC", "CU", "CA", "Métropole", "Grand", etc.)
+                - Ne raccourcis PAS les noms (garde "CC des Pays de L'Aigle", pas juste "L'Aigle")
+                - Si plusieurs territoires sont mentionnés, extrais-les tous
+
+                Réponds en JSON: {"lieux": ["Territoire 1", "Territoire 2"]}""",
                 rewritten_prompt,
             ),
             timeout=30,
@@ -1847,7 +1888,7 @@ def render_epci_choropleth(
     # Affichage de la carte
     st.markdown("---")
     st.markdown(f"### 🗺️ {metric_title}")
-    folium_static(m, width=800, height=600)
+    folium_static(m, width=700, height=450)
     st.markdown("---")
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
@@ -2053,19 +2094,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
 
     # 8. VEGA
     is_multi_metric = len(new_selected_metrics) > 1
+    # Toujours utiliser des graphiques groupés, jamais empilés
     is_stacked = False
     # Désactivation de l'échelle logarithmique
     y_scale = None
-
-    if is_multi_metric and not date_col:
-        try:
-            sums = df_melted.groupby(label_col)["Valeur"].sum().abs()
-            if is_percent and not sums.empty:
-                is_stacked = True
-            elif not sums.empty and (sums.between(90, 110).all() or sums.between(0.9, 1.1).all()):
-                is_stacked = True
-        except Exception as e_stack:
-            _dbg("plot.stack.detect_error", error=str(e_stack))
 
     vega_config = {
         "locale": {"number": {"decimal": ",", "thousands": "\u00a0", "grouping": [3]}},
@@ -2794,8 +2826,6 @@ if last_data_message:
 
     if numeric_candidates:
         with st.chat_message("assistant", avatar="🤖"):
-            st.subheader("Actions rapides")
-
             # Fonction pour afficher les labels lisibles au lieu des codes
             def format_metric_label(col):
                 spec = formats.get(col, {})
