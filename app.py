@@ -297,7 +297,16 @@ def _dbg(label, **kw):
         payload = " ".join([f"{k}={repr(v)[:200]}" for k, v in kw.items()])
     except Exception:
         payload = "(payload error)"
-    print(f"[TERRIBOT][DBG] {label} :: {payload}")
+    message = f"[TERRIBOT][DBG] {label} :: {payload}"
+    print(message)
+    try:
+        if "debug_logs" not in st.session_state:
+            st.session_state.debug_logs = []
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        st.session_state.debug_logs.append(f"{timestamp} {message}")
+        st.session_state.debug_logs = st.session_state.debug_logs[-200:]
+    except Exception:
+        pass
 
 # --- 1. CONFIGURATION & STYLE (DOIT ÊTRE EN PREMIER) ---
 st.set_page_config(
@@ -514,6 +523,15 @@ with st.sidebar:
         """)
         
     st.info("💡 **Astuce :** L'IA choisit elle-même la variable du graphique selon votre question.")
+
+    with st.expander("🧾 Logs debug", expanded=False):
+        if st.button("🧹 Effacer les logs", key="clear_debug_logs", width='stretch'):
+            st.session_state.debug_logs = []
+        logs = st.session_state.get("debug_logs", [])
+        if logs:
+            st.text_area("Logs récents", "\n".join(logs), height=220)
+        else:
+            st.caption("Aucun log pour l'instant.")
 
 client = openai.OpenAI(api_key=api_key)
 MODEL_NAME = "gpt-5.2-2025-12-11"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
