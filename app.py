@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18.2 - 22 janvier 2026")
+    st.caption("v0.18.3 - 22 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1720,7 +1720,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     chart = None
 
     if date_col:
-        y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}}
+        y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
         if y_scale: y_axis_def["scale"] = y_scale
         chart_encoding = {
             "x": {"field": date_col, "type": "ordinal", "title": "Année"},
@@ -1733,7 +1733,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     else:
         if is_multi_metric and is_stacked:
             y_stack = "normalize" if is_percent else True
-            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}, "stack": y_stack}
+            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}, "stack": y_stack}
             if y_scale: y_axis_def["scale"] = y_scale
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
@@ -1742,7 +1742,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
-            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}}
+            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
             if y_scale: y_axis_def["scale"] = y_scale
             chart_encoding = {
                 "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
@@ -1752,7 +1752,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
                 "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
             }
         else:
-            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": title_y, "axis": {"format": y_format}}
+            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
             if y_scale: y_axis_def["scale"] = y_scale
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": -45}, "title": None},
@@ -1761,6 +1761,13 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
                 "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
+
+    # Ajouter le titre en haut du graphique
+    chart["title"] = {
+        "text": title_y,
+        "anchor": "start",
+        "fontSize": 14
+    }
 
     st.vega_lite_chart(df_melted, chart, use_container_width=True)
 
