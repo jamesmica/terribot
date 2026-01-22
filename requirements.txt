@@ -3,3 +3,5 @@ openai
 duckdb
 pandas
 numpy
+folium
+streamlit-folium
