@@ -406,96 +406,9 @@ con = get_db_connection()
 
 st.markdown("""
 <style>
-    /* Thème général clair et moderne */
-    .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-    }
-
-    /* Sidebar avec fond clair */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
-        border-right: 1px solid #e0e4e8;
-    }
-
-    /* Messages de chat avec fond clair */
-    [data-testid="stChatMessageContainer"] {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
-
-    /* Zone de saisie avec style moderne */
-    .stChatInput {
-        padding-bottom: 20px;
-        background-color: #ffffff;
-        border-radius: 10px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-    }
-
-    /* DataFrames avec bordure subtile */
-    .stDataFrame {
-        border: 1px solid #e0e4e8;
-        border-radius: 8px;
-        background-color: #ffffff;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-    }
-
-    /* Expanders avec style moderne */
-    .streamlit-expanderHeader {
-        background-color: #f8f9fc;
-        border-radius: 8px;
-        border: 1px solid #e0e4e8;
-    }
-
-    /* Style pour les étapes de raisonnement */
-    .reasoning-step {
-        font-size: 0.85em;
-        color: #2c3e50;
-        background-color: #f8f9fc;
-        border-left: 3px solid #3498db;
-        padding: 10px 15px;
-        margin-bottom: 10px;
-        border-radius: 4px;
-    }
-
-    /* Boutons avec style moderne */
-    div.stButton > button:first-child {
-        border-radius: 8px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 10px 24px;
-        font-weight: 500;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-    }
-
-    div.stButton > button:first-child:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-    }
-
-    /* Titre principal avec style */
-    h1 {
-        color: #2c3e50;
-        font-weight: 700;
-    }
-
-    /* Sous-titres */
-    h2, h3, h4 {
-        color: #34495e;
-    }
-
     /* Cache le menu et footer */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-
-    /* Améliorer les tooltips */
-    [data-testid="stTooltipIcon"] {
-        color: #667eea;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1576,6 +1489,128 @@ def analyze_territorial_scope(con, rewritten_prompt):
     _dbg("geo.analyze.result", target=result["target_name"], ids_count=len(unique_ids))
     return result
 
+# --- 8.1. CARTE EPCI (VEGA LITE) ---
+def fetch_geojson(url):
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            if response.status != 200:
+                return None
+            return json.loads(response.read().decode("utf-8"))
+    except Exception as e:
+        _dbg("map.fetch.error", url=url, error=str(e))
+        return None
+
+
+def find_table_for_column(con, column_name):
+    db_schemas = st.session_state.get("db_schemas", {})
+    valid_tables = st.session_state.get("valid_tables_list", [])
+    for table_name in valid_tables:
+        columns = db_schemas.get(table_name)
+        if columns and column_name in columns:
+            return table_name
+    for table_name, columns in db_schemas.items():
+        if column_name in columns:
+            return table_name
+    try:
+        for table_name in valid_tables:
+            cols = [c[0] for c in con.execute(f'DESCRIBE "{table_name}"').fetchall()]
+            if column_name in cols:
+                return table_name
+    except Exception as e:
+        _dbg("map.table_search.error", column=column_name, error=str(e))
+    return None
+
+
+def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spec):
+    try:
+        epci_id = con.execute(
+            "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
+            [str(commune_id)]
+        ).fetchone()
+    except Exception as e:
+        _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
+        st.warning("Impossible de récupérer l'EPCI pour cette commune.")
+        return
+
+    if not epci_id or not epci_id[0]:
+        st.info("Aucun EPCI disponible pour cette commune.")
+        return
+
+    epci_id = str(epci_id[0])
+    epci_name_row = con.execute(
+        "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
+        [epci_id]
+    ).fetchone()
+    epci_name = epci_name_row[0] if epci_name_row else epci_id
+
+    source_table = find_table_for_column(con, metric_col)
+    if not source_table:
+        st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
+        return
+
+    query = f"""
+        SELECT t.ID, t.NOM_COUV, d."{metric_col}" AS valeur
+        FROM territoires t
+        LEFT JOIN "{source_table}" d ON t.ID = d.ID
+        WHERE t.COMP1 = '{epci_id}'
+          AND length(t.ID) IN (4, 5)
+    """
+    df_epci = con.execute(query).df()
+    if df_epci.empty:
+        st.info("Aucune donnée disponible pour les communes de cet EPCI.")
+        return
+
+    geojson = fetch_geojson(
+        f"https://geo.api.gouv.fr/epcis/{epci_id}/communes?format=geojson&geometry=contour&fields=code,nom"
+    )
+    if not geojson:
+        st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
+        return
+
+    value_map = {
+        str(row["ID"]): row["valeur"]
+        for _, row in df_epci.iterrows()
+        if pd.notna(row["valeur"])
+    }
+    for feature in geojson.get("features", []):
+        code = str(feature.get("properties", {}).get("code", ""))
+        feature.setdefault("properties", {})["value"] = value_map.get(code)
+
+    metric_label = metric_spec.get("label", metric_col)
+    metric_title = metric_spec.get("title", metric_label)
+    kind = (metric_spec.get("kind") or "").lower()
+    if kind == "percent":
+        metric_format = ".1%"
+    else:
+        metric_format = ",.0f"
+
+    st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
+    map_spec = {
+        "width": 800,
+        "height": 500,
+        "projection": {"type": "mercator"},
+        "data": {"values": geojson, "format": {"type": "geojson"}},
+        "transform": [
+            {"calculate": "datum.properties.value", "as": "value"},
+            {"calculate": "datum.properties.nom", "as": "nom_commune"}
+        ],
+        "mark": {"type": "geoshape", "stroke": "#94a3b8", "strokeWidth": 0.6},
+        "encoding": {
+            "color": {
+                "field": "value",
+                "type": "quantitative",
+                "scale": {"scheme": "blues"},
+                "title": metric_label
+            },
+            "tooltip": [
+                {"field": "nom_commune", "title": "Commune"},
+                {"field": "value", "title": metric_title, "format": metric_format}
+            ]
+        }
+    }
+
+    st.vega_lite_chart(map_spec, use_container_width=False)
+
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
     if config is None: config = {}
@@ -1929,13 +1964,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         else:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
             if y_scale: y_axis_def["scale"] = y_scale
-            # Ajouter layout à color_def pour ce cas
-            color_def_simple = color_def.copy()
-            color_def_simple["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
             chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": -45}, "title": None},
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
                 "y": y_axis_def,
-                "color": color_def_simple,
+                "color": {"value": palette[0]},
                 "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Valeur", "format": y_format}]
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
@@ -1947,7 +1979,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "fontSize": 14
     }
 
-    st.vega_lite_chart(df_melted, chart, use_container_width=True)
+    chart["width"] = 800
+    st.vega_lite_chart(df_melted, chart, use_container_width=False)
 
 
 # --- 9. UI PRINCIPALE ---
@@ -2250,7 +2283,6 @@ if prompt_to_process:
                         debug_steps.append({"icon": "🔎", "label": "Résolution Géo", "type": "table", "content": new_context["debug_search"]})
                     if geo_context:
                         debug_container["final_ids"] = geo_context['all_ids']
-                    # -------------------------------------------------------
                     # 3. RAG (Recherche Variables - Méthode Hybride)
                     status_container.update(label="📚 Je cherche les indicateurs pertinents dans le glossaire...")
                     # On appelle notre nouvelle fonction combinée
@@ -2387,6 +2419,21 @@ if prompt_to_process:
                         # On récupère les IDs finaux depuis le debug_container
                         current_ids = debug_container.get("final_ids", [])
                         auto_plot_data(df, current_ids, config=chart_config, con=con)
+
+                    target_id = str(geo_context.get("target_id", ""))
+                    selected_cols = chart_config.get("selected_columns", [])
+                    formats = chart_config.get("formats", {})
+                    metric_col = selected_cols[0] if selected_cols else None
+                    metric_spec = formats.get(metric_col, {}) if metric_col else {}
+                    metric_kind = (metric_spec.get("kind") or "").lower()
+                    metric_label = (metric_spec.get("label") or metric_col or "").lower()
+                    map_allowed = metric_kind == "percent" or any(
+                        kw in metric_label for kw in ["taux", "part", "ratio", "moyen", "moyenne", "médiane"]
+                    )
+
+                    if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
+                        with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
+                            render_epci_choropleth(con, target_id, geo_context.get("target_name", target_id), metric_col, metric_spec)
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
