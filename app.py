@@ -1571,6 +1571,7 @@ def render_epci_choropleth(
     diagnostic=True,
     sql_query=None
 ):
+    st.info(f"🔍 **[MAP LOG]** Début du rendu de carte pour commune {commune_id} ({commune_name}), métrique: {metric_col}")
     _dbg(
         "map.render.start",
         commune_id=commune_id,
@@ -1588,14 +1589,17 @@ def render_epci_choropleth(
     except Exception as e:
         _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
         st.warning("Impossible de récupérer l'EPCI pour cette commune.")
+        st.error(f"🔍 **[MAP LOG]** Erreur SQL EPCI: {str(e)}")
         return
 
     if not epci_id or not epci_id[0]:
         _dbg("map.epci.missing", commune_id=commune_id)
         st.info("Aucun EPCI disponible pour cette commune.")
+        st.warning(f"🔍 **[MAP LOG]** EPCI non trouvé pour commune {commune_id}")
         return
 
     epci_id = str(epci_id[0])
+    st.success(f"🔍 **[MAP LOG]** EPCI trouvé: {epci_id}")
     _dbg("map.epci.found", commune_id=commune_id, epci_id=epci_id)
     epci_name_row = con.execute(
         "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
@@ -1606,11 +1610,14 @@ def render_epci_choropleth(
     if metric_col not in df.columns:
         _dbg("map.metric.missing", metric_col=metric_col, df_cols=list(df.columns))
         st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
+        st.warning(f"🔍 **[MAP LOG]** Colonne métrique '{metric_col}' manquante. Colonnes disponibles: {list(df.columns)}")
         if diagnostic:
             st.caption(
                 f"Diagnostic : colonne '{metric_col}' absente des données retournées."
             )
         return
+    else:
+        st.success(f"🔍 **[MAP LOG]** Colonne métrique '{metric_col}' trouvée dans les données")
 
     commune_ids = [
         row[0]
@@ -1646,6 +1653,7 @@ def render_epci_choropleth(
     df_epci = df_epci_source[
         df_epci_source["ID"].astype(str).isin([str(cid) for cid in commune_ids])
     ].copy()
+    st.info(f"🔍 **[MAP LOG]** Données filtrées: {len(df_epci)} lignes pour {len(commune_ids)} communes EPCI")
     _dbg(
         "map.data.filtered",
         epci_id=epci_id,
@@ -1667,6 +1675,7 @@ def render_epci_choropleth(
     if df_epci.empty:
         _dbg("map.data.empty", epci_id=epci_id, metric_col=metric_col)
         st.info("Aucune donnée disponible pour les communes de cet EPCI.")
+        st.error(f"🔍 **[MAP LOG]** DataFrame EPCI vide - ARRÊT")
         if diagnostic:
             st.caption(
                 f"Diagnostic : aucune commune EPCI trouvée dans les données pour '{metric_col}'."
@@ -1675,24 +1684,30 @@ def render_epci_choropleth(
     if df_epci["valeur"].notna().sum() == 0:
         _dbg("map.data.no_values", epci_id=epci_id, metric_col=metric_col)
         st.info("Aucune valeur exploitable pour les communes de cet EPCI.")
+        st.error(f"🔍 **[MAP LOG]** Toutes les valeurs sont nulles - ARRÊT")
         if diagnostic:
             st.caption(
                 f"Diagnostic : toutes les valeurs de '{metric_col}' sont nulles ou non numériques."
             )
         return
 
+    st.success(f"🔍 **[MAP LOG]** Données valides: {df_epci['valeur'].notna().sum()} valeurs non-nulles")
+
+    st.info(f"🔍 **[MAP LOG]** Récupération GeoJSON depuis geo.api.gouv.fr pour EPCI {epci_id}...")
     geojson = fetch_geojson(
         f"https://geo.api.gouv.fr/epcis/{epci_id}/communes?format=geojson&geometry=contour&fields=code,nom"
     )
     if not geojson:
         _dbg("map.geojson.unavailable", epci_id=epci_id)
         st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
+        st.error(f"🔍 **[MAP LOG]** GeoJSON non disponible - ARRÊT")
         if diagnostic:
             st.caption(
                 "Diagnostic : GeoJSON indisponible via geo.api.gouv.fr (réseau ou service temporairement bloqué)."
             )
         return
 
+    st.success(f"🔍 **[MAP LOG]** GeoJSON chargé avec {len(geojson.get('features', []))} communes")
     _dbg(
         "map.geojson.loaded",
         epci_id=epci_id,
@@ -1781,6 +1796,7 @@ def render_epci_choropleth(
         }
     }
 
+    st.info(f"🔍 **[MAP LOG]** Préparation du rendu Vega-Lite (largeur: {map_spec.get('width')}, hauteur: {map_spec.get('height')})")
     _dbg("map.render.chart", epci_id=epci_id, metric_col=metric_col)
     _dbg(
         "map.render.spec",
@@ -1789,7 +1805,9 @@ def render_epci_choropleth(
         height=map_spec.get("height"),
         color_scale=map_spec.get("encoding", {}).get("color", {}).get("scale", {})
     )
+    st.info(f"🔍 **[MAP LOG]** Appel st.vega_lite_chart() maintenant...")
     st.vega_lite_chart(map_spec, use_container_width=False)
+    st.success(f"🔍 **[MAP LOG]** ✅ Carte rendue avec succès!")
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
@@ -2628,18 +2646,7 @@ if prompt_to_process:
                         target_id=target_id
                     )
 
-                    if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
-                        with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
-                            render_epci_choropleth(
-                                con,
-                                df,
-                                target_id,
-                                geo_context.get("target_name", target_id),
-                                metric_col,
-                                metric_spec,
-                                sql_query=sql_query
-                            )
-                    elif not map_allowed:
+                    if not map_allowed:
                         _dbg(
                             "map.eligibility.blocked",
                             reason="metric_not_eligible",
