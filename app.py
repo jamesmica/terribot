@@ -493,14 +493,16 @@ with st.sidebar:
 
     st.divider()
     
-    if "OPENAI_API_KEY" in st.secrets:
-        api_key = st.secrets["OPENAI_API_KEY"]
-        st.success("🔒 API Connectée")
+    api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+    
+    if api_key:
+        st.success("🔒 API connectée")
     else:
         api_key = st.text_input("Clé API OpenAI", type="password", placeholder="sk-...")
         if not api_key:
             st.warning("Requis pour démarrer.")
             st.stop()
+
 
     st.divider()
     with st.expander("📚 Sources de données"):
