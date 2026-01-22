@@ -1501,7 +1501,27 @@ def fetch_geojson(url):
         return None
 
 
-def render_epci_map(con, commune_id, commune_name):
+def find_table_for_column(con, column_name):
+    db_schemas = st.session_state.get("db_schemas", {})
+    valid_tables = st.session_state.get("valid_tables_list", [])
+    for table_name in valid_tables:
+        columns = db_schemas.get(table_name)
+        if columns and column_name in columns:
+            return table_name
+    for table_name, columns in db_schemas.items():
+        if column_name in columns:
+            return table_name
+    try:
+        for table_name in valid_tables:
+            cols = [c[0] for c in con.execute(f'DESCRIBE "{table_name}"').fetchall()]
+            if column_name in cols:
+                return table_name
+    except Exception as e:
+        _dbg("map.table_search.error", column=column_name, error=str(e))
+    return None
+
+
+def render_epci_choropleth(con, commune_id, commune_name, metric_col, metric_spec):
     try:
         epci_id = con.execute(
             "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
@@ -1523,50 +1543,70 @@ def render_epci_map(con, commune_id, commune_name):
     ).fetchone()
     epci_name = epci_name_row[0] if epci_name_row else epci_id
 
-    epci_geojson = fetch_geojson(
-        f"https://geo.api.gouv.fr/epcis/{epci_id}?format=geojson&geometry=contour"
-    )
-    if not epci_geojson:
-        st.warning("Le fond de carte EPCI est indisponible pour le moment.")
+    source_table = find_table_for_column(con, metric_col)
+    if not source_table:
+        st.info("La carte choroplèthe n'est pas disponible pour cet indicateur.")
         return
 
-    commune_data = fetch_geojson(
-        f"https://geo.api.gouv.fr/communes/{commune_id}?fields=centre"
+    query = f"""
+        SELECT t.ID, t.NOM_COUV, d."{metric_col}" AS valeur
+        FROM territoires t
+        LEFT JOIN "{source_table}" d ON t.ID = d.ID
+        WHERE t.COMP1 = '{epci_id}'
+          AND length(t.ID) IN (4, 5)
+    """
+    df_epci = con.execute(query).df()
+    if df_epci.empty:
+        st.info("Aucune donnée disponible pour les communes de cet EPCI.")
+        return
+
+    geojson = fetch_geojson(
+        f"https://geo.api.gouv.fr/epcis/{epci_id}/communes?format=geojson&geometry=contour&fields=code,nom"
     )
-    commune_point = None
-    if commune_data and isinstance(commune_data, dict):
-        centre = commune_data.get("centre")
-        if centre and isinstance(centre, dict):
-            coords = centre.get("coordinates")
-            if coords and len(coords) == 2:
-                commune_point = {"lon": coords[0], "lat": coords[1]}
+    if not geojson:
+        st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
+        return
 
-    st.caption(f"🗺️ EPCI : **{epci_name}** (commune : {commune_name})")
+    value_map = {
+        str(row["ID"]): row["valeur"]
+        for _, row in df_epci.iterrows()
+        if pd.notna(row["valeur"])
+    }
+    for feature in geojson.get("features", []):
+        code = str(feature.get("properties", {}).get("code", ""))
+        feature.setdefault("properties", {})["value"] = value_map.get(code)
 
-    map_layers = [
-        {
-            "data": {"values": epci_geojson, "format": {"type": "geojson"}},
-            "mark": {"type": "geoshape", "fill": "#e8f1fe", "stroke": "#2563eb", "strokeWidth": 1}
-        }
-    ]
+    metric_label = metric_spec.get("label", metric_col)
+    metric_title = metric_spec.get("title", metric_label)
+    kind = (metric_spec.get("kind") or "").lower()
+    if kind == "percent":
+        metric_format = ".1%"
+    else:
+        metric_format = ",.0f"
 
-    if commune_point:
-        map_layers.append(
-            {
-                "data": {"values": [commune_point]},
-                "mark": {"type": "circle", "color": "#1f2a37", "size": 80},
-                "encoding": {
-                    "longitude": {"field": "lon", "type": "quantitative"},
-                    "latitude": {"field": "lat", "type": "quantitative"}
-                }
-            }
-        )
-
+    st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
     map_spec = {
         "width": 800,
         "height": 500,
         "projection": {"type": "mercator"},
-        "layer": map_layers
+        "data": {"values": geojson, "format": {"type": "geojson"}},
+        "transform": [
+            {"calculate": "datum.properties.value", "as": "value"},
+            {"calculate": "datum.properties.nom", "as": "nom_commune"}
+        ],
+        "mark": {"type": "geoshape", "stroke": "#94a3b8", "strokeWidth": 0.6},
+        "encoding": {
+            "color": {
+                "field": "value",
+                "type": "quantitative",
+                "scale": {"scheme": "blues"},
+                "title": metric_label
+            },
+            "tooltip": [
+                {"field": "nom_commune", "title": "Commune"},
+                {"field": "value", "title": metric_title, "format": metric_format}
+            ]
+        }
     }
 
     st.vega_lite_chart(map_spec, use_container_width=False)
@@ -1924,13 +1964,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         else:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
             if y_scale: y_axis_def["scale"] = y_scale
-            # Ajouter layout à color_def pour ce cas
-            color_def_simple = color_def.copy()
-            color_def_simple["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
             chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": -45}, "title": None},
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
                 "y": y_axis_def,
-                "color": color_def_simple,
+                "color": {"value": palette[0]},
                 "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Valeur", "format": y_format}]
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
@@ -2246,13 +2283,6 @@ if prompt_to_process:
                         debug_steps.append({"icon": "🔎", "label": "Résolution Géo", "type": "table", "content": new_context["debug_search"]})
                     if geo_context:
                         debug_container["final_ids"] = geo_context['all_ids']
-                    # -------------------------------------------------------
-                    if geo_context:
-                        target_id = str(geo_context.get("target_id", ""))
-                        if target_id.isdigit() and len(target_id) in (4, 5):
-                            with st.expander("🗺️ Carte EPCI", expanded=False):
-                                render_epci_map(con, target_id, geo_context.get("target_name", target_id))
-
                     # 3. RAG (Recherche Variables - Méthode Hybride)
                     status_container.update(label="📚 Je cherche les indicateurs pertinents dans le glossaire...")
                     # On appelle notre nouvelle fonction combinée
@@ -2389,6 +2419,21 @@ if prompt_to_process:
                         # On récupère les IDs finaux depuis le debug_container
                         current_ids = debug_container.get("final_ids", [])
                         auto_plot_data(df, current_ids, config=chart_config, con=con)
+
+                    target_id = str(geo_context.get("target_id", ""))
+                    selected_cols = chart_config.get("selected_columns", [])
+                    formats = chart_config.get("formats", {})
+                    metric_col = selected_cols[0] if selected_cols else None
+                    metric_spec = formats.get(metric_col, {}) if metric_col else {}
+                    metric_kind = (metric_spec.get("kind") or "").lower()
+                    metric_label = (metric_spec.get("label") or metric_col or "").lower()
+                    map_allowed = metric_kind == "percent" or any(
+                        kw in metric_label for kw in ["taux", "part", "ratio", "moyen", "moyenne", "médiane"]
+                    )
+
+                    if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
+                        with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
+                            render_epci_choropleth(con, target_id, geo_context.get("target_name", target_id), metric_col, metric_spec)
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
