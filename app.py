@@ -1698,6 +1698,11 @@ def render_epci_choropleth(con, df, commune_id, commune_name, metric_col, metric
         missing=len(missing_values),
         missing_sample=missing_values[:10]
     )
+    if diagnostic and missing_values:
+        st.caption(
+            f"Diagnostic : données disponibles pour {len(value_map)} commune(s) sur "
+            f"{len(geojson.get('features', []))} dans l'EPCI."
+        )
     for feature in geojson.get("features", []):
         code = str(feature.get("properties", {}).get("code", ""))
         feature.setdefault("properties", {})["value"] = value_map.get(code)
