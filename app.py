@@ -514,27 +514,6 @@ with st.sidebar:
             st.warning("Requis pour démarrer.")
             st.stop()
 
-
-    st.divider()
-    with st.expander("📚 Sources de données"):
-        st.markdown("""
-        - **INSEE** : Recensement (Pop, Logement, Emploi)
-        - **RPLS** : Logement social
-        - **Filosofi** : Revenus & Pauvreté
-        - **Sirene** : Entreprises
-        """)
-        
-    st.info("💡 **Astuce :** L'IA choisit elle-même la variable du graphique selon votre question.")
-
-    with st.expander("🧾 Logs debug", expanded=False):
-        if st.button("🧹 Effacer les logs", key="clear_debug_logs", width='stretch'):
-            st.session_state.debug_logs = []
-        logs = st.session_state.get("debug_logs", [])
-        if logs:
-            st.text_area("Logs récents", "\n".join(logs), height=220)
-        else:
-            st.caption("Aucun log pour l'instant.")
-
 client = openai.OpenAI(api_key=api_key)
 MODEL_NAME = "gpt-5.2-2025-12-11"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -1810,6 +1789,17 @@ def render_epci_choropleth(
         legend_name=metric_label,
     ).add_to(m)
 
+    # Fonction de formatage français
+    def fr_num(x, decimals=1, suffix="", factor=1):
+        if pd.isna(x): return "-"
+        if not isinstance(x, (int, float)): return str(x)
+        try:
+            val = x * factor
+            fmt = f"{{:,.{decimals}f}}"
+            s = fmt.format(val).replace(",", " ").replace(".", ",")
+            return (s + (f" {suffix}" if suffix else "")).strip()
+        except: return str(x)
+
     # Ajout des tooltips
     for feature in geojson.get("features", []):
         nom = feature.get("properties", {}).get("nom", "")
@@ -1817,10 +1807,11 @@ def render_epci_choropleth(
 
         if value is not None:
             if kind == "percent":
-                # Les valeurs sont déjà en pourcentage (ex: 26 pour 26%), pas besoin de multiplier par 100
-                value_str = f"{value:.1f} %"
+                # Utilise le formatage français avec la bonne heuristique
+                # Si la valeur est < 5, c'est probablement en décimal (0.26 = 26%), sinon déjà en %
+                value_str = fr_num(value, decimals=1, suffix="%", factor=100 if abs(value) < 5 else 1)
             else:
-                value_str = f"{value:,.0f}"
+                value_str = fr_num(value, decimals=0)
 
             tooltip_text = f"<b>{nom}</b><br>{metric_title}: {value_str}"
 
@@ -1832,7 +1823,7 @@ def render_epci_choropleth(
 
     # Affichage de la carte
     st.markdown("---")
-    st.markdown(f"### 🗺️ Carte choroplèthe : {metric_label}")
+    st.markdown(f"### 🗺️ {metric_title}")
     folium_static(m, width=800, height=600)
     st.markdown("---")
 
@@ -2785,7 +2776,8 @@ if last_data_message:
             # Fonction pour afficher les labels lisibles au lieu des codes
             def format_metric_label(col):
                 spec = formats.get(col, {})
-                return spec.get("label") or spec.get("title") or col
+                # Préfère le titre complet pour la sélection (plus descriptif)
+                return spec.get("title") or spec.get("label") or col
 
             manual_metric = st.selectbox(
                 "Choisir une colonne pour tracer un graphique ou une carte",
