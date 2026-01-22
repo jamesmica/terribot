@@ -488,7 +488,7 @@ const questions = [
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🤖 Terribot")
-    st.caption("v0.18 - 22 janvier 2026")
+    st.caption("v0.18.1 - 22 janvier 2026")
     st.divider()
     
     # Bouton Reset
@@ -1727,7 +1727,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
             "tooltip": [{"field": label_col}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
         }
         if is_multi_metric: chart_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
-        chart = {"width": "container", "config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
+        chart = {"config": vega_config, "mark": {"type": "line", "point": True, "tooltip": True}, "encoding": chart_encoding}
     else:
         if is_multi_metric and is_stacked:
             y_stack = "normalize" if is_percent else True
@@ -1752,7 +1752,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
                 "color": color_def,
                 "tooltip": [{"field": label_col}, {"field": "Valeur", "format": y_format}]
             }
-        chart = {"width": "container", "config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
+        chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
     chart["title"] = {
         "text": f"{title_y}",
