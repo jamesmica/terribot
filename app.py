@@ -1773,8 +1773,9 @@ def render_epci_choropleth(
     )
     st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
     map_spec = {
-        "width": 800,
-        "height": 500,
+        "width": "container",
+        "height": 600,
+        "autosize": {"type": "fit", "contains": "padding"},
         "projection": {"type": "mercator"},
         "data": {"values": geojson, "format": {"type": "geojson"}},
         "transform": [
@@ -1806,11 +1807,16 @@ def render_epci_choropleth(
         color_scale=map_spec.get("encoding", {}).get("color", {}).get("scale", {})
     )
 
-    # Conteneur visible pour la carte
+    # Conteneur visible pour la carte avec style distinct
     st.markdown("---")
     st.markdown(f"### 🗺️ Carte choroplèthe : {metric_label}")
     st.info(f"🔍 **[MAP LOG]** Appel st.vega_lite_chart() maintenant...")
-    st.vega_lite_chart(map_spec, use_container_width=True)
+
+    # Conteneur avec bordure pour rendre la carte très visible
+    with st.container():
+        st.vega_lite_chart(map_spec, use_container_width=True)
+
+    st.success("🔍 **[MAP LOG]** 👆 La carte devrait apparaître ci-dessus 👆")
     st.markdown("---")
     st.success(f"🔍 **[MAP LOG]** ✅ Carte rendue avec succès!")
 
