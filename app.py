@@ -1619,9 +1619,20 @@ def render_epci_choropleth(
             [epci_id]
         ).fetchall()
     ]
-    _dbg("map.epci.commune_ids", epci_id=epci_id, count=len(commune_ids))
+    _dbg(
+        "map.epci.commune_ids",
+        epci_id=epci_id,
+        count=len(commune_ids),
+        sample=commune_ids[:10]
+    )
     df_epci_source = df
     if sql_query:
+        _dbg(
+            "map.data.sql_refetch_attempt",
+            epci_id=epci_id,
+            has_sql=True,
+            commune_ids=len(commune_ids)
+        )
         ids_sql = ", ".join([f"'{str(cid)}'" for cid in commune_ids])
         epci_sql = re.sub(
             r'(WHERE\s*\(t\."ID"\s+IN\s*)\([^\)]*\)',
@@ -1636,12 +1647,15 @@ def render_epci_choropleth(
                     "map.data.sql_refetch",
                     epci_id=epci_id,
                     rows=len(df_epci_source),
+                    cols=list(df_epci_source.columns),
                     sql_preview=epci_sql[:300]
                 )
             except Exception as e:
                 _dbg("map.data.sql_refetch_error", epci_id=epci_id, error=str(e))
         else:
             _dbg("map.data.sql_refetch_skip", epci_id=epci_id, reason="no_where_match")
+    else:
+        _dbg("map.data.sql_refetch_skip", epci_id=epci_id, reason="no_sql_query")
 
     df_epci = df_epci_source[
         df_epci_source["ID"].astype(str).isin([str(cid) for cid in commune_ids])
@@ -2640,6 +2654,13 @@ if prompt_to_process:
 
                     if map_allowed and target_id.isdigit() and len(target_id) in (4, 5) and metric_col:
                         with st.expander("🗺️ Carte choroplèthe EPCI", expanded=False):
+                            _dbg(
+                                "map.ui.auto.start",
+                                target_id=target_id,
+                                metric_col=metric_col,
+                                metric_kind=metric_kind,
+                                has_sql_query=bool(sql_query)
+                            )
                             render_epci_choropleth(
                                 con,
                                 df,
@@ -2648,6 +2669,11 @@ if prompt_to_process:
                                 metric_col,
                                 metric_spec,
                                 sql_query=sql_query
+                            )
+                            _dbg(
+                                "map.ui.auto.done",
+                                target_id=target_id,
+                                metric_col=metric_col
                             )
                     elif not map_allowed:
                         _dbg(
@@ -2691,6 +2717,12 @@ if prompt_to_process:
                             auto_plot_data(df, current_ids, config=manual_config, con=con)
 
                         if col_right.button("🗺️ Voir la carte", key="manual_map_button"):
+                            _dbg(
+                                "map.ui.manual.start",
+                                target_id=target_id,
+                                metric_col=manual_metric,
+                                has_sql_query=bool(sql_query)
+                            )
                             if target_id.isdigit() and len(target_id) in (4, 5):
                                 render_epci_choropleth(
                                     con,
@@ -2701,7 +2733,17 @@ if prompt_to_process:
                                     manual_spec,
                                     sql_query=sql_query
                                 )
+                                _dbg(
+                                    "map.ui.manual.done",
+                                    target_id=target_id,
+                                    metric_col=manual_metric
+                                )
                             else:
+                                _dbg(
+                                    "map.ui.manual.blocked",
+                                    reason="target_not_commune",
+                                    target_id=target_id
+                                )
                                 st.info("La carte est disponible uniquement pour une commune cible.")
 
                     # B. Affichage des données brutes (seulement si df n'est pas vide)
