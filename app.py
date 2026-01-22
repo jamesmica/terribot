@@ -2087,6 +2087,13 @@ inject_placeholder_animation()
 # Initialisation de la variable de déclenchement si elle n'existe pas
 if "trigger_run_prompt" not in st.session_state:
     st.session_state.trigger_run_prompt = None
+    
+# --- Mode test Codex : injecte un prompt sans UI ---
+test_prompt = os.getenv("TERRIBOT_TEST_PROMPT")
+if test_prompt and not st.session_state.get("_test_prompt_ran"):
+    st.session_state.trigger_run_prompt = test_prompt
+    st.session_state["_test_prompt_ran"] = True
+
 
 # -- A. RÉSOLUTION D'AMBIGUÏTÉ (Affichage des boutons si nécessaire) --
 if st.session_state.ambiguity_candidates:
