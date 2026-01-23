@@ -1431,6 +1431,118 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
         _dbg("geo.ai_validate.error", error=str(e))
         return None
 
+def ai_fallback_territory_search(con, user_prompt):
+    """
+    Fallback IA : cherche le territoire dans territoires.txt quand la recherche classique échoue.
+    Charge un échantillon stratégique du fichier et demande à l'IA de trouver le bon territoire.
+    """
+    _dbg("geo.fallback.enter", user_prompt=user_prompt)
+
+    try:
+        # Charger un échantillon stratégique : tous les départements, régions et grandes villes
+        sql_sample = """
+        SELECT ID, NOM_COUV,
+            CASE
+                WHEN length(ID) IN (4,5) THEN 'Commune'
+                WHEN length(ID) = 9 THEN 'EPCI/Interco'
+                WHEN ID = 'FR' THEN 'Pays'
+                WHEN ID LIKE 'D%' THEN 'Département'
+                WHEN ID LIKE 'R%' THEN 'Région'
+                ELSE 'Autre'
+            END as TYPE_TERRITOIRE
+        FROM territoires
+        WHERE ID LIKE 'D%' OR ID LIKE 'R%' OR ID = 'FR'
+           OR (length(ID) IN (4,5) AND NOM_COUV IN (
+               'Paris', 'Marseille', 'Lyon', 'Toulouse', 'Nice', 'Nantes', 'Strasbourg',
+               'Montpellier', 'Bordeaux', 'Lille', 'Rennes', 'Reims', 'Le Havre',
+               'Saint-Étienne', 'Toulon', 'Grenoble', 'Dijon', 'Angers', 'Nîmes',
+               'Villeurbanne', 'Le Mans', 'Aix-en-Provence', 'Clermont-Ferrand', 'Brest',
+               'Tours', 'Amiens', 'Limoges', 'Annecy', 'Perpignan', 'Boulogne-Billancourt',
+               'Metz', 'Besançon', 'Orléans', 'Saint-Denis', 'Argenteuil', 'Rouen',
+               'Mulhouse', 'Montreuil', 'Caen', 'Nancy'
+           ))
+        ORDER BY TYPE_TERRITOIRE, NOM_COUV
+        LIMIT 500
+        """
+        df_sample = con.execute(sql_sample).df()
+
+        if df_sample.empty:
+            _dbg("geo.fallback.no_sample")
+            return None
+
+        # Convertir en format JSON pour l'IA
+        territories_list = df_sample.to_dict(orient='records')
+
+        system_prompt = """
+        Tu es un expert géographe français. L'utilisateur cherche un territoire mais la recherche classique a échoué.
+
+        TA MISSION :
+        Trouver le territoire le plus pertinent dans la liste ci-dessous basé sur la requête utilisateur.
+
+        RÈGLES :
+        1. Si l'utilisateur mentionne une ville, cherche d'abord dans les communes
+        2. Si l'utilisateur mentionne un département (nom ou numéro), cherche dans les départements (ID commence par 'D')
+        3. Si l'utilisateur mentionne une région, cherche dans les régions (ID commence par 'R')
+        4. Sois tolérant aux fautes de frappe et variations orthographiques
+        5. Si vraiment rien ne correspond, retourne null
+
+        FORMAT DE RÉPONSE JSON ATTENDU :
+        {
+            "selected_id": "code_exact_du_territoire" OU null,
+            "reason": "explication courte de ton choix",
+            "confidence": "high/medium/low"
+        }
+        """
+
+        user_message = f"""
+        REQUÊTE UTILISATEUR : "{user_prompt}"
+
+        TERRITOIRES DISPONIBLES :
+        {json.dumps(territories_list[:200], ensure_ascii=False, indent=2)}
+
+        Trouve le territoire le plus pertinent.
+        """
+
+        response = client.responses.create(
+            model=MODEL_NAME,
+            input=build_messages(system_prompt, user_message),
+            temperature=0,
+        )
+        metrics.log_api_call()
+        raw_response = extract_response_text(response)
+        _dbg("geo.fallback.response", raw=raw_response[:400])
+
+        result = json.loads(raw_response)
+
+        if result and result.get("selected_id") and result.get("confidence") in ["high", "medium"]:
+            selected_id = result["selected_id"]
+
+            # Vérifier que l'ID existe dans la base complète
+            verify_sql = f"SELECT ID, NOM_COUV FROM territoires WHERE ID = '{selected_id}'"
+            verify_df = con.execute(verify_sql).df()
+
+            if not verify_df.empty:
+                territory_info = verify_df.iloc[0]
+                _dbg("geo.fallback.success", id=selected_id, name=territory_info['NOM_COUV'])
+
+                # Retourner un contexte géographique similaire à analyze_territorial_scope
+                return {
+                    'target_id': selected_id,
+                    'target_name': territory_info['NOM_COUV'],
+                    'all_ids': [selected_id],
+                    'display_context': f"{territory_info['NOM_COUV']} ({selected_id})",
+                    'lieux_cites': [user_prompt],
+                    'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": selected_id, "Source": "Fallback IA"}],
+                    'parent_clause': ''
+                }
+
+        _dbg("geo.fallback.no_match")
+        return None
+
+    except Exception as e:
+        _dbg("geo.fallback.error", error=str(e))
+        return None
+
 def analyze_territorial_scope(con, rewritten_prompt):
     """
     Analyse le prompt pour extraire et résoudre les territoires mentionnés.
@@ -1576,7 +1688,9 @@ EXTRA_PALETTE = [
     "#A05195", "#D45087", "#F95D6A", "#FFA600"
 ]
 
+@st.cache_data(ttl=3600)  # Cache pendant 1 heure pour améliorer les performances
 def fetch_geojson(url):
+    """Télécharge et met en cache le GeoJSON pour éviter les téléchargements répétés."""
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
             if response.status != 200:
@@ -2350,8 +2464,8 @@ for i_msg, msg in enumerate(st.session_state.messages):
                 # Affichage Graphique avec la BONNE config
                 auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
                 
-                # Affichage Data (Expander)
-                with st.expander("📝 Données brutes"):
+                # Affichage Data (Expander) - Uniformisé avec le nouveau message
+                with st.expander("📝 Voir les données brutes", expanded=False):
                     # On utilise les formats stockés dans la config
                     formats = saved_config.get("formats", {})
                     st.dataframe(style_df(msg["data"], formats), width='stretch')
@@ -2389,7 +2503,8 @@ for i_msg, msg in enumerate(st.session_state.messages):
                             manual_metric,
                             {"kind": "number", "label": manual_metric, "title": manual_metric}
                         )
-                        manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+                        # 🔧 FIX : Passer TOUS les formats, pas seulement celui de la métrique sélectionnée
+                        manual_config = {"selected_columns": [manual_metric], "formats": formats}
                 
                         debug_info = msg.get("debug_info", {})
                         current_ids = debug_info.get("final_ids", [])
@@ -2639,10 +2754,24 @@ if prompt_to_process:
                     elif st.session_state.current_geo_context:
                         geo_context = st.session_state.current_geo_context
                         # On ne réaffiche pas l'info si elle n'a pas changé, ou on peut la laisser pour confirmation
-                    
+
                     elif not st.session_state.current_geo_context:
-                        message_placeholder.warning("⚠️ Je ne détecte pas de territoire. Précisez une ville.")
-                        st.stop()
+                        # 🆕 FALLBACK IA : Tenter une recherche sémantique dans territoires.txt
+                        status_container.update(label="🔍 Recherche élargie du territoire avec l'IA...")
+                        fallback_context = ai_fallback_territory_search(con, prompt_to_process)
+
+                        if fallback_context:
+                            st.session_state.current_geo_context = fallback_context
+                            message_placeholder.info(f"📍 **Périmètre trouvé (fallback IA) :** {fallback_context['display_context']}")
+                            _dbg("pipeline.fallback.success", context=fallback_context)
+
+                            debug_container["geo_extraction"] = fallback_context["lieux_cites"]
+                            debug_container["geo_resolution"] = fallback_context["debug_search"]
+                            debug_container["final_ids"] = fallback_context["all_ids"]
+                            debug_steps.append({"icon": "🔎", "label": "Résolution Géo (Fallback IA)", "type": "table", "content": fallback_context["debug_search"]})
+                        else:
+                            message_placeholder.warning("⚠️ Je ne détecte pas de territoire. Précisez une ville.")
+                            st.stop()
                     
                     geo_context = st.session_state.current_geo_context
                     # --- CORRECTION ICI : ON FORCE LA SAUVEGARDE DES IDS ---
@@ -2885,7 +3014,8 @@ if prompt_to_process:
                                     manual_metric,
                                     {"kind": "number", "label": manual_metric, "title": manual_metric}
                                 )
-                                manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+                                # 🔧 FIX : Passer TOUS les formats, pas seulement celui de la métrique sélectionnée
+                                manual_config = {"selected_columns": [manual_metric], "formats": formats}
                     
                                 current_ids = debug_container.get("final_ids", geo_context.get("all_ids", []))
                                 target_id = str(geo_context.get("target_id", ""))
