@@ -316,7 +316,7 @@ st.set_page_config(
     page_title="Terribot | Assistant Territorial",
     page_icon="🗺️",
     layout="wide",
-    initial_sidebar_state="auto"
+    initial_sidebar_state=440
 )
 
 # CSS custom pour corriger la largeur des graphiques Vega-Lite
