@@ -316,7 +316,7 @@ st.set_page_config(
     page_title="Terribot | Assistant Territorial",
     page_icon="🗺️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 # CSS custom pour corriger la largeur des graphiques Vega-Lite
@@ -515,9 +515,17 @@ const questions = [
 
 # --- 3. SIDEBAR ---
 with st.sidebar:
+    st.markdown("""
+    <style>
+    /* Remonter uniquement le titre principal (le premier h1) */
+    div[data-testid="stAppViewContainer"] h1:first-of-type{
+      margin-top: -48px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.title("🤖 Terribot")
     st.caption("v0.18.6 - 22 janvier 2026")
-    st.divider()
     
     # Bouton Reset
     if st.button("🗑️ Nouvelle conversation", type="secondary", width='stretch'):
@@ -527,29 +535,17 @@ with st.sidebar:
         st.session_state.pending_prompt = None
         st.session_state.ambiguity_candidates = None
         st.rerun()
-
-    st.divider()
     
     api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     
     if api_key:
-        st.success("🔒 API connectée")
     else:
         api_key = st.text_input("Clé API OpenAI", type="password", placeholder="sk-...")
         if not api_key:
             st.warning("Requis pour démarrer.")
             st.stop()
 
-    # Affichage du contexte géographique actuel
-    geo_context = st.session_state.get("current_geo_context")
-    if geo_context:
-        st.divider()
-        target_name = geo_context.get("target_name", "")
-        if target_name:
-            st.info(f"📍 **{target_name}**")
-
     # 🔧 Panneau de visualisation interactif dans la sidebar
-    st.divider()
     st.markdown("### 📊 Visualisations")
 
     # Créer un placeholder qui sera rempli plus tard (après la définition des fonctions)
