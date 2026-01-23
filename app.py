@@ -2256,6 +2256,34 @@ def render_epci_choropleth(
     )
     if not geojson:
         _dbg("map.geojson.unavailable", epci_id=epci_id)
+        # FALLBACK : Essayer avec le département (pour les EPT d'Ile-de-France)
+        try:
+            dept_row = con.execute(
+                "SELECT COMP2 FROM territoires WHERE ID = ? LIMIT 1",
+                [epci_id]
+            ).fetchone()
+            if dept_row and dept_row[0] and dept_row[0].startswith("D"):
+                dept_code = dept_row[0][1:]  # Enlever le "D"
+                _dbg("map.geojson.fallback_dept", epci_id=epci_id, dept_code=dept_code)
+                geojson = fetch_geojson(
+                    f"https://geo.api.gouv.fr/departements/{dept_code}/communes?format=geojson&geometry=contour&fields=code,nom"
+                )
+                if geojson:
+                    # Filtrer pour ne garder que les communes de l'EPCI
+                    commune_ids_str = [str(cid) for cid in commune_ids]
+                    filtered_features = []
+                    for feature in geojson.get("features", []):
+                        code = str(feature.get("properties", {}).get("code", ""))
+                        # Normaliser le code pour la comparaison (ajouter 0 si 4 chiffres)
+                        normalized_code = ("0" + code) if len(code) == 4 else code
+                        if normalized_code in commune_ids_str or code in commune_ids_str:
+                            filtered_features.append(feature)
+                    geojson["features"] = filtered_features
+                    _dbg("map.geojson.fallback_success", epci_id=epci_id, dept_code=dept_code, features=len(filtered_features))
+        except Exception as e:
+            _dbg("map.geojson.fallback_error", epci_id=epci_id, error=str(e))
+
+    if not geojson:
         st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
         if diagnostic:
             st.caption(
