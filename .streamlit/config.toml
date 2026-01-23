@@ -34,7 +34,3 @@ secondaryBackgroundColor = "#ffffff"
 textColor = "#1f2a37"
 primaryColor = "#4f46e5"
 borderColor = "#d9e2ec"
-showWidgetBorder = true
-widgetBackgroundColor = "#ffffff"
-widgetBorderColor = "#d9e2ec"
-skeletonBackgroundColor = "#e2e8f0"
