@@ -1804,10 +1804,6 @@ def render_epci_choropleth(
         metric_col=metric_col,
         metric_format=metric_format
     )
-    if is_epci:
-        st.caption(f"🗺️ Carte EPCI : **{epci_name}**")
-    else:
-        st.caption(f"🗺️ Carte EPCI : **{epci_name}** (commune : {commune_name})")
 
     # Calcul du centre de la carte
     coords = []
@@ -1934,11 +1930,20 @@ def render_epci_choropleth(
         '''
         m.get_root().html.add_child(folium.Element(legend_html))
 
-    # Affichage de la carte
-    st.markdown("---")
-    st.markdown(f"### 🗺️ {metric_title}")
-    folium_static(m, width=700, height=450)
-    st.markdown("---")
+# Style
+st.markdown("""
+<style>
+.font18 { font-size: 18px !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# Texte
+st.markdown('<p class="font18">Hello World !!</p>', unsafe_allow_html=True)
+st.markdown(f'<p class="font18">🗺️ {metric_title}</p>', unsafe_allow_html=True)
+
+# Carte
+folium_static(m, width=800, height=400)
+
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
 def auto_plot_data(df, sorted_ids, config=None, con=None):
@@ -2870,11 +2875,9 @@ if prompt_to_process:
                     "debug_info": {"error": error_msg, "trace": error_trace[-500:]}
                 })
 
-# --- E. AFFICHAGE PERSISTANT DES BOUTONS "ACTIONS RAPIDES" ---
-# Ce code s'exécute TOUJOURS (même sans nouveau prompt) pour rendre les boutons cliquables
+# --- E. AFFICHAGE PERSISTANT DES BOUTONS "ACTIONS RAPIDES" (ALIGNÉ CHAT) ---
 _dbg("ui.persistent_buttons.check", messages_count=len(st.session_state.messages))
 
-# Trouver le dernier message assistant avec des données
 last_data_message = None
 for msg in reversed(st.session_state.messages):
     if msg.get("role") == "assistant" and msg.get("data") is not None and not msg["data"].empty:
@@ -2882,17 +2885,15 @@ for msg in reversed(st.session_state.messages):
         break
 
 if last_data_message:
-    _dbg("ui.persistent_buttons.found", has_data=True, has_chart_config=("chart_config" in last_data_message))
-
     df = last_data_message["data"]
     chart_config = last_data_message.get("chart_config", {})
     formats = chart_config.get("formats", {})
 
-    # Récupérer le contexte géographique
+    # Contexte géographique
     geo_context = st.session_state.get("current_geo_context", {})
     target_id = str(geo_context.get("target_id", ""))
 
-    # Trouver les candidats numériques
+    # Candidats numériques
     numeric_candidates = []
     for col in df.columns:
         if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
@@ -2904,56 +2905,59 @@ if last_data_message:
     _dbg("ui.persistent_buttons.candidates", count=len(numeric_candidates), target_id=target_id)
 
     if numeric_candidates:
-        with st.expander("📊 Carte et graphique", expanded=False):
-            # Fonction pour afficher les labels lisibles au lieu des codes
-            def format_metric_label(col):
-                spec = formats.get(col, {})
-                # Préfère le titre complet pour la sélection (plus descriptif)
-                return spec.get("title") or spec.get("label") or col
+        # ✅ WRAP DANS UNE BULLE -> alignement identique aux expanders du chat
+        with st.chat_message("assistant", avatar="🛠️"):
+            with st.expander("📊 Carte et graphique", expanded=False):
 
-            manual_metric = st.selectbox(
-                "Choisir une variable",
-                numeric_candidates,
-                index=0,
-                format_func=format_metric_label,
-                key="persistent_manual_metric_select"
-            )
-            col_left, col_right = st.columns(2)
-            manual_spec = formats.get(manual_metric, {"kind": "number", "label": manual_metric, "title": manual_metric})
-            manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+                def format_metric_label(col):
+                    spec = formats.get(col, {})
+                    return spec.get("title") or spec.get("label") or col
 
-            # Récupérer les IDs depuis debug_info si disponible
-            debug_info = last_data_message.get("debug_info", {})
-            current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
+                c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
 
-            if col_left.button("📈 Tracer le graphique", key="persistent_manual_chart_button"):
-                _dbg("button.persistent_chart.clicked", metric=manual_metric)
-                auto_plot_data(df, current_ids, config=manual_config, con=con)
+                manual_metric = c1.selectbox(
+                    "Choisir une variable",
+                    numeric_candidates,
+                    index=0,
+                    format_func=format_metric_label,
+                    key="persistent_manual_metric_select",
+                    label_visibility="collapsed",
+                )
 
-            if col_right.button("🗺️ Voir la carte", key="persistent_manual_map_button"):
-                _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
+                manual_spec = formats.get(
+                    manual_metric,
+                    {"kind": "number", "label": manual_metric, "title": manual_metric}
+                )
+                manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
 
-                # Vérifier si c'est une commune (4-5 chiffres) ou un EPCI (9 chiffres)
-                is_commune = target_id and target_id.isdigit() and len(target_id) in (4, 5)
-                is_epci = target_id and target_id.isdigit() and len(target_id) == 9
+                # IDs
+                debug_info = last_data_message.get("debug_info", {})
+                current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
 
-                if is_commune or is_epci:
-                    _dbg("button.persistent_map.calling_render", target_id=target_id, metric=manual_metric, is_epci=is_epci)
+                if c2.button("Graphique", use_container_width=True, key="persistent_manual_chart_button"):
+                    _dbg("button.persistent_chart.clicked", metric=manual_metric)
+                    auto_plot_data(df, current_ids, config=manual_config, con=con)
 
-                    # Récupérer la requête SQL depuis debug_info si disponible
-                    sql_query = debug_info.get("sql_query")
+                if c3.button("Carte", use_container_width=True, key="persistent_manual_map_button"):
+                    _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
 
-                    render_epci_choropleth(
-                        con,
-                        df,
-                        target_id,
-                        geo_context.get("target_name", target_id),
-                        manual_metric,
-                        manual_spec,
-                        sql_query=sql_query
-                    )
-                    _dbg("button.persistent_map.render_done")
-                else:
-                    st.info("La carte est disponible pour une commune ou un EPCI.")
+                    is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                    is_epci = target_id.isdigit() and len(target_id) == 9
+
+                    if is_commune or is_epci:
+                        sql_query = debug_info.get("sql_query")
+
+                        render_epci_choropleth(
+                            con,
+                            df,
+                            target_id,
+                            geo_context.get("target_name", target_id),
+                            manual_metric,
+                            manual_spec,
+                            sql_query=sql_query
+                        )
+                    else:
+                        st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
 else:
     _dbg("ui.persistent_buttons.no_data")
+
