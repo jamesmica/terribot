@@ -2129,7 +2129,11 @@ def render_epci_choropleth(
         ).fetchall()
     ]
     _dbg("map.epci.commune_ids", epci_id=epci_id, count=len(commune_ids))
-    df_epci_source = df
+
+    # 🔧 TOUJOURS requêter les données pour toutes les communes de l'EPCI
+    df_epci_source = None
+
+    # Méthode 1 : Si sql_query est fourni, l'adapter pour inclure toutes les communes
     if sql_query:
         ids_sql = ", ".join([f"'{str(cid)}'" for cid in commune_ids])
         epci_sql = re.sub(
@@ -2151,6 +2155,58 @@ def render_epci_choropleth(
                 _dbg("map.data.sql_refetch_error", epci_id=epci_id, error=str(e))
         else:
             _dbg("map.data.sql_refetch_skip", epci_id=epci_id, reason="no_where_match")
+
+    # Méthode 2 : Si sql_query n'a pas fonctionné, construire une requête automatique
+    if df_epci_source is None or df_epci_source.empty:
+        _dbg("map.data.auto_query", epci_id=epci_id, metric_col=metric_col)
+
+        # Trouver la table qui contient metric_col
+        valid_tables = st.session_state.get("valid_tables_list", [])
+        db_schemas = st.session_state.get("db_schemas", {})
+
+        target_table = None
+        for table_name in valid_tables:
+            if table_name in db_schemas:
+                cols = db_schemas[table_name]
+            else:
+                try:
+                    cols = [c[0] for c in con.execute(f"DESCRIBE \"{table_name}\"").fetchall()]
+                except:
+                    continue
+
+            if metric_col in cols:
+                target_table = table_name
+                _dbg("map.data.table_found", table=table_name, metric=metric_col)
+                break
+
+        if target_table:
+            # Construire une requête simple pour récupérer les données
+            ids_sql = ", ".join([f"'{str(cid)}'" for cid in commune_ids])
+            auto_sql = f"""
+                SELECT t.ID, t.NOM_COUV, d."{metric_col}"
+                FROM territoires t
+                LEFT JOIN "{target_table}" d ON t.ID = d.ID
+                WHERE t.ID IN ({ids_sql})
+            """
+
+            try:
+                df_epci_source = con.execute(auto_sql).df()
+                _dbg(
+                    "map.data.auto_query_success",
+                    epci_id=epci_id,
+                    table=target_table,
+                    rows=len(df_epci_source),
+                    sql_preview=auto_sql[:300]
+                )
+            except Exception as e:
+                _dbg("map.data.auto_query_error", epci_id=epci_id, error=str(e))
+        else:
+            _dbg("map.data.table_not_found", metric_col=metric_col)
+
+    # Fallback : utiliser le DataFrame passé en paramètre si tout a échoué
+    if df_epci_source is None:
+        df_epci_source = df
+        _dbg("map.data.fallback_to_input_df")
 
     df_epci = df_epci_source[
         df_epci_source["ID"].astype(str).isin([str(cid) for cid in commune_ids])
@@ -3521,7 +3577,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         "df": df.copy(),
                         "chart_config": chart_config.copy(),
                         "final_ids": debug_container.get("final_ids", geo_context.get("all_ids", [])),
-                        "geo_context": geo_context.copy() if geo_context else {}
+                        "geo_context": geo_context.copy() if geo_context else {},
+                        "sql_query": debug_container.get("sql_query")
                     }
 
                     # 🔧 Afficher un message pour indiquer que les visualisations sont disponibles dans la sidebar
@@ -3614,6 +3671,7 @@ if "sidebar_viz_placeholder" in st.session_state:
             chart_config = viz_data.get("chart_config", {})
             final_ids = viz_data.get("final_ids", [])
             geo_context_viz = viz_data.get("geo_context", {})
+            sql_query_viz = viz_data.get("sql_query")
 
             if df is not None and not df.empty:
                 try:
@@ -3670,7 +3728,7 @@ if "sidebar_viz_placeholder" in st.session_state:
                                     geo_context_viz.get("target_name", target_id),
                                     selected_metric,
                                     manual_spec,
-                                    sql_query=None,
+                                    sql_query=sql_query_viz,
                                     in_sidebar=True
                                 )
                             else:
