@@ -552,88 +552,11 @@ with st.sidebar:
     st.divider()
     st.markdown("### 📊 Visualisations")
 
-    # Afficher les visualisations du dernier message s'il y en a
-    if "current_viz_data" in st.session_state and st.session_state.current_viz_data:
-        viz_data = st.session_state.current_viz_data
-        df = viz_data.get("df")
-        chart_config = viz_data.get("chart_config", {})
-        final_ids = viz_data.get("final_ids", [])
-        geo_context_viz = viz_data.get("geo_context", {})
+    # Créer un placeholder qui sera rempli plus tard (après la définition des fonctions)
+    sidebar_viz_placeholder = st.empty()
 
-        if df is not None and not df.empty:
-            formats = chart_config.get("formats", {})
-            numeric_candidates = []
-            for col in df.columns:
-                if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                    continue
-                s = pd.to_numeric(df[col], errors="coerce")
-                if s.notna().any():
-                    numeric_candidates.append(col)
-
-            if numeric_candidates:
-                # Initialiser le sélecteur de métrique si nécessaire
-                if "sidebar_viz_metric" not in st.session_state:
-                    st.session_state.sidebar_viz_metric = numeric_candidates[0]
-                if "sidebar_viz_type" not in st.session_state:
-                    st.session_state.sidebar_viz_type = "graphique"
-
-                def format_metric_label(col):
-                    spec = formats.get(col, {})
-                    return spec.get("title") or spec.get("label") or col
-
-                # Sélecteur de variable
-                selected_metric = st.selectbox(
-                    "Variable",
-                    numeric_candidates,
-                    index=numeric_candidates.index(st.session_state.sidebar_viz_metric) if st.session_state.sidebar_viz_metric in numeric_candidates else 0,
-                    format_func=format_metric_label,
-                    key="sidebar_metric_selector"
-                )
-                st.session_state.sidebar_viz_metric = selected_metric
-
-                # Boutons pour choisir le type de visualisation
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("📊 Graphique", use_container_width=True, key="sidebar_btn_chart"):
-                        st.session_state.sidebar_viz_type = "graphique"
-                        st.rerun()
-                with col2:
-                    if st.button("🗺️ Carte", use_container_width=True, key="sidebar_btn_map"):
-                        st.session_state.sidebar_viz_type = "carte"
-                        st.rerun()
-
-                # Créer la config pour la visualisation
-                manual_spec = formats.get(
-                    selected_metric,
-                    {"kind": "number", "label": selected_metric, "title": selected_metric}
-                )
-                manual_config = {"selected_columns": [selected_metric], "formats": formats}
-                target_id = str(geo_context_viz.get("target_id", ""))
-
-                # Afficher la visualisation choisie
-                if st.session_state.sidebar_viz_type == "graphique":
-                    auto_plot_data(df, final_ids, config=manual_config, con=con)
-                elif st.session_state.sidebar_viz_type == "carte":
-                    is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                    is_epci = target_id.isdigit() and len(target_id) == 9
-                    if is_commune or is_epci:
-                        render_epci_choropleth(
-                            con,
-                            df,
-                            target_id,
-                            geo_context_viz.get("target_name", target_id),
-                            selected_metric,
-                            manual_spec,
-                            sql_query=None
-                        )
-                    else:
-                        st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
-            else:
-                st.caption("Aucune variable numérique disponible.")
-        else:
-            st.caption("Aucune donnée disponible pour visualisation.")
-    else:
-        st.caption("Les visualisations apparaîtront ici après une question.")
+    # Stocker le placeholder dans session_state pour y accéder plus tard
+    st.session_state.sidebar_viz_placeholder = sidebar_viz_placeholder
 
 client = openai.OpenAI(api_key=api_key)
 MODEL_NAME = "gpt-5.2"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
@@ -2866,6 +2789,96 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     chart["width"] = 800
     chart["height"] = 400
     st.vega_lite_chart(df_melted, chart, use_container_width=False)
+
+
+# --- 8.5 RENDU DE LA SIDEBAR VISUALISATIONS ---
+# Cette section doit être après les définitions de auto_plot_data et render_epci_choropleth
+if "sidebar_viz_placeholder" in st.session_state:
+    sidebar_viz_placeholder = st.session_state.sidebar_viz_placeholder
+
+    with sidebar_viz_placeholder.container():
+        # Afficher les visualisations du dernier message s'il y en a
+        if "current_viz_data" in st.session_state and st.session_state.current_viz_data:
+            viz_data = st.session_state.current_viz_data
+            df = viz_data.get("df")
+            chart_config = viz_data.get("chart_config", {})
+            final_ids = viz_data.get("final_ids", [])
+            geo_context_viz = viz_data.get("geo_context", {})
+
+            if df is not None and not df.empty:
+                formats = chart_config.get("formats", {})
+                numeric_candidates = []
+                for col in df.columns:
+                    if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                        continue
+                    s = pd.to_numeric(df[col], errors="coerce")
+                    if s.notna().any():
+                        numeric_candidates.append(col)
+
+                if numeric_candidates:
+                    # Initialiser le sélecteur de métrique si nécessaire
+                    if "sidebar_viz_metric" not in st.session_state:
+                        st.session_state.sidebar_viz_metric = numeric_candidates[0]
+                    if "sidebar_viz_type" not in st.session_state:
+                        st.session_state.sidebar_viz_type = "graphique"
+
+                    def format_metric_label(col):
+                        spec = formats.get(col, {})
+                        return spec.get("title") or spec.get("label") or col
+
+                    # Sélecteur de variable
+                    selected_metric = st.selectbox(
+                        "Variable",
+                        numeric_candidates,
+                        index=numeric_candidates.index(st.session_state.sidebar_viz_metric) if st.session_state.sidebar_viz_metric in numeric_candidates else 0,
+                        format_func=format_metric_label,
+                        key="sidebar_metric_selector"
+                    )
+                    st.session_state.sidebar_viz_metric = selected_metric
+
+                    # Boutons pour choisir le type de visualisation
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("📊 Graphique", use_container_width=True, key="sidebar_btn_chart"):
+                            st.session_state.sidebar_viz_type = "graphique"
+                            st.rerun()
+                    with col2:
+                        if st.button("🗺️ Carte", use_container_width=True, key="sidebar_btn_map"):
+                            st.session_state.sidebar_viz_type = "carte"
+                            st.rerun()
+
+                    # Créer la config pour la visualisation
+                    manual_spec = formats.get(
+                        selected_metric,
+                        {"kind": "number", "label": selected_metric, "title": selected_metric}
+                    )
+                    manual_config = {"selected_columns": [selected_metric], "formats": formats}
+                    target_id = str(geo_context_viz.get("target_id", ""))
+
+                    # Afficher la visualisation choisie
+                    if st.session_state.sidebar_viz_type == "graphique":
+                        auto_plot_data(df, final_ids, config=manual_config, con=con)
+                    elif st.session_state.sidebar_viz_type == "carte":
+                        is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                        is_epci = target_id.isdigit() and len(target_id) == 9
+                        if is_commune or is_epci:
+                            render_epci_choropleth(
+                                con,
+                                df,
+                                target_id,
+                                geo_context_viz.get("target_name", target_id),
+                                selected_metric,
+                                manual_spec,
+                                sql_query=None
+                            )
+                        else:
+                            st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
+                else:
+                    st.caption("Aucune variable numérique disponible.")
+            else:
+                st.caption("Aucune donnée disponible pour visualisation.")
+        else:
+            st.caption("Les visualisations apparaîtront ici après une question.")
 
 
 # --- 9. UI PRINCIPALE ---
