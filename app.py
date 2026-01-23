@@ -2786,7 +2786,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "fontSize": 14
     }
 
-    chart["width"] = 800
     chart["height"] = 400
     st.vega_lite_chart(df_melted, chart, use_container_width=False)
 
