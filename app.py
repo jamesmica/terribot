@@ -1867,20 +1867,18 @@ def render_epci_choropleth(
             return (s + (f" {suffix}" if suffix else "")).strip()
         except: return str(x)
 
-    # Déterminer le facteur de conversion pour les pourcentages (une seule fois pour toute la colonne)
-    percent_factor = 1
-    if kind == "percent":
-        # Calculer la moyenne de toutes les valeurs non nulles
-        all_values = [f.get("properties", {}).get("value") for f in geojson.get("features", [])]
-        valid_values = [v for v in all_values if v is not None and not pd.isna(v)]
-        if valid_values:
-            val_mean = sum(abs(v) for v in valid_values) / len(valid_values)
-            # Si la moyenne est < 5, les données sont probablement en décimal (0.26 = 26%)
-            # Sinon elles sont déjà en pourcentage (26 = 26%)
-            percent_factor = 100 if val_mean < 5 else 1
-            _dbg("map.percent.factor", val_mean=val_mean, factor=percent_factor, sample_values=valid_values[:5])
+    # ---------- FORMATAGE / FACTEUR % (SÉCURISÉ) ----------
+    # On calcule valid_values dans tous les cas pour éviter NameError
+    all_values = [f.get("properties", {}).get("value") for f in geojson.get("features", [])]
+    valid_values = [v for v in all_values if v is not None and not pd.isna(v)]
 
-    # Ajout des tooltips
+    percent_factor = 1
+    if kind == "percent" and valid_values:
+        val_mean = sum(abs(v) for v in valid_values) / len(valid_values)
+        percent_factor = 100 if val_mean < 5 else 1
+        _dbg("map.percent.factor", val_mean=val_mean, factor=percent_factor, sample_values=valid_values[:5])
+
+    # ---------- TOOLTIP ----------
     for feature in geojson.get("features", []):
         nom = feature.get("properties", {}).get("nom", "")
         value = feature.get("properties", {}).get("value")
@@ -1899,12 +1897,11 @@ def render_epci_choropleth(
                 tooltip=folium.Tooltip(tooltip_text)
             ).add_to(m)
 
-    # Ajout d'une légende personnalisée avec formatage correct
+    # ---------- LÉGENDE ----------
     if valid_values:
         min_val = min(valid_values)
         max_val = max(valid_values)
 
-        # Formater les valeurs min et max
         if kind == "percent":
             min_str = fr_num(min_val, decimals=1, suffix="%", factor=percent_factor)
             max_str = fr_num(max_val, decimals=1, suffix="%", factor=percent_factor)
@@ -1912,7 +1909,6 @@ def render_epci_choropleth(
             min_str = fr_num(min_val, decimals=0)
             max_str = fr_num(max_val, decimals=0)
 
-        # Créer une légende HTML
         legend_html = f'''
         <div style="position: fixed;
                     bottom: 50px; right: 50px; width: 200px;
@@ -1930,19 +1926,9 @@ def render_epci_choropleth(
         '''
         m.get_root().html.add_child(folium.Element(legend_html))
 
-# Style
-st.markdown("""
-<style>
-.font18 { font-size: 18px !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# Texte
-st.markdown('<p class="font18">Hello World !!</p>', unsafe_allow_html=True)
-st.markdown(f'<p class="font18">🗺️ {metric_title}</p>', unsafe_allow_html=True)
-
-# Carte
-folium_static(m, width=800, height=400)
+    # ---------- AFFICHAGE STREAMLIT (IMPORTANT) ----------
+    st.markdown(f'<p class="font18">🗺️ {metric_title}</p>', unsafe_allow_html=True)
+    folium_static(m, width=800, height=420)
 
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
