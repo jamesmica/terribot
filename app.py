@@ -324,14 +324,14 @@ st.markdown("""
 <style>
     /* Forcer la largeur correcte pour les graphiques Vega-Lite */
     .stVegaLiteChart > div {
-        width: 800px !important;
-        max-width: 100% !important;
+        width: auto !important;
+        max-width: 800px !important;
     }
 
     /* Corriger l'alignement du conteneur parent */
     .element-container:has(.stVegaLiteChart) {
-        width: 800px !important;
-        max-width: 100% !important;
+        width: auto !important;
+        max-width: 800px !important;
     }
 
     /* Éviter que les graphiques débordent sur mobile */
