@@ -543,6 +543,10 @@ with st.sidebar:
       max-width: 400px !important;
       height: 247px !important;
     }
+    /* Remonter uniquement le titre principal (le premier h1) */ 
+    div[data-testid="stSidebarUserContent"] { 
+    margin-top: -80px !important; 
+    }
     </style>
     """, unsafe_allow_html=True)
 
