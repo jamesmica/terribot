@@ -2786,9 +2786,8 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "fontSize": 14
     }
     
-    chart["width"] = "container"
     chart["height"] = 400
-    st.vega_lite_chart(df_melted, chart, use_container_width=False)
+    st.vega_lite_chart(df_melted, chart, use_container_width=True)
 
 
 # --- 8.5 RENDU DE LA SIDEBAR VISUALISATIONS ---
