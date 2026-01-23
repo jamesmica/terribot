@@ -1,5 +1,4 @@
 ID;NOM_COUV;COMP1;COMP2;COMP3
-1/ insee ou sirene;3/ Nom complet;4/ Q > C, C > E, E > Cmax;5/ Q>E, C>D, E>D;6/ Q>D, C>R, E>R 
 D1;Ain;;;
 D2;Aisne;;;
 D3;Allier;;;
