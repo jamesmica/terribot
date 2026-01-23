@@ -517,9 +517,14 @@ const questions = [
 with st.sidebar:
     st.markdown("""
     <style>
-    /* Remonter tout le contenu de la sidebar */
-    div[data-testid="stSidebarUserContent"] {
-      margin-top: -48px !important;
+    /* Aligner le titre tout en haut avec la flèche de réduction */
+    section[data-testid="stSidebar"] > div {
+      padding-top: 1rem !important;
+    }
+
+    section[data-testid="stSidebar"] h1 {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
     }
 
     /* Limiter la taille des graphiques dans la sidebar */
@@ -541,20 +546,7 @@ with st.sidebar:
     </style>
     """, unsafe_allow_html=True)
 
-    # Titre et bouton sur la même ligne
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.title("🤖 Terribot")
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)  # Spacer pour aligner verticalement
-        if st.button("🗑️", type="secondary", help="Nouvelle conversation"):
-            st.session_state.messages = []
-            st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Quel territoire souhaitez-vous analyser ?"}]
-            st.session_state.current_geo_context = None
-            st.session_state.pending_prompt = None
-            st.session_state.ambiguity_candidates = None
-            st.rerun()
-
+    st.title("🤖 Terribot")
     st.caption("v0.18.6 - 22 janvier 2026")
 
     api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
@@ -2736,8 +2728,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                         y_format = ".1%"
                     elif has_decimals:
                         y_format = ",.1f"  # Garder 1 décimale
+                        y_suffix = " %"  # 🔧 Ajouter le symbole % pour les valeurs en base 100
                     else:
                         y_format = ",.0f"  # Pas de décimale
+                        y_suffix = " %"  # 🔧 Ajouter le symbole % pour les valeurs en base 100
                 elif is_currency:
                     y_format = ",.0f"  # Euros sans décimales
                     y_suffix = " €"  # 🔧 Ajouter le symbole €
@@ -2797,11 +2791,14 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
 
     # 7. HEURISTIQUE DE CORRECTION DU % (1600% -> 16%)
     if is_percent:
-        # Si c'est censé être du % mais que la moyenne des valeurs est > 1.5, 
+        # 🔧 FIX: Ne PAS diviser par 100 les taux de pauvreté (TP60*) car ils sont déjà en base 100
+        is_poverty_rate = any("TP60" in str(m).upper() for m in selected_metrics)
+
+        # Si c'est censé être du % mais que la moyenne des valeurs est > 1.5,
         # c'est que les données sont en base 100 (ex: 15.5) et pas en base 1 (0.155)
         # Vega attend du base 1 pour afficher %. On divise donc par 100.
         val_mean = df_melted["Valeur"].mean()
-        if val_mean > 1.5:
+        if val_mean > 1.5 and not is_poverty_rate:
              df_melted["Valeur"] = df_melted["Valeur"] / 100.0
 
     # 8. VEGA
@@ -2864,6 +2861,9 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             y_domain = None
 
         y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+        # 🔧 Ajouter le suffixe (%, €) si nécessaire
+        if y_suffix:
+            y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
         if y_domain:
             y_axis_def["scale"] = {"domain": y_domain}
         elif y_scale:
@@ -2920,6 +2920,9 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
         if is_multi_metric and is_stacked:
             y_stack = "normalize" if is_percent else True
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}, "stack": y_stack}
+            # 🔧 Ajouter le suffixe (%, €) si nécessaire
+            if y_suffix:
+                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
             if y_scale: y_axis_def["scale"] = y_scale
             chart_encoding = {
                 "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
@@ -2929,6 +2932,9 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             }
         elif is_multi_metric:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+            # 🔧 Ajouter le suffixe (%, €) si nécessaire
+            if y_suffix:
+                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
             if y_scale: y_axis_def["scale"] = y_scale
             # Ajouter layout à color_def pour ce cas
             color_def_multi = color_def.copy()
@@ -2942,6 +2948,9 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             }
         else:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+            # 🔧 Ajouter le suffixe (%, €) si nécessaire
+            if y_suffix:
+                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
             if y_scale: y_axis_def["scale"] = y_scale
             bar_colors = palette[:len(sorted_labels)] if sorted_labels else palette[:1]
             chart_encoding = {
