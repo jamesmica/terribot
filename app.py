@@ -2171,12 +2171,32 @@ def render_epci_choropleth(
 
     _dbg("map.render.folium", epci_id=epci_id, metric_col=metric_col, center_lat=center_lat, center_lon=center_lon)
 
-    # Création de la carte Folium
+    # Création de la carte Folium avec fond neutre
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=11,
-        tiles="OpenStreetMap"
+        tiles="CartoDB positron"  # Fond plus neutre et moins coloré
     )
+
+    # 🔧 Ajouter le contour de l'EPCI (sans remplissage)
+    try:
+        epci_geojson = fetch_geojson(
+            f"https://geo.api.gouv.fr/epcis/{epci_id}?format=geojson&geometry=contour"
+        )
+        if epci_geojson:
+            folium.GeoJson(
+                epci_geojson,
+                style_function=lambda x: {
+                    'fillColor': 'none',
+                    'fillOpacity': 0,
+                    'color': '#808080',  # Gris
+                    'weight': 3,
+                    'opacity': 0.8
+                },
+                name="Contour EPCI"
+            ).add_to(m)
+    except:
+        pass  # Si le contour n'est pas disponible, on continue sans
 
     # Préparation des données pour Choropleth
     # Folium Choropleth attend un dict {code: value}
@@ -2306,41 +2326,46 @@ def render_epci_choropleth(
         cat3_label = f"De {format_legend_value(quartiles[2])} à {format_legend_value(quartiles[3])}"
         cat4_label = f"Plus de {format_legend_value(quartiles[3])}"
 
-        # Créer une légende avec 4 catégories distinctes (style de l'image)
+        # 🔧 Légende avec titre, en bas, 120px de hauteur
         legend_html = f'''
-        <div style="position: fixed;
-                    bottom: 20px; left: 50%; transform: translateX(-50%);
-                    background-color: white; border: 1px solid #ccc; z-index:9999;
-                    font-size: 12px; padding: 12px 20px; border-radius: 4px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    display: flex; gap: 15px; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <div style="width: 20px; height: 20px; background-color: {colors[0]};"></div>
-                <span style="font-size: 11px;">{cat1_label}</span>
+        <div style="position: absolute;
+                    bottom: 0; left: 0; right: 0; width: 100%;
+                    height: 120px;
+                    background-color: white; border-top: 1px solid #ccc; z-index:9999;
+                    padding: 15px 20px;
+                    box-sizing: border-box;">
+            <div style="font-weight: bold; font-size: 13px; margin-bottom: 10px; color: #333;">
+                {metric_title}
             </div>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <div style="width: 20px; height: 20px; background-color: {colors[1]};"></div>
-                <span style="font-size: 11px;">{cat2_label}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <div style="width: 20px; height: 20px; background-color: {colors[2]};"></div>
-                <span style="font-size: 11px;">{cat3_label}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <div style="width: 20px; height: 20px; background-color: {colors[3]};"></div>
-                <span style="font-size: 11px;">{cat4_label}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <div style="width: 20px; height: 20px; background-color: #e0e0e0;"></div>
-                <span style="font-size: 11px;">Données non disponibles</span>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 18px; height: 18px; background-color: {colors[0]}; border: 1px solid #ccc;"></div>
+                    <span style="font-size: 10px; color: #555;">{cat1_label}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 18px; height: 18px; background-color: {colors[1]}; border: 1px solid #ccc;"></div>
+                    <span style="font-size: 10px; color: #555;">{cat2_label}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 18px; height: 18px; background-color: {colors[2]}; border: 1px solid #ccc;"></div>
+                    <span style="font-size: 10px; color: #555;">{cat3_label}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 18px; height: 18px; background-color: {colors[3]}; border: 1px solid #ccc;"></div>
+                    <span style="font-size: 10px; color: #555;">{cat4_label}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 18px; height: 18px; background-color: #e0e0e0; border: 1px solid #ccc;"></div>
+                    <span style="font-size: 10px; color: #555;">Données non disponibles</span>
+                </div>
             </div>
         </div>
         '''
         m.get_root().html.add_child(folium.Element(legend_html))
 
     # ---------- AFFICHAGE STREAMLIT (IMPORTANT) ----------
-    st.markdown(f'<p class="font18">🗺️ {metric_title}</p>', unsafe_allow_html=True)
-    folium_static(m, width=800, height=420)
+    # 🔧 Carte carrée 600x600 (le titre est maintenant dans la légende)
+    folium_static(m, width=600, height=600)
 
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
@@ -3139,46 +3164,53 @@ if prompt_to_process:
                             debug_steps.append({"icon": "🔎", "label": "Résolution Géo (Fallback IA)", "type": "table", "content": fallback_context["debug_search"]})
                         else:
                             # 🆕 DERNIER RECOURS : Sélecteur avec tous les territoires (36000+)
-                            st.warning("⚠️ Je ne détecte pas de territoire. Veuillez en choisir un dans la liste ci-dessous.")
+                            status_container.update(label="⚠️ Aucun territoire détecté", state="error")
 
-                            # Charger tous les territoires
-                            all_territories = con.execute("SELECT ID, NOM_COUV FROM territoires ORDER BY NOM_COUV").df()
+                            # 🔧 FIX: Sortir le sélecteur du status_container pour qu'il soit visible
+                            # Le sélecteur est affiché en dehors du with status_container mais dans le else
 
-                            if not all_territories.empty:
-                                # Créer le format "Nom (ID)" pour chaque territoire
-                                territory_options = [f"{row['NOM_COUV']} ({row['ID']})" for _, row in all_territories.iterrows()]
-                                territory_ids = all_territories['ID'].tolist()
+                    # Afficher le sélecteur en dehors du with status_container mais toujours conditionnel au else
+                    if not st.session_state.current_geo_context and not fallback_context:
+                        st.warning("⚠️ Je ne détecte pas de territoire. Veuillez en choisir un dans la liste ci-dessous.")
 
-                                # Afficher le sélecteur (PAS dans un expander)
-                                selected_territory = st.selectbox(
-                                    "🔍 Choisissez votre territoire :",
-                                    options=territory_options,
-                                    key="territory_selector_fallback"
-                                )
+                        # Charger tous les territoires
+                        all_territories = con.execute("SELECT ID, NOM_COUV FROM territoires ORDER BY NOM_COUV").df()
 
-                                if st.button("✅ Valider ce territoire", key="validate_territory_fallback"):
-                                    # Extraire l'ID du format "Nom (ID)"
-                                    selected_idx = territory_options.index(selected_territory)
-                                    selected_id = territory_ids[selected_idx]
-                                    selected_name = all_territories.iloc[selected_idx]['NOM_COUV']
+                        if not all_territories.empty:
+                            # Créer le format "Nom (ID)" pour chaque territoire
+                            territory_options = [f"{row['NOM_COUV']} ({row['ID']})" for _, row in all_territories.iterrows()]
+                            territory_ids = all_territories['ID'].tolist()
 
-                                    # Créer le contexte géographique
-                                    manual_context = {
-                                        'target_id': selected_id,
-                                        'target_name': selected_name,
-                                        'all_ids': [selected_id],
-                                        'display_context': f"{selected_name} ({selected_id})",
-                                        'lieux_cites': [selected_name],
-                                        'debug_search': [{"Recherche": "Sélection manuelle", "Trouvé": selected_name, "ID": selected_id}],
-                                        'parent_clause': ''
-                                    }
+                            # Afficher le sélecteur
+                            selected_territory = st.selectbox(
+                                "🔍 Choisissez votre territoire :",
+                                options=territory_options,
+                                key="territory_selector_fallback"
+                            )
 
-                                    st.session_state.current_geo_context = manual_context
-                                    st.session_state.pending_prompt = prompt_to_process
-                                    st.session_state.force_geo_context = True  # 🆕 Activer le verrou pour forcer ce contexte
-                                    st.rerun()
+                            if st.button("✅ Valider ce territoire", key="validate_territory_fallback"):
+                                # Extraire l'ID du format "Nom (ID)"
+                                selected_idx = territory_options.index(selected_territory)
+                                selected_id = territory_ids[selected_idx]
+                                selected_name = all_territories.iloc[selected_idx]['NOM_COUV']
 
-                            st.stop()
+                                # Créer le contexte géographique
+                                manual_context = {
+                                    'target_id': selected_id,
+                                    'target_name': selected_name,
+                                    'all_ids': [selected_id],
+                                    'display_context': f"{selected_name} ({selected_id})",
+                                    'lieux_cites': [selected_name],
+                                    'debug_search': [{"Recherche": "Sélection manuelle", "Trouvé": selected_name, "ID": selected_id}],
+                                    'parent_clause': ''
+                                }
+
+                                st.session_state.current_geo_context = manual_context
+                                st.session_state.trigger_run_prompt = prompt_to_process  # 🔧 FIX: Utiliser trigger_run_prompt au lieu de pending_prompt
+                                st.session_state.force_geo_context = True
+                                st.rerun()
+
+                        st.stop()
                     
                     geo_context = st.session_state.current_geo_context
                     # --- CORRECTION ICI : ON FORCE LA SAUVEGARDE DES IDS ---
@@ -3369,19 +3401,17 @@ if prompt_to_process:
                             )
 
                             if viz_choice == "📊 Graphique":
-                                with st.expander("📊 Graphique", expanded=True):
-                                    auto_plot_data(df, current_ids, config=chart_config, con=con)
+                                auto_plot_data(df, current_ids, config=chart_config, con=con)
                             else:  # Carte
-                                with st.expander("🗺️ Carte", expanded=True):
-                                    render_epci_choropleth(
-                                        con,
-                                        df,
-                                        target_id,
-                                        geo_context.get("target_name", target_id),
-                                        metric_col,
-                                        metric_spec,
-                                        sql_query=debug_container.get("sql_query")
-                                    )
+                                render_epci_choropleth(
+                                    con,
+                                    df,
+                                    target_id,
+                                    geo_context.get("target_name", target_id),
+                                    metric_col,
+                                    metric_spec,
+                                    sql_query=debug_container.get("sql_query")
+                                )
                         else:
                             # Pas de carte éligible, afficher uniquement le graphique
                             auto_plot_data(df, current_ids, config=chart_config, con=con)
@@ -3405,11 +3435,37 @@ if prompt_to_process:
                     viz_state_key = f"viz_state_{msg_idx}"
                     viz_metric_key = f"viz_metric_{msg_idx}"
 
-                    # 🆕 Améliorer le formatage des variables avec l'IA
+                    # 🔧 FIX: Ne pas utiliser ai_enhance_formats, utiliser directement les formats de base
+                    # qui sont cohérents avec style_df
                     formats = chart_config.get("formats", {})
-                    enhanced_formats = ai_enhance_formats(df, formats, client, MODEL_NAME)
-                    chart_config["formats"] = enhanced_formats
-                    formats = enhanced_formats
+                    # Améliorer les formats avec la logique de style_df (sans IA)
+                    for col in df.columns:
+                        if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV"]:
+                            continue
+                        if col not in formats and pd.api.types.is_numeric_dtype(df[col]):
+                            # Logique similaire à style_df
+                            spec = {"label": col, "title": col}
+                            valid_vals = df[col].dropna().abs()
+                            if not valid_vals.empty:
+                                # Déterminer le type
+                                col_upper = col.upper()
+                                if any(key in col_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%"]):
+                                    spec["kind"] = "percent"
+                                    spec["decimals"] = 1
+                                elif valid_vals.min() >= 100:
+                                    spec["kind"] = "number"
+                                    spec["decimals"] = 0
+                                elif (valid_vals % 1 == 0).all():
+                                    spec["kind"] = "number"
+                                    spec["decimals"] = 0
+                                else:
+                                    spec["kind"] = "number"
+                                    spec["decimals"] = 1
+                            else:
+                                spec["kind"] = "number"
+                                spec["decimals"] = 0
+                            formats[col] = spec
+                    chart_config["formats"] = formats
 
                     numeric_candidates = []
                     for col in df.columns:
@@ -3421,7 +3477,7 @@ if prompt_to_process:
 
                     # Initialiser le state si nécessaire
                     if viz_state_key not in st.session_state:
-                        st.session_state[viz_state_key] = None
+                        st.session_state[viz_state_key] = "graphique"  # 🔧 FIX: Défaut à "graphique" au lieu de None
                     if viz_metric_key not in st.session_state and numeric_candidates:
                         st.session_state[viz_metric_key] = numeric_candidates[0]
 
@@ -3430,59 +3486,58 @@ if prompt_to_process:
                         return spec.get("title") or spec.get("label") or col
 
                     if numeric_candidates:
-                        st.markdown("### 📊 Carte et graphique")
+                        with st.expander("📊 Carte et graphique", expanded=False):
+                            c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
 
-                        c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
+                            manual_metric = c1.selectbox(
+                                "Choisir une variable",
+                                numeric_candidates,
+                                index=numeric_candidates.index(st.session_state[viz_metric_key]) if st.session_state[viz_metric_key] in numeric_candidates else 0,
+                                format_func=format_metric_label,
+                                key=f"cg_live_metric_{msg_idx}",
+                                label_visibility="collapsed",
+                            )
 
-                        manual_metric = c1.selectbox(
-                            "Choisir une variable",
-                            numeric_candidates,
-                            index=numeric_candidates.index(st.session_state[viz_metric_key]) if st.session_state[viz_metric_key] in numeric_candidates else 0,
-                            format_func=format_metric_label,
-                            key=f"cg_live_metric_{msg_idx}",
-                            label_visibility="collapsed",
-                        )
+                            # Mettre à jour la métrique dans le state
+                            st.session_state[viz_metric_key] = manual_metric
 
-                        # Mettre à jour la métrique dans le state
-                        st.session_state[viz_metric_key] = manual_metric
+                            manual_spec = formats.get(
+                                manual_metric,
+                                {"kind": "number", "label": manual_metric, "title": manual_metric}
+                            )
+                            # 🔧 FIX : Passer TOUS les formats améliorés
+                            manual_config = {"selected_columns": [manual_metric], "formats": formats}
 
-                        manual_spec = formats.get(
-                            manual_metric,
-                            {"kind": "number", "label": manual_metric, "title": manual_metric}
-                        )
-                        # 🔧 FIX : Passer TOUS les formats améliorés
-                        manual_config = {"selected_columns": [manual_metric], "formats": formats}
+                            current_ids = debug_container.get("final_ids", geo_context.get("all_ids", []))
+                            target_id = str(geo_context.get("target_id", ""))
 
-                        current_ids = debug_container.get("final_ids", geo_context.get("all_ids", []))
-                        target_id = str(geo_context.get("target_id", ""))
+                            # Boutons pour choisir le type de visualisation
+                            if c2.button("Graphique", use_container_width=True, key=f"cg_live_btn_chart_{msg_idx}"):
+                                st.session_state[viz_state_key] = "graphique"
+                                st.rerun()  # Force un rerun pour afficher immédiatement
 
-                        # Boutons pour choisir le type de visualisation
-                        if c2.button("Graphique", use_container_width=True, key=f"cg_live_btn_chart_{msg_idx}"):
-                            st.session_state[viz_state_key] = "graphique"
-                            st.rerun()  # Force un rerun pour afficher immédiatement
+                            if c3.button("Carte", use_container_width=True, key=f"cg_live_btn_map_{msg_idx}"):
+                                st.session_state[viz_state_key] = "carte"
+                                st.rerun()  # Force un rerun pour afficher immédiatement
 
-                        if c3.button("Carte", use_container_width=True, key=f"cg_live_btn_map_{msg_idx}"):
-                            st.session_state[viz_state_key] = "carte"
-                            st.rerun()  # Force un rerun pour afficher immédiatement
-
-                        # Afficher la visualisation choisie
-                        if st.session_state[viz_state_key] == "graphique":
-                            auto_plot_data(df, current_ids, config=manual_config, con=con)
-                        elif st.session_state[viz_state_key] == "carte":
-                            is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                            is_epci = target_id.isdigit() and len(target_id) == 9
-                            if is_commune or is_epci:
-                                render_epci_choropleth(
-                                    con,
-                                    df,
-                                    target_id,
-                                    geo_context.get("target_name", target_id),
-                                    manual_metric,
-                                    manual_spec,
-                                    sql_query=debug_container.get("sql_query")
-                                )
-                            else:
-                                st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
+                            # Afficher la visualisation choisie
+                            if st.session_state[viz_state_key] == "graphique":
+                                auto_plot_data(df, current_ids, config=manual_config, con=con)
+                            elif st.session_state[viz_state_key] == "carte":
+                                is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                                is_epci = target_id.isdigit() and len(target_id) == 9
+                                if is_commune or is_epci:
+                                    render_epci_choropleth(
+                                        con,
+                                        df,
+                                        target_id,
+                                        geo_context.get("target_name", target_id),
+                                        manual_metric,
+                                        manual_spec,
+                                        sql_query=debug_container.get("sql_query")
+                                    )
+                                else:
+                                    st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
                     else:
                         st.caption("Aucune variable numérique exploitable pour afficher un graphique ou une carte.")
 
