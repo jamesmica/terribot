@@ -549,7 +549,7 @@ with st.sidebar:
     }
 
     div[data-testid="stSidebarHeader"] {
-    z-index:2;
+    z-index:1;
     }
     </style>
     """, unsafe_allow_html=True)
