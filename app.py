@@ -10,6 +10,7 @@ import re
 import unicodedata
 import folium
 from streamlit_folium import folium_static
+import branca.colormap as cm
 
 print("[TERRIBOT] ✅ Script importé / démarrage du fichier")
 
@@ -636,6 +637,110 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
         data["selected_columns"] = [c for c in data["selected_columns"] if c in df.columns]
         return data
     except: return {"selected_columns": [numeric_cols[0]], "formats": {}}
+
+def ai_enhance_formats(df: pd.DataFrame, initial_specs: dict, client, model):
+    """
+    Améliore les specs de formatage en utilisant l'IA pour analyser le contexte et les données.
+    Retourne un dictionnaire de specs amélioré.
+    """
+    try:
+        # Analyser les colonnes du DataFrame
+        columns_info = []
+        for col in df.columns:
+            if col.upper() in ["ID", "CODGEO"]:
+                continue
+
+            col_data = {
+                "column_name": col,
+                "initial_spec": initial_specs.get(col, {}),
+            }
+
+            # Analyser les valeurs si c'est numérique
+            if pd.api.types.is_numeric_dtype(df[col]):
+                values = pd.to_numeric(df[col], errors='coerce').dropna()
+                if not values.empty:
+                    col_data["stats"] = {
+                        "min": float(values.min()),
+                        "max": float(values.max()),
+                        "mean": float(values.mean()),
+                        "has_decimals": not (values % 1 == 0).all(),
+                        "sample_values": values.head(5).tolist()
+                    }
+
+            columns_info.append(col_data)
+
+        if not columns_info:
+            return initial_specs
+
+        # Demander à l'IA d'améliorer le formatage
+        system_prompt = """Tu es un expert en visualisation de données et formatage de nombres.
+
+        TA MISSION :
+        Analyser les colonnes et déterminer le meilleur formatage pour chaque variable en fonction du contexte.
+
+        RÈGLES DE FORMATAGE :
+        1. **Pourcentages** (kind="percent"):
+           - Si valeurs entre 0-1 : c'est un ratio à convertir (decimals=1)
+           - Si valeurs entre 0-100 : c'est déjà un pourcentage (decimals=0 ou 1)
+           - Mots-clés : "taux", "part", "ratio", "%", "pct"
+
+        2. **Euros** (kind="currency"):
+           - Revenus, salaires, budgets
+           - decimals=0 pour les grands montants (>10000)
+           - decimals=2 pour les petits montants (<1000)
+
+        3. **Nombres** (kind="number"):
+           - Population : decimals=0
+           - Grands nombres (>1000) : decimals=0
+           - Petits nombres avec décimales : decimals=1 ou 2
+           - Nombres entiers : decimals=0
+
+        4. **Titres** :
+           - Créer des titres courts et lisibles (max 50 caractères)
+           - Éviter les codes techniques et acronymes
+           - Utiliser des majuscules appropriées
+
+        FORMAT DE RÉPONSE JSON :
+        {
+            "column_name": {
+                "kind": "percent|currency|number",
+                "decimals": 0-2,
+                "title": "Titre court et lisible",
+                "label": "Nom court"
+            },
+            ...
+        }
+        """
+
+        user_message = f"""Voici les colonnes à formater :
+
+{json.dumps(columns_info, ensure_ascii=False, indent=2)}
+
+Analyse chaque colonne et retourne le meilleur formatage."""
+
+        response = client.responses.create(
+            model=model,
+            input=build_messages(system_prompt, user_message),
+            temperature=0,
+        )
+        metrics.log_api_call()
+        ai_response = extract_response_text(response)
+
+        # Parser la réponse
+        enhanced_specs = json.loads(ai_response)
+
+        # Fusionner avec les specs initiales (l'IA a priorité)
+        final_specs = initial_specs.copy()
+        for col_name, spec in enhanced_specs.items():
+            if col_name in df.columns:
+                final_specs[col_name] = spec
+
+        return final_specs
+
+    except Exception as e:
+        _dbg("format.ai_enhance.error", error=str(e))
+        return initial_specs  # Fallback sur les specs initiales en cas d'erreur
+
 
 def style_df(df: pd.DataFrame, specs: dict):
     """Applique le formatage pour l'affichage (DataFrame avec formatage français)."""
@@ -2082,16 +2187,34 @@ def render_epci_choropleth(
         if code and value is not None:
             choropleth_data[code] = value
 
-    # Ajout de la couche choroplèthe (sans légende automatique)
+    # Ajout de la couche choroplèthe avec palette verte personnalisée
+    # Palette : du vert clair au vert foncé
+    # Créer une palette linéaire personnalisée
+    colors = ["#cfe8cf", "#a9d5a9", "#7fc77f", "#56a35a"]
+    values_list = list(choropleth_data.values())
+    if values_list:
+        vmin = min(values_list)
+        vmax = max(values_list)
+        colormap = cm.LinearColormap(
+            colors=colors,
+            vmin=vmin,
+            vmax=vmax,
+            caption=None
+        )
+    else:
+        colormap = None
+
     folium.Choropleth(
         geo_data=geojson,
         name="choropleth",
         data=pd.DataFrame(list(choropleth_data.items()), columns=["code", "value"]),
         columns=["code", "value"],
         key_on="feature.properties.code",
-        fill_color="YlOrRd",
-        fill_opacity=0.7,
-        line_opacity=0.5,
+        fill_color=colors,
+        fill_opacity=0.8,
+        line_opacity=0.3,
+        line_color='white',
+        line_weight=1,
         legend_name=None,  # Désactiver la légende automatique
     ).add_to(m)
 
@@ -2868,11 +2991,46 @@ if prompt_to_process:
                             # On force new_context à None pour sauter les blocs suivants
                             new_context = None 
                     else:
-                        # Analyse normale
-                        print("[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running")
+                        # Vérifier d'abord si un nouveau territoire est mentionné
+                        print("[TERRIBOT][PIPE] 🔍 Checking if new territory is mentioned")
 
-                        new_context = analyze_territorial_scope(con, rewritten_prompt)
-                        _dbg("pipeline.geo.after", new_context=new_context)
+                        try:
+                            territory_check = client.responses.create(
+                                model=MODEL_NAME,
+                                input=build_messages(
+                                    """Tu es un expert en détection de lieux géographiques.
+
+                                    TA MISSION :
+                                    Détermine si le texte mentionne un territoire géographique spécifique (ville, département, région, EPCI).
+
+                                    RÈGLES :
+                                    - Réponds "true" si un lieu spécifique est mentionné (ex: "Paris", "Orne", "Lyon", "Normandie")
+                                    - Réponds "false" si aucun lieu n'est mentionné (ex: "quelle est la population ?", "et le taux de chômage ?")
+                                    - Réponds "false" pour les pronoms ou références vagues (ex: "là-bas", "cette région")
+
+                                    FORMAT DE RÉPONSE JSON :
+                                    {"has_territory": true/false}
+                                    """,
+                                    f'Texte : "{rewritten_prompt}"'
+                                ),
+                                temperature=0,
+                            )
+                            metrics.log_api_call()
+                            check_response = extract_response_text(territory_check)
+                            has_territory = json.loads(check_response).get("has_territory", True)
+                        except:
+                            has_territory = True  # En cas d'erreur, on lance la recherche par sécurité
+
+                        if has_territory:
+                            # Analyse normale
+                            print("[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running")
+                            new_context = analyze_territorial_scope(con, rewritten_prompt)
+                            _dbg("pipeline.geo.after", new_context=new_context)
+                        else:
+                            # Aucun nouveau territoire mentionné
+                            print("[TERRIBOT][PIPE] ⏭️ No new territory mentioned, skipping search")
+                            new_context = None
+                            _dbg("pipeline.geo.skipped", reason="No territory mentioned")
 
                         
                     # --- GESTION DE L'AMBIGUÏTÉ DÉTECTÉE ---
@@ -2930,7 +3088,45 @@ if prompt_to_process:
                             debug_container["final_ids"] = fallback_context["all_ids"]
                             debug_steps.append({"icon": "🔎", "label": "Résolution Géo (Fallback IA)", "type": "table", "content": fallback_context["debug_search"]})
                         else:
-                            message_placeholder.warning("⚠️ Je ne détecte pas de territoire. Précisez une ville.")
+                            # 🆕 DERNIER RECOURS : Sélecteur avec tous les territoires (36000+)
+                            message_placeholder.warning("⚠️ Je ne détecte pas de territoire. Veuillez en choisir un dans la liste ci-dessous.")
+
+                            # Charger tous les territoires
+                            all_territories = con.execute("SELECT ID, NOM_COUV FROM territoires ORDER BY NOM_COUV").df()
+
+                            if not all_territories.empty:
+                                # Créer le format "Nom (ID)" pour chaque territoire
+                                territory_options = [f"{row['NOM_COUV']} ({row['ID']})" for _, row in all_territories.iterrows()]
+                                territory_ids = all_territories['ID'].tolist()
+
+                                # Afficher le sélecteur
+                                selected_territory = st.selectbox(
+                                    "🔍 Choisissez votre territoire :",
+                                    options=territory_options,
+                                    key="territory_selector_fallback"
+                                )
+
+                                if st.button("✅ Valider ce territoire", key="validate_territory_fallback"):
+                                    # Extraire l'ID du format "Nom (ID)"
+                                    selected_idx = territory_options.index(selected_territory)
+                                    selected_id = territory_ids[selected_idx]
+                                    selected_name = all_territories.iloc[selected_idx]['NOM_COUV']
+
+                                    # Créer le contexte géographique
+                                    manual_context = {
+                                        'target_id': selected_id,
+                                        'target_name': selected_name,
+                                        'all_ids': [selected_id],
+                                        'display_context': f"{selected_name} ({selected_id})",
+                                        'lieux_cites': [selected_name],
+                                        'debug_search': [{"Recherche": "Sélection manuelle", "Trouvé": selected_name, "ID": selected_id}],
+                                        'parent_clause': ''
+                                    }
+
+                                    st.session_state.current_geo_context = manual_context
+                                    st.session_state.pending_prompt = prompt_to_process
+                                    st.rerun()
+
                             st.stop()
                     
                     geo_context = st.session_state.current_geo_context
@@ -3063,6 +3259,14 @@ if prompt_to_process:
                             print("[TERRIBOT][PIPE] 📈 get_chart_configuration() start")
                             chart_config = get_chart_configuration(df, rewritten_prompt, glossaire_context, client, MODEL_NAME)
                             _dbg("pipeline.chart_config.done", selected=chart_config.get("selected_columns"), formats=chart_config.get("formats"))
+
+                            # 🆕 Améliorer les formats avec l'IA de manière intelligente et contextuelle
+                            print("[TERRIBOT][PIPE] 🎨 ai_enhance_formats() start")
+                            initial_formats = chart_config.get("formats", {})
+                            enhanced_formats = ai_enhance_formats(df, initial_formats, client, MODEL_NAME)
+                            chart_config["formats"] = enhanced_formats
+                            _dbg("pipeline.chart_config.enhanced", formats=enhanced_formats)
+
                             status_container.update(label="Terminé", state="complete")
                         else:
                             status_container.update(label="Aucune donnée trouvée", state="error")
@@ -3145,32 +3349,43 @@ if prompt_to_process:
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, use_container_width=True)
 
                     # 📊 Section Carte et graphique (en dehors de data_placeholder pour apparaître toujours)
-                    with st.expander("📊 Carte et graphique", expanded=False):
-                        formats = chart_config.get("formats", {})
+                    # Initialiser la clé de session pour cette réponse AVANT l'expander
+                    msg_idx = len(st.session_state.messages)
+                    viz_state_key = f"viz_state_{msg_idx}"
+                    viz_metric_key = f"viz_metric_{msg_idx}"
+                    viz_expander_key = f"viz_expander_{msg_idx}"
 
-                        numeric_candidates = []
-                        for col in df.columns:
-                            if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                                continue
-                            s = pd.to_numeric(df[col], errors="coerce")
-                            if s.notna().any():
-                                numeric_candidates.append(col)
+                    formats = chart_config.get("formats", {})
+
+                    numeric_candidates = []
+                    for col in df.columns:
+                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                            continue
+                        s = pd.to_numeric(df[col], errors="coerce")
+                        if s.notna().any():
+                            numeric_candidates.append(col)
+
+                    # Initialiser le state si nécessaire
+                    if viz_state_key not in st.session_state:
+                        st.session_state[viz_state_key] = None
+                    if viz_metric_key not in st.session_state and numeric_candidates:
+                        st.session_state[viz_metric_key] = numeric_candidates[0]
+                    if viz_expander_key not in st.session_state:
+                        st.session_state[viz_expander_key] = False
+
+                    # L'expander est ouvert si une visualisation est active
+                    is_expanded = st.session_state[viz_state_key] is not None or st.session_state[viz_expander_key]
+
+                    with st.expander("📊 Carte et graphique", expanded=is_expanded):
+                        # Marquer que l'expander a été ouvert au moins une fois
+                        if is_expanded:
+                            st.session_state[viz_expander_key] = True
 
                         def format_metric_label(col):
                             spec = formats.get(col, {})
                             return spec.get("title") or spec.get("label") or col
 
                         if numeric_candidates:
-                            # Initialiser la clé de session pour cette réponse
-                            msg_idx = len(st.session_state.messages)
-                            viz_state_key = f"viz_state_{msg_idx}"
-                            viz_metric_key = f"viz_metric_{msg_idx}"
-
-                            # Initialiser le state si nécessaire
-                            if viz_state_key not in st.session_state:
-                                st.session_state[viz_state_key] = None
-                            if viz_metric_key not in st.session_state:
-                                st.session_state[viz_metric_key] = numeric_candidates[0]
 
                             c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
 
