@@ -550,6 +550,7 @@ with st.sidebar:
 
     div[data-testid="stSidebarHeader"] {
     z-index:1;
+    position:relative;
     }
     </style>
     """, unsafe_allow_html=True)
