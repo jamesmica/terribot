@@ -564,7 +564,7 @@ with st.sidebar:
             st.stop()
 
     # 🔧 Panneau de visualisation interactif dans la sidebar
-    st.markdown("### 📊 Visualisations")
+    st.markdown("### Tracer un graphique ou une carte")
 
     # Créer un placeholder qui sera rempli plus tard (après la définition des fonctions)
     sidebar_viz_placeholder = st.empty()
@@ -3688,7 +3688,16 @@ if "sidebar_viz_placeholder" in st.session_state:
                         def format_metric_label(col):
                             spec = formats.get(col, {})
                             return spec.get("title") or spec.get("label") or col
-
+                            
+                        # Radio buttons pour choisir le type de visualisation (pas de rerun)
+                        viz_type = st.radio(
+                            "Type",
+                            ["📊 Graphique", "🗺️ Carte"],
+                            horizontal=True,
+                            key="sidebar_viz_type_radio",
+                            label_visibility="collapsed"
+                        )
+                        
                         # Sélecteur de variable
                         selected_metric = st.selectbox(
                             "Variable",
@@ -3696,15 +3705,6 @@ if "sidebar_viz_placeholder" in st.session_state:
                             index=0,
                             format_func=format_metric_label,
                             key="sidebar_metric_selector",
-                            label_visibility="collapsed"
-                        )
-
-                        # Radio buttons pour choisir le type de visualisation (pas de rerun)
-                        viz_type = st.radio(
-                            "Type",
-                            ["📊 Graphique", "🗺️ Carte"],
-                            horizontal=True,
-                            key="sidebar_viz_type_radio",
                             label_visibility="collapsed"
                         )
 
