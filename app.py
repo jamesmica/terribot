@@ -517,8 +517,8 @@ const questions = [
 with st.sidebar:
     st.markdown("""
     <style>
-    /* Remonter uniquement le titre principal (le premier h1) */
-    div[data-testid="stAppViewContainer"] h1:first-of-type{
+    /* Remonter tout le contenu de la sidebar */
+    section[data-testid="stSidebar"] > div {
       margin-top: -48px !important;
     }
 
@@ -541,20 +541,24 @@ with st.sidebar:
     </style>
     """, unsafe_allow_html=True)
 
-    st.title("🤖 Terribot")
+    # Titre et bouton sur la même ligne
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("🤖 Terribot")
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)  # Spacer pour aligner verticalement
+        if st.button("🗑️", type="secondary", help="Nouvelle conversation"):
+            st.session_state.messages = []
+            st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Quel territoire souhaitez-vous analyser ?"}]
+            st.session_state.current_geo_context = None
+            st.session_state.pending_prompt = None
+            st.session_state.ambiguity_candidates = None
+            st.rerun()
+
     st.caption("v0.18.6 - 22 janvier 2026")
-    
-    # Bouton Reset
-    if st.button("🗑️ Nouvelle conversation", type="secondary", width='stretch'):
-        st.session_state.messages = []
-        st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Quel territoire souhaitez-vous analyser ?"}]
-        st.session_state.current_geo_context = None
-        st.session_state.pending_prompt = None
-        st.session_state.ambiguity_candidates = None
-        st.rerun()
-    
+
     api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
-    
+
     if api_key:
         api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     else:
@@ -564,8 +568,6 @@ with st.sidebar:
             st.stop()
 
     # 🔧 Panneau de visualisation interactif dans la sidebar
-    st.markdown("### Tracer un graphique ou une carte")
-
     # Créer un placeholder qui sera rempli plus tard (après la définition des fonctions)
     sidebar_viz_placeholder = st.empty()
 
@@ -835,7 +837,8 @@ def style_df(df: pd.DataFrame, specs: dict):
         if kind == "number":
             try:
                 name_upper = col.upper()
-                percent_hint = any(key in name_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%"])
+                # 🔧 FIX: Ajout de "TP60" pour détecter les taux de pauvreté
+                percent_hint = any(key in name_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%", "TP60"])
                 if not valid_vals.empty:
                     max_val = valid_vals.max()
                     min_val = valid_vals.min()
@@ -851,9 +854,11 @@ def style_df(df: pd.DataFrame, specs: dict):
             df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "€") if pd.notna(x) else "-")
         elif kind == "percent":
             # Heuristique : Si c'est < 5 (ex: 0.15), on multiplie par 100.
+            # 🔧 FIX: Les taux de pauvreté (TP60*) sont déjà en base 100
+            is_poverty_rate = "TP60" in col.upper()
             def format_percent(x):
                 if pd.isna(x): return "-"
-                factor = 100 if abs(x) < 5 else 1
+                factor = 1 if is_poverty_rate else (100 if abs(x) < 5 else 1)
                 return fr_num(x, dec, "%", factor=factor)
             df_display[col] = df_display[col].apply(format_percent)
         else:
@@ -2463,8 +2468,10 @@ def render_epci_choropleth(
     percent_factor = 1
     if kind == "percent" and valid_values:
         val_mean = sum(abs(v) for v in valid_values) / len(valid_values)
-        percent_factor = 100 if val_mean < 5 else 1
-        _dbg("map.percent.factor", val_mean=val_mean, factor=percent_factor, sample_values=valid_values[:5])
+        # 🔧 FIX: Les taux de pauvreté (TP60*) sont déjà en base 100, ne pas multiplier
+        is_poverty_rate = "TP60" in metric_col.upper()
+        percent_factor = 1 if is_poverty_rate else (100 if val_mean < 5 else 1)
+        _dbg("map.percent.factor", val_mean=val_mean, factor=percent_factor, sample_values=valid_values[:5], is_poverty=is_poverty_rate)
 
     # ---------- TOOLTIP ----------
     for feature in geojson.get("features", []):
@@ -3666,6 +3673,8 @@ if "sidebar_viz_placeholder" in st.session_state:
     with sidebar_viz_placeholder.container():
         # Afficher les visualisations du dernier message s'il y en a
         if "current_viz_data" in st.session_state and st.session_state.current_viz_data:
+            # 🔧 Afficher le titre seulement quand il y a des données de visualisation
+            st.markdown("### Tracer un graphique ou une carte")
             viz_data = st.session_state.current_viz_data
             df = viz_data.get("df")
             chart_config = viz_data.get("chart_config", {})
