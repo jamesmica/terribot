@@ -539,7 +539,7 @@ with st.sidebar:
     api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     
     if api_key:
-        True
+        api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     else:
         api_key = st.text_input("Clé API OpenAI", type="password", placeholder="sk-...")
         if not api_key:
