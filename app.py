@@ -2126,16 +2126,84 @@ def render_epci_choropleth(
             )
         return
 
-    commune_ids = [
-        row[0]
-        for row in con.execute(
-            "SELECT ID FROM territoires WHERE COMP1 = ? AND length(ID) IN (4, 5)",
-            [epci_id]
-        ).fetchall()
-    ]
-    _dbg("map.epci.commune_ids", epci_id=epci_id, count=len(commune_ids))
+    # Essayer d'abord de récupérer le GeoJSON EPCI
+    geojson = fetch_geojson(
+        f"https://geo.api.gouv.fr/epcis/{epci_id}/communes?format=geojson&geometry=contour&fields=code,nom"
+    )
 
-    # 🔧 TOUJOURS requêter les données pour toutes les communes de l'EPCI
+    # Variable pour tracker si on est en mode fallback département
+    is_dept_fallback = False
+    dept_code = None
+    territory_name = epci_name
+
+    if not geojson:
+        _dbg("map.geojson.unavailable", epci_id=epci_id)
+        # FALLBACK : Essayer avec le département (pour les EPT d'Ile-de-France)
+        try:
+            dept_row = con.execute(
+                "SELECT COMP2, NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
+                [epci_id]
+            ).fetchone()
+            if dept_row and dept_row[0] and dept_row[0].startswith("D"):
+                dept_code = dept_row[0][1:]  # Enlever le "D"
+                _dbg("map.geojson.fallback_dept", epci_id=epci_id, dept_code=dept_code)
+                geojson = fetch_geojson(
+                    f"https://geo.api.gouv.fr/departements/{dept_code}/communes?format=geojson&geometry=contour&fields=code,nom"
+                )
+                if geojson:
+                    is_dept_fallback = True
+                    # Récupérer le nom du département
+                    dept_name_row = con.execute(
+                        "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
+                        [f"D{dept_code}"]
+                    ).fetchone()
+                    if dept_name_row:
+                        territory_name = dept_name_row[0]
+                    _dbg("map.geojson.fallback_success", epci_id=epci_id, dept_code=dept_code, features=len(geojson.get("features", [])))
+        except Exception as e:
+            _dbg("map.geojson.fallback_error", epci_id=epci_id, error=str(e))
+
+    if not geojson:
+        st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
+        if diagnostic:
+            st.caption(
+                "Diagnostic : GeoJSON indisponible via geo.api.gouv.fr (réseau ou service temporairement bloqué)."
+            )
+        return
+    _dbg(
+        "map.geojson.loaded",
+        epci_id=epci_id,
+        features=len(geojson.get("features", [])),
+        is_dept_fallback=is_dept_fallback
+    )
+
+    # Informer l'utilisateur si on affiche le département en fallback
+    if is_dept_fallback:
+        st.info(f"Carte au niveau du département : {territory_name}")
+
+    # Récupérer les IDs des communes selon le mode (EPCI ou département)
+    if is_dept_fallback:
+        # Mode département : récupérer toutes les communes du département
+        commune_ids = [
+            row[0]
+            for row in con.execute(
+                "SELECT ID FROM territoires WHERE COMP2 = ? AND length(ID) IN (4, 5)",
+                [f"D{dept_code}"]
+            ).fetchall()
+        ]
+        _dbg("map.dept.commune_ids", dept_code=dept_code, count=len(commune_ids))
+    else:
+        # Mode EPCI : récupérer les communes de l'EPCI
+        commune_ids = [
+            row[0]
+            for row in con.execute(
+                "SELECT ID FROM territoires WHERE COMP1 = ? AND length(ID) IN (4, 5)",
+                [epci_id]
+            ).fetchall()
+        ]
+        _dbg("map.epci.commune_ids", epci_id=epci_id, count=len(commune_ids))
+
+    # 🔧 TOUJOURS requêter les données pour toutes les communes
     df_epci_source = None
 
     # Méthode 1 : Si sql_query est fourni, l'adapter pour inclure toutes les communes
@@ -2152,18 +2220,19 @@ def render_epci_choropleth(
                 df_epci_source = con.execute(epci_sql).df()
                 _dbg(
                     "map.data.sql_refetch",
-                    epci_id=epci_id,
+                    territory_id=epci_id,
+                    is_dept=is_dept_fallback,
                     rows=len(df_epci_source),
                     sql_preview=epci_sql[:300]
                 )
             except Exception as e:
-                _dbg("map.data.sql_refetch_error", epci_id=epci_id, error=str(e))
+                _dbg("map.data.sql_refetch_error", territory_id=epci_id, error=str(e))
         else:
-            _dbg("map.data.sql_refetch_skip", epci_id=epci_id, reason="no_where_match")
+            _dbg("map.data.sql_refetch_skip", territory_id=epci_id, reason="no_where_match")
 
     # Méthode 2 : Si sql_query n'a pas fonctionné, construire une requête automatique
     if df_epci_source is None or df_epci_source.empty:
-        _dbg("map.data.auto_query", epci_id=epci_id, metric_col=metric_col)
+        _dbg("map.data.auto_query", territory_id=epci_id, metric_col=metric_col, is_dept=is_dept_fallback)
 
         # Trouver la table qui contient metric_col
         valid_tables = st.session_state.get("valid_tables_list", [])
@@ -2198,13 +2267,14 @@ def render_epci_choropleth(
                 df_epci_source = con.execute(auto_sql).df()
                 _dbg(
                     "map.data.auto_query_success",
-                    epci_id=epci_id,
+                    territory_id=epci_id,
+                    is_dept=is_dept_fallback,
                     table=target_table,
                     rows=len(df_epci_source),
                     sql_preview=auto_sql[:300]
                 )
             except Exception as e:
-                _dbg("map.data.auto_query_error", epci_id=epci_id, error=str(e))
+                _dbg("map.data.auto_query_error", territory_id=epci_id, error=str(e))
         else:
             _dbg("map.data.table_not_found", metric_col=metric_col)
 
@@ -2218,7 +2288,8 @@ def render_epci_choropleth(
     ].copy()
     _dbg(
         "map.data.filtered",
-        epci_id=epci_id,
+        territory_id=epci_id,
+        is_dept=is_dept_fallback,
         df_epci_rows=len(df_epci),
         df_epci_ids=df_epci["ID"].astype(str).unique().tolist()[:10] if "ID" in df_epci.columns else []
     )
@@ -2227,7 +2298,7 @@ def render_epci_choropleth(
         df_id_dtype=str(df["ID"].dtype) if "ID" in df.columns else None,
         df_epci_id_dtype=str(df_epci["ID"].dtype) if "ID" in df_epci.columns else None,
         commune_id_type=str(type(commune_id)),
-        epci_id_type=str(type(epci_id))
+        territory_id_type=str(type(epci_id))
     )
     if metric_col in df_epci.columns:
         df_epci["valeur"] = pd.to_numeric(df_epci[metric_col], errors="coerce")
@@ -2235,70 +2306,29 @@ def render_epci_choropleth(
         df_epci["valeur"] = pd.Series(dtype="float64")
 
     if df_epci.empty:
-        _dbg("map.data.empty", epci_id=epci_id, metric_col=metric_col)
-        st.info("Aucune donnée disponible pour les communes de cet EPCI.")
+        _dbg("map.data.empty", territory_id=epci_id, metric_col=metric_col, is_dept=is_dept_fallback)
+        territory_type = "département" if is_dept_fallback else "EPCI"
+        st.info(f"Aucune donnée disponible pour les communes de ce {territory_type}.")
         if diagnostic:
             st.caption(
-                f"Diagnostic : aucune commune EPCI trouvée dans les données pour '{metric_col}'."
+                f"Diagnostic : aucune commune trouvée dans les données pour '{metric_col}'."
             )
         return
     if df_epci["valeur"].notna().sum() == 0:
-        _dbg("map.data.no_values", epci_id=epci_id, metric_col=metric_col)
-        st.info("Aucune valeur exploitable pour les communes de cet EPCI.")
+        _dbg("map.data.no_values", territory_id=epci_id, metric_col=metric_col, is_dept=is_dept_fallback)
+        territory_type = "département" if is_dept_fallback else "EPCI"
+        st.info(f"Aucune valeur exploitable pour les communes de ce {territory_type}.")
         if diagnostic:
             st.caption(
                 f"Diagnostic : toutes les valeurs de '{metric_col}' sont nulles ou non numériques."
             )
         return
 
-    geojson = fetch_geojson(
-        f"https://geo.api.gouv.fr/epcis/{epci_id}/communes?format=geojson&geometry=contour&fields=code,nom"
-    )
-    if not geojson:
-        _dbg("map.geojson.unavailable", epci_id=epci_id)
-        # FALLBACK : Essayer avec le département (pour les EPT d'Ile-de-France)
-        try:
-            dept_row = con.execute(
-                "SELECT COMP2 FROM territoires WHERE ID = ? LIMIT 1",
-                [epci_id]
-            ).fetchone()
-            if dept_row and dept_row[0] and dept_row[0].startswith("D"):
-                dept_code = dept_row[0][1:]  # Enlever le "D"
-                _dbg("map.geojson.fallback_dept", epci_id=epci_id, dept_code=dept_code)
-                geojson = fetch_geojson(
-                    f"https://geo.api.gouv.fr/departements/{dept_code}/communes?format=geojson&geometry=contour&fields=code,nom"
-                )
-                if geojson:
-                    # Filtrer pour ne garder que les communes de l'EPCI
-                    commune_ids_str = [str(cid) for cid in commune_ids]
-                    filtered_features = []
-                    for feature in geojson.get("features", []):
-                        code = str(feature.get("properties", {}).get("code", ""))
-                        # Normaliser le code pour la comparaison (ajouter 0 si 4 chiffres)
-                        normalized_code = ("0" + code) if len(code) == 4 else code
-                        if normalized_code in commune_ids_str or code in commune_ids_str:
-                            filtered_features.append(feature)
-                    geojson["features"] = filtered_features
-                    _dbg("map.geojson.fallback_success", epci_id=epci_id, dept_code=dept_code, features=len(filtered_features))
-        except Exception as e:
-            _dbg("map.geojson.fallback_error", epci_id=epci_id, error=str(e))
-
-    if not geojson:
-        st.warning("Le fond de carte des communes EPCI est indisponible pour le moment.")
-        if diagnostic:
-            st.caption(
-                "Diagnostic : GeoJSON indisponible via geo.api.gouv.fr (réseau ou service temporairement bloqué)."
-            )
-        return
-    _dbg(
-        "map.geojson.loaded",
-        epci_id=epci_id,
-        features=len(geojson.get("features", []))
-    )
     _dbg(
         "map.data.numeric",
-        epci_id=epci_id,
+        territory_id=epci_id,
         metric_col=metric_col,
+        is_dept=is_dept_fallback,
         non_null=df_epci["valeur"].notna().sum(),
         non_numeric=(df_epci["valeur"].isna().sum()),
         sample_values=df_epci["valeur"].dropna().head(5).tolist()
@@ -2335,9 +2365,10 @@ def render_epci_choropleth(
         missing_sample=missing_values[:10]
     )
     if diagnostic and missing_values:
+        territory_type = "le département" if is_dept_fallback else "l'EPCI"
         st.caption(
             f"Diagnostic : données disponibles pour {len(value_map)} commune(s) sur "
-            f"{len(geojson.get('features', []))} dans l'EPCI."
+            f"{len(geojson.get('features', []))} dans {territory_type}."
         )
     for feature in geojson.get("features", []):
         code = str(feature.get("properties", {}).get("code", ""))
@@ -2390,25 +2421,26 @@ def render_epci_choropleth(
         tiles="CartoDB positron"  # Fond plus neutre et moins coloré
     )
 
-    # 🔧 Ajouter le contour de l'EPCI (sans remplissage)
-    try:
-        epci_geojson = fetch_geojson(
-            f"https://geo.api.gouv.fr/epcis/{epci_id}?format=geojson&geometry=contour"
-        )
-        if epci_geojson:
-            folium.GeoJson(
-                epci_geojson,
-                style_function=lambda x: {
-                    'fillColor': 'none',
-                    'fillOpacity': 0,
-                    'color': '#808080',  # Gris
-                    'weight': 3,
-                    'opacity': 0.8
-                },
-                name="Contour EPCI"
-            ).add_to(m)
-    except:
-        pass  # Si le contour n'est pas disponible, on continue sans
+    # 🔧 Ajouter le contour de l'EPCI (sans remplissage) - seulement si pas en mode département
+    if not is_dept_fallback:
+        try:
+            epci_geojson = fetch_geojson(
+                f"https://geo.api.gouv.fr/epcis/{epci_id}?format=geojson&geometry=contour"
+            )
+            if epci_geojson:
+                folium.GeoJson(
+                    epci_geojson,
+                    style_function=lambda x: {
+                        'fillColor': 'none',
+                        'fillOpacity': 0,
+                        'color': '#808080',  # Gris
+                        'weight': 3,
+                        'opacity': 0.8
+                    },
+                    name="Contour EPCI"
+                ).add_to(m)
+        except:
+            pass  # Si le contour n'est pas disponible, on continue sans
 
     # Préparation des données pour Choropleth
     # Folium Choropleth attend un dict {code: value}
