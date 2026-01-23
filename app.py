@@ -3095,10 +3095,11 @@ for i_msg, msg in enumerate(st.session_state.messages):
                     saved_config = {"selected_columns": [col] if col else [], "formats": specs}
                 
                 final_ids = msg.get("debug_info", {}).get("final_ids", [])
-                
+
                 # Affichage Graphique avec la BONNE config
-                auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
-                
+                with st.expander("📊 Voir le graphique", expanded=True):
+                    auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
+
                 # Affichage Data (Expander) - Uniformisé avec le nouveau message
                 with st.expander("📝 Voir les données brutes", expanded=False):
                     # On utilise les formats stockés dans la config
@@ -3592,7 +3593,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             )
 
                             if viz_choice == "📊 Graphique":
-                                auto_plot_data(df, current_ids, config=chart_config, con=con)
+                                with st.expander("📊 Voir le graphique", expanded=True):
+                                    auto_plot_data(df, current_ids, config=chart_config, con=con)
                             else:  # Carte
                                 render_epci_choropleth(
                                     con,
@@ -3605,7 +3607,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 )
                         else:
                             # Pas de carte éligible, afficher uniquement le graphique
-                            auto_plot_data(df, current_ids, config=chart_config, con=con)
+                            with st.expander("📊 Voir le graphique", expanded=True):
+                                auto_plot_data(df, current_ids, config=chart_config, con=con)
 
                     # Sauvegarder les informations pour les actions rapides
                     debug_container["map_eligible"] = map_eligible
