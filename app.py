@@ -518,7 +518,7 @@ with st.sidebar:
     st.markdown("""
     <style>
     /* Remonter tout le contenu de la sidebar */
-    section[data-testid="stSidebar"] > div {
+    section[data-testid="stSidebarUserContent"] > div {
       margin-top: -48px !important;
     }
 
