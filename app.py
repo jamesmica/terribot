@@ -1790,6 +1790,104 @@ def ai_fallback_territory_search(con, user_prompt):
                     'parent_clause': ''
                 }
 
+        # ÉTAPE 3.5 : Recherche par similarité textuelle dans toute la base
+        _dbg("geo.fallback.fuzzy_search")
+
+        # Extraire les mots-clés du prompt (au moins 3 caractères)
+        keywords = [word.strip() for word in user_prompt.split() if len(word.strip()) >= 3]
+
+        if keywords:
+            # Construire une requête avec LIKE pour chaque mot-clé
+            like_clauses = " OR ".join([f"LOWER(NOM_COUV) LIKE LOWER('%{kw}%')" for kw in keywords[:3]])  # Limiter à 3 mots-clés
+
+            fuzzy_sql = f"""
+            SELECT ID, NOM_COUV,
+                CASE
+                    WHEN length(ID) IN (4,5) THEN 'Commune'
+                    WHEN length(ID) = 9 THEN 'EPCI/Interco'
+                    WHEN ID = 'FR' THEN 'Pays'
+                    WHEN ID LIKE 'D%' THEN 'Département'
+                    WHEN ID LIKE 'R%' THEN 'Région'
+                    ELSE 'Autre'
+                END as TYPE_TERRITOIRE
+            FROM territoires
+            WHERE {like_clauses}
+            ORDER BY TYPE_TERRITOIRE, NOM_COUV
+            LIMIT 100
+            """
+
+            try:
+                fuzzy_df = con.execute(fuzzy_sql).df()
+
+                if not fuzzy_df.empty:
+                    _dbg("geo.fallback.fuzzy_results", count=len(fuzzy_df))
+
+                    # Envoyer les résultats à l'IA pour sélection
+                    fuzzy_territories = fuzzy_df.to_dict(orient='records')
+
+                    fuzzy_system_prompt = """
+                    Tu es un expert géographe français. L'utilisateur cherche un territoire et voici les résultats d'une recherche par similarité.
+
+                    TA MISSION :
+                    Trouver le territoire le PLUS PERTINENT basé sur la requête utilisateur.
+
+                    RÈGLES :
+                    1. Privilégie les correspondances exactes ou très proches du nom
+                    2. Si plusieurs résultats similaires, privilégie les communes aux départements
+                    3. Sois tolérant aux fautes de frappe et variations orthographiques
+                    4. Si aucun résultat ne semble vraiment correspondre, retourne null
+
+                    FORMAT DE RÉPONSE JSON ATTENDU :
+                    {
+                        "selected_id": "code_exact_du_territoire" OU null,
+                        "reason": "explication courte de ton choix",
+                        "confidence": "high/medium/low"
+                    }
+                    """
+
+                    fuzzy_user_message = f"""
+                    REQUÊTE UTILISATEUR : "{user_prompt}"
+
+                    RÉSULTATS DE RECHERCHE :
+                    {json.dumps(fuzzy_territories, ensure_ascii=False, indent=2)}
+
+                    Trouve le territoire le plus pertinent.
+                    """
+
+                    fuzzy_response = client.responses.create(
+                        model=MODEL_NAME,
+                        input=build_messages(fuzzy_system_prompt, fuzzy_user_message),
+                        temperature=0,
+                    )
+                    metrics.log_api_call()
+                    fuzzy_raw_response = extract_response_text(fuzzy_response)
+                    _dbg("geo.fallback.fuzzy_response", raw=fuzzy_raw_response[:400])
+
+                    fuzzy_result = json.loads(fuzzy_raw_response)
+
+                    if fuzzy_result and fuzzy_result.get("selected_id") and fuzzy_result.get("confidence") in ["high", "medium"]:
+                        selected_id = fuzzy_result["selected_id"]
+
+                        # Vérifier que l'ID existe
+                        verify_sql = f"SELECT ID, NOM_COUV FROM territoires WHERE ID = '{selected_id}'"
+                        verify_df = con.execute(verify_sql).df()
+
+                        if not verify_df.empty:
+                            territory_info = verify_df.iloc[0]
+                            _dbg("geo.fallback.fuzzy_success", id=selected_id, name=territory_info['NOM_COUV'])
+
+                            return {
+                                'target_id': selected_id,
+                                'target_name': territory_info['NOM_COUV'],
+                                'all_ids': [selected_id],
+                                'display_context': f"{territory_info['NOM_COUV']} ({selected_id})",
+                                'lieux_cites': [user_prompt],
+                                'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": selected_id, "Source": "Recherche par similarité"}],
+                                'parent_clause': ''
+                            }
+            except Exception as fuzzy_error:
+                _dbg("geo.fallback.fuzzy_error", error=str(fuzzy_error))
+
         _dbg("geo.fallback.no_match")
         return None
 
@@ -1963,7 +2061,8 @@ def render_epci_choropleth(
     metric_col,
     metric_spec,
     diagnostic=True,
-    sql_query=None
+    sql_query=None,
+    in_sidebar=False
 ):
     _dbg(
         "map.render.start",
@@ -2389,12 +2488,14 @@ def render_epci_choropleth(
         m.get_root().html.add_child(folium.Element(legend_html))
 
     # ---------- AFFICHAGE STREAMLIT (IMPORTANT) ----------
-    # 🔧 Carte carrée 600x600 (le titre est maintenant dans la légende)
-    folium_static(m, width=400, height=400)
+    # 🔧 Adapter la taille selon le contexte (sidebar ou main)
+    map_width = 400 if in_sidebar else 400
+    map_height = 200 if in_sidebar else 400
+    folium_static(m, width=map_width, height=map_height)
 
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
-def auto_plot_data(df, sorted_ids, config=None, con=None):
+def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     if config is None: config = {}
     # Log supprimé pour réduire verbosité
 
@@ -2799,93 +2900,15 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "anchor": "middle",
         "fontSize": 14
     }
-    
-    chart["height"] = 400
-    st.vega_lite_chart(df_melted, chart, use_container_width=True)
 
+    # Adapter la hauteur selon le contexte (sidebar ou main)
+    chart["height"] = 200 if in_sidebar else 400
 
-# --- 8.5 RENDU DE LA SIDEBAR VISUALISATIONS ---
-# Cette section doit être après les définitions de auto_plot_data et render_epci_choropleth
-if "sidebar_viz_placeholder" in st.session_state:
-    sidebar_viz_placeholder = st.session_state.sidebar_viz_placeholder
+    # Limiter la largeur dans la sidebar
+    if in_sidebar:
+        chart["width"] = 400
 
-    with sidebar_viz_placeholder.container():
-        # Afficher les visualisations du dernier message s'il y en a
-        if "current_viz_data" in st.session_state and st.session_state.current_viz_data:
-            viz_data = st.session_state.current_viz_data
-            df = viz_data.get("df")
-            chart_config = viz_data.get("chart_config", {})
-            final_ids = viz_data.get("final_ids", [])
-            geo_context_viz = viz_data.get("geo_context", {})
-
-            if df is not None and not df.empty:
-                try:
-                    formats = chart_config.get("formats", {})
-                    numeric_candidates = []
-                    for col in df.columns:
-                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                            continue
-                        s = pd.to_numeric(df[col], errors="coerce")
-                        if s.notna().any():
-                            numeric_candidates.append(col)
-
-                    if numeric_candidates:
-                        def format_metric_label(col):
-                            spec = formats.get(col, {})
-                            return spec.get("title") or spec.get("label") or col
-
-                        # Sélecteur de variable
-                        selected_metric = st.selectbox(
-                            "Variable",
-                            numeric_candidates,
-                            index=0,
-                            format_func=format_metric_label,
-                            key="sidebar_metric_selector"
-                        )
-
-                        # Radio buttons pour choisir le type de visualisation (pas de rerun)
-                        viz_type = st.radio(
-                            "Type",
-                            ["📊 Graphique", "🗺️ Carte"],
-                            horizontal=True,
-                            key="sidebar_viz_type_radio"
-                        )
-
-                        # Créer la config pour la visualisation
-                        manual_spec = formats.get(
-                            selected_metric,
-                            {"kind": "number", "label": selected_metric, "title": selected_metric}
-                        )
-                        manual_config = {"selected_columns": [selected_metric], "formats": formats}
-                        target_id = str(geo_context_viz.get("target_id", ""))
-
-                        # Afficher la visualisation choisie
-                        if viz_type == "📊 Graphique":
-                            auto_plot_data(df, final_ids, config=manual_config, con=con)
-                        elif viz_type == "🗺️ Carte":
-                            is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                            is_epci = target_id.isdigit() and len(target_id) == 9
-                            if is_commune or is_epci:
-                                render_epci_choropleth(
-                                    con,
-                                    df,
-                                    target_id,
-                                    geo_context_viz.get("target_name", target_id),
-                                    selected_metric,
-                                    manual_spec,
-                                    sql_query=None
-                                )
-                            else:
-                                st.info("Carte disponible pour commune (4-5 chiffres) ou EPCI (9 chiffres).")
-                    else:
-                        st.caption("Aucune variable numérique disponible.")
-                except Exception as e:
-                    st.error(f"Erreur d'affichage : {str(e)[:100]}")
-                    print(f"[SIDEBAR] Erreur: {e}")
-            else:
-                st.caption("Aucune donnée disponible pour visualisation.")
-        else:
-            st.caption("Les visualisations apparaîtront ici après une question.")
+    st.vega_lite_chart(df_melted, chart, use_container_width=not in_sidebar)
 
 
 # --- 9. UI PRINCIPALE ---
@@ -3576,4 +3599,89 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     "content": "⚠️ Je n'ai pas pu traiter votre demande. Essayez de reformuler votre question.",
                     "debug_info": {"error": error_msg, "trace": error_trace[-500:]}
                 })
+
+
+# --- RENDU DE LA SIDEBAR VISUALISATIONS (À LA FIN) ---
+# Cette section est exécutée à la fin pour que current_viz_data soit déjà défini
+if "sidebar_viz_placeholder" in st.session_state:
+    sidebar_viz_placeholder = st.session_state.sidebar_viz_placeholder
+
+    with sidebar_viz_placeholder.container():
+        # Afficher les visualisations du dernier message s'il y en a
+        if "current_viz_data" in st.session_state and st.session_state.current_viz_data:
+            viz_data = st.session_state.current_viz_data
+            df = viz_data.get("df")
+            chart_config = viz_data.get("chart_config", {})
+            final_ids = viz_data.get("final_ids", [])
+            geo_context_viz = viz_data.get("geo_context", {})
+
+            if df is not None and not df.empty:
+                try:
+                    formats = chart_config.get("formats", {})
+                    numeric_candidates = []
+                    for col in df.columns:
+                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                            continue
+                        s = pd.to_numeric(df[col], errors="coerce")
+                        if s.notna().any():
+                            numeric_candidates.append(col)
+
+                    if numeric_candidates:
+                        def format_metric_label(col):
+                            spec = formats.get(col, {})
+                            return spec.get("title") or spec.get("label") or col
+
+                        # Sélecteur de variable
+                        selected_metric = st.selectbox(
+                            "Variable",
+                            numeric_candidates,
+                            index=0,
+                            format_func=format_metric_label,
+                            key="sidebar_metric_selector"
+                        )
+
+                        # Radio buttons pour choisir le type de visualisation (pas de rerun)
+                        viz_type = st.radio(
+                            "Type",
+                            ["📊 Graphique", "🗺️ Carte"],
+                            horizontal=True,
+                            key="sidebar_viz_type_radio"
+                        )
+
+                        # Créer la config pour la visualisation
+                        manual_spec = formats.get(
+                            selected_metric,
+                            {"kind": "number", "label": selected_metric, "title": selected_metric}
+                        )
+                        manual_config = {"selected_columns": [selected_metric], "formats": formats}
+                        target_id = str(geo_context_viz.get("target_id", ""))
+
+                        # Afficher la visualisation choisie
+                        if viz_type == "📊 Graphique":
+                            auto_plot_data(df, final_ids, config=manual_config, con=con, in_sidebar=True)
+                        elif viz_type == "🗺️ Carte":
+                            is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                            is_epci = target_id.isdigit() and len(target_id) == 9
+                            if is_commune or is_epci:
+                                render_epci_choropleth(
+                                    con,
+                                    df,
+                                    target_id,
+                                    geo_context_viz.get("target_name", target_id),
+                                    selected_metric,
+                                    manual_spec,
+                                    sql_query=None,
+                                    in_sidebar=True
+                                )
+                            else:
+                                st.info("Carte disponible pour commune (4-5 chiffres) ou EPCI (9 chiffres).")
+                    else:
+                        st.caption("Aucune variable numérique disponible.")
+                except Exception as e:
+                    st.error(f"Erreur d'affichage : {str(e)[:100]}")
+                    print(f"[SIDEBAR] Erreur: {e}")
+            else:
+                st.caption("Aucune donnée disponible pour visualisation.")
+        else:
+            st.caption("Les visualisations apparaîtront ici après une question.")
 
