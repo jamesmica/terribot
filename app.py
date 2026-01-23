@@ -2599,6 +2599,12 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     original_metric = selected_metrics[0]
     spec = format_specs.get(original_metric, {})
 
+    # Format automatique intelligent basé sur les valeurs réelles
+    y_format = ",.0f"  # Défaut : nombres entiers avec séparateur milliers
+    y_suffix = ""  # 🔧 Suffixe pour les unités (€, etc.)
+    is_percent = spec.get("kind") == "percent"
+    is_currency = spec.get("kind") in ["currency", "euro"]
+
     # Utiliser chart_title si disponible et multi-métrique, sinon le titre de la première métrique
     has_multiple_metrics = len(selected_metrics) > 1
     if has_multiple_metrics and config.get("chart_title"):
@@ -2609,12 +2615,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     # 🔧 Ajouter "(en €)" au titre si c'est une donnée monétaire
     if is_currency and "(en €)" not in title_y and "€" not in title_y:
         title_y = f"{title_y} (en €)"
-
-    # Format automatique intelligent basé sur les valeurs réelles
-    y_format = ",.0f"  # Défaut : nombres entiers avec séparateur milliers
-    y_suffix = ""  # 🔧 Suffixe pour les unités (€, etc.)
-    is_percent = spec.get("kind") == "percent"
-    is_currency = spec.get("kind") in ["currency", "euro"]
 
     # Analyser les valeurs pour déterminer le meilleur format
     if len(new_selected_metrics) > 0:
