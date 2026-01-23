@@ -536,12 +536,12 @@ with st.sidebar:
     section[data-testid="stSidebar"] .stVegaLiteChart > div {
       max-width: 400px !important;
       width: 100% !important;
-      height: 200px !important;
+      height: 247px !important;
     }
 
     section[data-testid="stSidebar"] .stVegaLiteChart canvas {
       max-width: 400px !important;
-      height: 200px !important;
+      height: 247px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -2545,7 +2545,7 @@ def render_epci_choropleth(
     # ---------- AFFICHAGE STREAMLIT (IMPORTANT) ----------
     # 🔧 Adapter la taille selon le contexte (sidebar ou main)
     map_width = 400 if in_sidebar else 400
-    map_height = 200 if in_sidebar else 400
+    map_height = 400 if in_sidebar else 400
     folium_static(m, width=map_width, height=map_height)
 
 
@@ -2974,7 +2974,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     }
 
     # Adapter la hauteur selon le contexte (sidebar ou main)
-    chart["height"] = 200 if in_sidebar else 400
+    chart["height"] = 247 if in_sidebar else 400
 
     # Limiter la largeur dans la sidebar
     if in_sidebar:
