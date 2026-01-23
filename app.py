@@ -318,6 +318,31 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CSS custom pour corriger la largeur des graphiques Vega-Lite
+st.markdown("""
+<style>
+    /* Forcer la largeur correcte pour les graphiques Vega-Lite */
+    .stVegaLiteChart > div {
+        width: 800px !important;
+        max-width: 100% !important;
+    }
+
+    /* Corriger l'alignement du conteneur parent */
+    .element-container:has(.stVegaLiteChart) {
+        width: 800px !important;
+        max-width: 100% !important;
+    }
+
+    /* Éviter que les graphiques débordent sur mobile */
+    @media (max-width: 800px) {
+        .stVegaLiteChart > div,
+        .element-container:has(.stVegaLiteChart) {
+            width: 100% !important;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
+
 def standardize_name(name):
     """Nettoie un nom (fichier ou source) pour en faire un identifiant SQL valide et unique."""
     if not isinstance(name, str): return "UNKNOWN"
@@ -613,10 +638,14 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
     except: return {"selected_columns": [numeric_cols[0]], "formats": {}}
 
 def style_df(df: pd.DataFrame, specs: dict):
-    """Applique le formatage pour l'affichage (Styler)."""
+    """Applique le formatage pour l'affichage (DataFrame avec formatage français)."""
     # On travaille sur une copie pour ne pas casser le DF original
     df_display = df.copy()
-    
+
+    # Renommer NOM_COUV en Nom si la colonne existe
+    if "NOM_COUV" in df_display.columns:
+        df_display = df_display.rename(columns={"NOM_COUV": "Nom"})
+
     # On force la conversion en numérique pour être sûr
     for col in df_display.columns:
         df_display[col] = pd.to_numeric(df_display[col], errors='ignore')
@@ -632,19 +661,33 @@ def style_df(df: pd.DataFrame, specs: dict):
             return (s + (f" {suffix}" if suffix else "")).strip()
         except: return str(x)
 
-    # On prépare le dictionnaire de formatage
-    format_dict = {}
-    
+    # On prépare le dictionnaire de formatage pour column_config
+    column_config = {}
+
     # On itère sur TOUTES les colonnes du tableau (et pas juste celles du graph)
     for col in df_display.columns:
-        # On ignore les colonnes non numériques (Textes, IDs...)
-        if not pd.api.types.is_numeric_dtype(df_display[col]): continue
-        
+        # Ignorer ID et colonnes d'années
+        if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO"]:
+            continue
+
+        # Figer la colonne "Nom" à gauche
+        if col == "Nom":
+            column_config[col] = st.column_config.TextColumn(
+                col,
+                width="medium",
+                pinned="left"
+            )
+            continue
+
+        # On ignore les colonnes non numériques
+        if not pd.api.types.is_numeric_dtype(df_display[col]):
+            continue
+
         # On récupère la config IA si elle existe, sinon des valeurs par défaut
-        s = specs.get(col, {})
+        s = specs.get(col, specs.get("NOM_COUV", {})) if col == "Nom" else specs.get(col, {})
         kind = (s.get("kind") or "number").lower()
         dec = int(s.get("decimals", 1)) # Par défaut 1 décimale
-        
+
         # --- RÈGLE INTELLIGENTE : 0 décimale si tout est > 100 ---
         valid_vals = pd.Series(dtype="float64")
         try:
@@ -674,15 +717,20 @@ def style_df(df: pd.DataFrame, specs: dict):
             except Exception:
                 pass
 
+        # Formater les valeurs dans le DataFrame
         if kind == "currency":
-            format_dict[col] = lambda x, d=dec: fr_num(x, d, "€")
+            df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "€") if pd.notna(x) else "-")
         elif kind == "percent":
             # Heuristique : Si c'est < 5 (ex: 0.15), on multiplie par 100.
-            format_dict[col] = lambda x, d=dec: fr_num(x, d, "%", factor=100 if abs(x)<5 else 1) 
+            def format_percent(x):
+                if pd.isna(x): return "-"
+                factor = 100 if abs(x) < 5 else 1
+                return fr_num(x, dec, "%", factor=factor)
+            df_display[col] = df_display[col].apply(format_percent)
         else:
-            format_dict[col] = lambda x, d=dec: fr_num(x, d, "")
+            df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "") if pd.notna(x) else "-")
 
-    return df_display.style.format(format_dict)
+    return df_display, column_config
 
 
     # --- FONCTION DE RÉPARATION SQL ---
@@ -1434,11 +1482,88 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
 def ai_fallback_territory_search(con, user_prompt):
     """
     Fallback IA : cherche le territoire dans territoires.txt quand la recherche classique échoue.
-    Charge un échantillon stratégique du fichier et demande à l'IA de trouver le bon territoire.
+    Étape 1 : Recherche web pour trouver le code INSEE ou SIREN
+    Étape 2 : Recherche dans territoires.txt avec ce code
+    Étape 3 : Si échec, recherche sémantique dans un échantillon stratégique
     """
     _dbg("geo.fallback.enter", user_prompt=user_prompt)
 
     try:
+        # ÉTAPE 1 : Recherche web pour trouver les codes officiels
+        _dbg("geo.fallback.web_search", query=user_prompt)
+
+        web_search_result = client.responses.create(
+            model=MODEL_NAME,
+            input=build_messages(
+                """Tu es un expert en géographie française et en codes officiels (INSEE, SIREN).
+
+                TA MISSION :
+                À partir de la requête utilisateur, utilise l'outil de recherche web pour trouver le code officiel exact du territoire :
+                - Code INSEE pour les communes (5 chiffres)
+                - Code SIREN pour les EPCI/intercommunalités (9 chiffres)
+                - Code département (ex: 61, 75, 2A)
+                - Code région
+
+                STRATÉGIE DE RECHERCHE :
+                1. Pour une commune : cherche "code INSEE [nom de la commune]"
+                2. Pour un EPCI : cherche "code SIREN [nom de l'EPCI]" ou "SIREN [nom exact]"
+                3. Pour un département : cherche "code département [nom]"
+                4. Privilégie les sources officielles : insee.fr, data.gouv.fr, collectivites-locales.gouv.fr
+
+                FORMAT DE RÉPONSE JSON :
+                {
+                    "codes_found": ["code1", "code2", ...],
+                    "territory_type": "commune|epci|departement|region",
+                    "source": "url de la source",
+                    "confidence": "high|medium|low"
+                }
+
+                Si aucun code n'est trouvé, retourne : {"codes_found": [], "confidence": "none"}
+                """,
+                f'Trouve le code officiel pour : "{user_prompt}"'
+            ),
+            temperature=0,
+            tools=[{"type": "web_search", "enabled": True}]
+        )
+        metrics.log_api_call()
+        web_response = extract_response_text(web_search_result)
+        _dbg("geo.fallback.web_response", response=web_response[:500])
+
+        try:
+            web_data = json.loads(web_response)
+            codes_found = web_data.get("codes_found", [])
+
+            if codes_found and web_data.get("confidence") in ["high", "medium"]:
+                # ÉTAPE 2 : Vérifier si ces codes existent dans territoires.txt
+                for code in codes_found:
+                    # Nettoyer le code
+                    code_clean = str(code).strip()
+
+                    # Chercher dans la base
+                    verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
+                    verify_df = con.execute(verify_sql, [code_clean]).df()
+
+                    if not verify_df.empty:
+                        territory_info = verify_df.iloc[0]
+                        _dbg("geo.fallback.web_success", code=code_clean, name=territory_info['NOM_COUV'])
+
+                        return {
+                            'target_id': code_clean,
+                            'target_name': territory_info['NOM_COUV'],
+                            'all_ids': [code_clean],
+                            'display_context': f"{territory_info['NOM_COUV']} ({code_clean})",
+                            'lieux_cites': [user_prompt],
+                            'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": code_clean, "Source": "Recherche Web + territoires.txt"}],
+                            'parent_clause': ''
+                        }
+
+                _dbg("geo.fallback.web_codes_not_in_db", codes=codes_found)
+        except json.JSONDecodeError:
+            _dbg("geo.fallback.web_json_error")
+
+        # ÉTAPE 3 : Si la recherche web a échoué, faire une recherche sémantique dans un échantillon
+        _dbg("geo.fallback.semantic_search")
+
         # Charger un échantillon stratégique : tous les départements, régions et grandes villes
         sql_sample = """
         SELECT ID, NOM_COUV,
@@ -2195,10 +2320,43 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
     else:
         title_y = spec.get("title", spec.get("label", "Valeur"))
 
-    y_format = ",.0f"  # Pas de décimales par défaut
+    # Format automatique intelligent basé sur les valeurs réelles
+    y_format = ",.0f"  # Défaut : nombres entiers avec séparateur milliers
     is_percent = spec.get("kind") == "percent"
-    if is_percent: y_format = ".0%"  # Pourcentages sans décimales
-    elif spec.get("kind") == "currency": y_format = ",.0f"
+
+    # Analyser les valeurs pour déterminer le meilleur format
+    if len(new_selected_metrics) > 0:
+        # Prendre la première métrique pour analyse
+        first_metric = new_selected_metrics[0] if new_selected_metrics else selected_metrics[0]
+        if first_metric in df_plot.columns:
+            values = pd.to_numeric(df_plot[first_metric], errors='coerce').dropna()
+
+            if not values.empty:
+                max_val = values.max()
+                min_val = values.min()
+                has_decimals = not (values % 1 == 0).all()
+
+                if is_percent:
+                    # Pour les pourcentages
+                    if max_val <= 1.5:
+                        # Format 0-1 -> convertir en %
+                        y_format = ".1%"
+                    elif has_decimals:
+                        y_format = ",.1f"  # Garder 1 décimale
+                    else:
+                        y_format = ",.0f"  # Pas de décimale
+                elif spec.get("kind") == "currency":
+                    y_format = ",.0f"  # Euros sans décimales
+                else:
+                    # Pour les nombres normaux
+                    if max_val >= 1000:
+                        y_format = ",.0f"  # Grands nombres : pas de décimale, séparateur milliers
+                    elif has_decimals and max_val < 100:
+                        y_format = ",.1f"  # Petits nombres avec décimales
+                    elif has_decimals:
+                        y_format = ",.2f"  # Nombres moyens avec 2 décimales
+                    else:
+                        y_format = ",.0f"  # Nombres entiers
 
     # 6. MELT
     id_vars = [label_col]
@@ -2412,8 +2570,9 @@ def auto_plot_data(df, sorted_ids, config=None, con=None):
         "fontSize": 14
     }
 
-    chart["width"] = "container"
-    st.vega_lite_chart(df_melted, chart, use_container_width=True)
+    chart["width"] = 800
+    chart["height"] = 400
+    st.vega_lite_chart(df_melted, chart, use_container_width=False)
 
 
 # --- 9. UI PRINCIPALE ---
@@ -2468,7 +2627,8 @@ for i_msg, msg in enumerate(st.session_state.messages):
                 with st.expander("📝 Voir les données brutes", expanded=False):
                     # On utilise les formats stockés dans la config
                     formats = saved_config.get("formats", {})
-                    st.dataframe(style_df(msg["data"], formats), width='stretch')
+                    styled_df, col_config = style_df(msg["data"], formats)
+                    st.dataframe(styled_df, hide_index=True, column_config=col_config, use_container_width=True)
                 # --- ✅ AJOUT : Carte et graphique juste après Données brutes (sans nouvelle bulle) ---
                 with st.expander("📊 Carte et graphique", expanded=False):
                     df_local = msg["data"]
@@ -2981,65 +3141,90 @@ if prompt_to_process:
                     # Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
                         with st.expander("📝 Voir les données brutes", expanded=False):
-                            st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
-                    
-                        with st.expander("📊 Carte et graphique", expanded=False):
-                            formats = chart_config.get("formats", {})
-                    
-                            numeric_candidates = []
-                            for col in df.columns:
-                                if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                                    continue
-                                s = pd.to_numeric(df[col], errors="coerce")
-                                if s.notna().any():
-                                    numeric_candidates.append(col)
-                    
-                            def format_metric_label(col):
-                                spec = formats.get(col, {})
-                                return spec.get("title") or spec.get("label") or col
-                    
-                            if numeric_candidates:
-                                c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
-                    
-                                manual_metric = c1.selectbox(
-                                    "Choisir une variable",
-                                    numeric_candidates,
-                                    index=0,
-                                    format_func=format_metric_label,
-                                    key=f"cg_live_metric_{len(st.session_state.messages)}",
-                                    label_visibility="collapsed",
-                                )
-                    
-                                manual_spec = formats.get(
-                                    manual_metric,
-                                    {"kind": "number", "label": manual_metric, "title": manual_metric}
-                                )
-                                # 🔧 FIX : Passer TOUS les formats, pas seulement celui de la métrique sélectionnée
-                                manual_config = {"selected_columns": [manual_metric], "formats": formats}
-                    
-                                current_ids = debug_container.get("final_ids", geo_context.get("all_ids", []))
-                                target_id = str(geo_context.get("target_id", ""))
-                    
-                                if c2.button("Graphique", use_container_width=True, key=f"cg_live_btn_chart_{len(st.session_state.messages)}"):
-                                    auto_plot_data(df, current_ids, config=manual_config, con=con)
-                    
-                                if c3.button("Carte", use_container_width=True, key=f"cg_live_btn_map_{len(st.session_state.messages)}"):
-                                    is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                                    is_epci = target_id.isdigit() and len(target_id) == 9
-                                    if is_commune or is_epci:
-                                        render_epci_choropleth(
-                                            con,
-                                            df,
-                                            target_id,
-                                            geo_context.get("target_name", target_id),
-                                            manual_metric,
-                                            manual_spec,
-                                            sql_query=debug_container.get("sql_query")
-                                        )
-                                    else:
-                                        st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
-                            else:
-                                st.caption("Aucune variable numérique exploitable pour afficher un graphique ou une carte.")
+                            styled_df, col_config = style_df(df, chart_config.get('formats', {}))
+                            st.dataframe(styled_df, hide_index=True, column_config=col_config, use_container_width=True)
+
+                    # 📊 Section Carte et graphique (en dehors de data_placeholder pour apparaître toujours)
+                    with st.expander("📊 Carte et graphique", expanded=False):
+                        formats = chart_config.get("formats", {})
+
+                        numeric_candidates = []
+                        for col in df.columns:
+                            if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                                continue
+                            s = pd.to_numeric(df[col], errors="coerce")
+                            if s.notna().any():
+                                numeric_candidates.append(col)
+
+                        def format_metric_label(col):
+                            spec = formats.get(col, {})
+                            return spec.get("title") or spec.get("label") or col
+
+                        if numeric_candidates:
+                            # Initialiser la clé de session pour cette réponse
+                            msg_idx = len(st.session_state.messages)
+                            viz_state_key = f"viz_state_{msg_idx}"
+                            viz_metric_key = f"viz_metric_{msg_idx}"
+
+                            # Initialiser le state si nécessaire
+                            if viz_state_key not in st.session_state:
+                                st.session_state[viz_state_key] = None
+                            if viz_metric_key not in st.session_state:
+                                st.session_state[viz_metric_key] = numeric_candidates[0]
+
+                            c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
+
+                            manual_metric = c1.selectbox(
+                                "Choisir une variable",
+                                numeric_candidates,
+                                index=numeric_candidates.index(st.session_state[viz_metric_key]) if st.session_state[viz_metric_key] in numeric_candidates else 0,
+                                format_func=format_metric_label,
+                                key=f"cg_live_metric_{msg_idx}",
+                                label_visibility="collapsed",
+                            )
+
+                            # Mettre à jour la métrique dans le state
+                            st.session_state[viz_metric_key] = manual_metric
+
+                            manual_spec = formats.get(
+                                manual_metric,
+                                {"kind": "number", "label": manual_metric, "title": manual_metric}
+                            )
+                            # 🔧 FIX : Passer TOUS les formats, pas seulement celui de la métrique sélectionnée
+                            manual_config = {"selected_columns": [manual_metric], "formats": formats}
+
+                            current_ids = debug_container.get("final_ids", geo_context.get("all_ids", []))
+                            target_id = str(geo_context.get("target_id", ""))
+
+                            # Boutons pour choisir le type de visualisation
+                            if c2.button("Graphique", use_container_width=True, key=f"cg_live_btn_chart_{msg_idx}"):
+                                st.session_state[viz_state_key] = "graphique"
+
+                            if c3.button("Carte", use_container_width=True, key=f"cg_live_btn_map_{msg_idx}"):
+                                st.session_state[viz_state_key] = "carte"
+
+                            # Afficher la visualisation choisie
+                            if st.session_state[viz_state_key] == "graphique":
+                                st.markdown("### 📊 Graphique")
+                                auto_plot_data(df, current_ids, config=manual_config, con=con)
+                            elif st.session_state[viz_state_key] == "carte":
+                                st.markdown("### 🗺️ Carte")
+                                is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                                is_epci = target_id.isdigit() and len(target_id) == 9
+                                if is_commune or is_epci:
+                                    render_epci_choropleth(
+                                        con,
+                                        df,
+                                        target_id,
+                                        geo_context.get("target_name", target_id),
+                                        manual_metric,
+                                        manual_spec,
+                                        sql_query=debug_container.get("sql_query")
+                                    )
+                                else:
+                                    st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
+                        else:
+                            st.caption("Aucune variable numérique exploitable pour afficher un graphique ou une carte.")
 
 
                 # C. Streaming du Texte
