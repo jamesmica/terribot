@@ -523,7 +523,7 @@ with st.sidebar:
             st.info(f"📍 **{target_name}**")
 
 client = openai.OpenAI(api_key=api_key)
-MODEL_NAME = "gpt-5.2-2025-12-11"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
+MODEL_NAME = "gpt-5.2"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 # --- 3.1 HELPERS OPENAI RESPONSES ---
