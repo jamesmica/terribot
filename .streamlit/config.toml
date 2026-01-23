@@ -28,9 +28,5 @@ blueColor = "#2563eb"
 blueBackgroundColor = "#e8f1fe"
 blueTextColor = "#1e3a8a"
 
-[theme.sidebar]
-backgroundColor = "#f3f6fb"
-secondaryBackgroundColor = "#ffffff"
-textColor = "#1f2a37"
-primaryColor = "#4f46e5"
-borderColor = "#d9e2ec"
+# 🔧 Section [theme.sidebar] supprimée car elle causait des erreurs avec widgetBackgroundColor,
+# widgetBorderColor et skeletonBackgroundColor qui ne sont pas supportés
