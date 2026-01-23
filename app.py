@@ -3504,7 +3504,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 "Visualisation",
                                 ["📊 Graphique", "🗺️ Carte"],
                                 horizontal=True,
-                                key=f"viz_choice_{len(st.session_state.messages)}"
+                                key=f"viz_choice_{len(st.session_state.messages)}",
+                                label_visibility="collapsed"
                             )
 
                             if viz_choice == "📊 Graphique":
@@ -3695,7 +3696,8 @@ if "sidebar_viz_placeholder" in st.session_state:
                             numeric_candidates,
                             index=0,
                             format_func=format_metric_label,
-                            key="sidebar_metric_selector"
+                            key="sidebar_metric_selector",
+                            label_visibility="collapsed"
                         )
 
                         # Radio buttons pour choisir le type de visualisation (pas de rerun)
