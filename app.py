@@ -2320,7 +2320,7 @@ if "pending_geo_text" not in st.session_state:
 if "ambiguity_candidates" not in st.session_state:
     st.session_state.ambiguity_candidates = None
 
-for msg in st.session_state.messages:
+for i_msg, msg in enumerate(st.session_state.messages):
     avatar = "🤖" if msg["role"] == "assistant" else "👤"
     with st.chat_message(msg["role"], avatar=avatar):
         
@@ -2355,6 +2355,71 @@ for msg in st.session_state.messages:
                     # On utilise les formats stockés dans la config
                     formats = saved_config.get("formats", {})
                     st.dataframe(style_df(msg["data"], formats), width='stretch')
+                # --- ✅ AJOUT : Carte et graphique juste après Données brutes (sans nouvelle bulle) ---
+                with st.expander("📊 Carte et graphique", expanded=False):
+                    df_local = msg["data"]
+                    formats = saved_config.get("formats", {})
+                
+                    # Candidats numériques
+                    numeric_candidates = []
+                    for col in df_local.columns:
+                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                            continue
+                        s = pd.to_numeric(df_local[col], errors="coerce")
+                        if s.notna().any():
+                            numeric_candidates.append(col)
+                
+                    def format_metric_label(col):
+                        spec = formats.get(col, {})
+                        return spec.get("title") or spec.get("label") or col
+                
+                    if numeric_candidates:
+                        c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
+                
+                        manual_metric = c1.selectbox(
+                            "Choisir une variable",
+                            numeric_candidates,
+                            index=0,
+                            format_func=format_metric_label,
+                            key=f"cg_metric_{i_msg}",
+                            label_visibility="collapsed",
+                        )
+                
+                        manual_spec = formats.get(
+                            manual_metric,
+                            {"kind": "number", "label": manual_metric, "title": manual_metric}
+                        )
+                        manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+                
+                        debug_info = msg.get("debug_info", {})
+                        current_ids = debug_info.get("final_ids", [])
+                
+                        # Target ID : on préfère celui du message (si sauvegardé), sinon le contexte courant
+                        geo_ctx = st.session_state.get("current_geo_context", {}) or {}
+                        target_id = str(debug_info.get("map_target_id") or geo_ctx.get("target_id") or "")
+                
+                        if c2.button("Graphique", use_container_width=True, key=f"cg_btn_chart_{i_msg}"):
+                            auto_plot_data(df_local, current_ids, config=manual_config, con=con)
+                
+                        if c3.button("Carte", use_container_width=True, key=f"cg_btn_map_{i_msg}"):
+                            is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                            is_epci = target_id.isdigit() and len(target_id) == 9
+                            if is_commune or is_epci:
+                                sql_query = debug_info.get("sql_query")
+                                render_epci_choropleth(
+                                    con,
+                                    df_local,
+                                    target_id,
+                                    geo_ctx.get("target_name", target_id),
+                                    manual_metric,
+                                    manual_spec,
+                                    sql_query=sql_query
+                                )
+                            else:
+                                st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
+                    else:
+                        st.caption("Aucune variable numérique exploitable pour afficher un graphique ou une carte.")
+
             except Exception as e: 
                 pass
             
@@ -2788,6 +2853,64 @@ if prompt_to_process:
                     with data_placeholder:
                         with st.expander("📝 Voir les données brutes", expanded=False):
                             st.dataframe(style_df(df, chart_config.get('formats', {})), width='stretch')
+                    
+                        with st.expander("📊 Carte et graphique", expanded=False):
+                            formats = chart_config.get("formats", {})
+                    
+                            numeric_candidates = []
+                            for col in df.columns:
+                                if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                                    continue
+                                s = pd.to_numeric(df[col], errors="coerce")
+                                if s.notna().any():
+                                    numeric_candidates.append(col)
+                    
+                            def format_metric_label(col):
+                                spec = formats.get(col, {})
+                                return spec.get("title") or spec.get("label") or col
+                    
+                            if numeric_candidates:
+                                c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
+                    
+                                manual_metric = c1.selectbox(
+                                    "Choisir une variable",
+                                    numeric_candidates,
+                                    index=0,
+                                    format_func=format_metric_label,
+                                    key=f"cg_live_metric_{len(st.session_state.messages)}",
+                                    label_visibility="collapsed",
+                                )
+                    
+                                manual_spec = formats.get(
+                                    manual_metric,
+                                    {"kind": "number", "label": manual_metric, "title": manual_metric}
+                                )
+                                manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+                    
+                                current_ids = debug_container.get("final_ids", geo_context.get("all_ids", []))
+                                target_id = str(geo_context.get("target_id", ""))
+                    
+                                if c2.button("Graphique", use_container_width=True, key=f"cg_live_btn_chart_{len(st.session_state.messages)}"):
+                                    auto_plot_data(df, current_ids, config=manual_config, con=con)
+                    
+                                if c3.button("Carte", use_container_width=True, key=f"cg_live_btn_map_{len(st.session_state.messages)}"):
+                                    is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                                    is_epci = target_id.isdigit() and len(target_id) == 9
+                                    if is_commune or is_epci:
+                                        render_epci_choropleth(
+                                            con,
+                                            df,
+                                            target_id,
+                                            geo_context.get("target_name", target_id),
+                                            manual_metric,
+                                            manual_spec,
+                                            sql_query=debug_container.get("sql_query")
+                                        )
+                                    else:
+                                        st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
+                            else:
+                                st.caption("Aucune variable numérique exploitable pour afficher un graphique ou une carte.")
+
 
                 # C. Streaming du Texte
                 if not df.empty:
@@ -2860,7 +2983,7 @@ if prompt_to_process:
                     "content": "⚠️ Je n'ai pas pu traiter votre demande. Essayez de reformuler votre question.",
                     "debug_info": {"error": error_msg, "trace": error_trace[-500:]}
                 })
-
+```
 # --- E. AFFICHAGE PERSISTANT DES BOUTONS "ACTIONS RAPIDES" (ALIGNÉ CHAT) ---
 _dbg("ui.persistent_buttons.check", messages_count=len(st.session_state.messages))
 
@@ -2944,6 +3067,7 @@ if last_data_message:
                         )
                     else:
                         st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
+```
 else:
     _dbg("ui.persistent_buttons.no_data")
 
