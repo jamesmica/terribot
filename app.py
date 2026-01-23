@@ -3504,8 +3504,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 "Visualisation",
                                 ["📊 Graphique", "🗺️ Carte"],
                                 horizontal=True,
-                                key=f"viz_choice_{len(st.session_state.messages)}",
-                                label_visibility="collapsed"
+                                key=f"viz_choice_{len(st.session_state.messages)}"
                             )
 
                             if viz_choice == "📊 Graphique":
@@ -3705,7 +3704,8 @@ if "sidebar_viz_placeholder" in st.session_state:
                             "Type",
                             ["📊 Graphique", "🗺️ Carte"],
                             horizontal=True,
-                            key="sidebar_viz_type_radio"
+                            key="sidebar_viz_type_radio",
+                            label_visibility="collapsed"
                         )
 
                         # Créer la config pour la visualisation
