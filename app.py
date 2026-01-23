@@ -2358,7 +2358,7 @@ def render_epci_choropleth(
     # Création de la carte Folium avec fond neutre
     m = folium.Map(
         location=[center_lat, center_lon],
-        zoom_start=11,
+        zoom_start=9,
         tiles="CartoDB positron"  # Fond plus neutre et moins coloré
     )
 
