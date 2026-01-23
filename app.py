@@ -521,6 +521,23 @@ with st.sidebar:
     div[data-testid="stAppViewContainer"] h1:first-of-type{
       margin-top: -48px !important;
     }
+
+    /* Limiter la taille des graphiques dans la sidebar */
+    section[data-testid="stSidebar"] .stVegaLiteChart {
+      max-width: 400px !important;
+      width: 100% !important;
+    }
+
+    section[data-testid="stSidebar"] .stVegaLiteChart > div {
+      max-width: 400px !important;
+      width: 100% !important;
+      height: 200px !important;
+    }
+
+    section[data-testid="stSidebar"] .stVegaLiteChart canvas {
+      max-width: 400px !important;
+      height: 200px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -2802,75 +2819,69 @@ if "sidebar_viz_placeholder" in st.session_state:
             geo_context_viz = viz_data.get("geo_context", {})
 
             if df is not None and not df.empty:
-                formats = chart_config.get("formats", {})
-                numeric_candidates = []
-                for col in df.columns:
-                    if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                        continue
-                    s = pd.to_numeric(df[col], errors="coerce")
-                    if s.notna().any():
-                        numeric_candidates.append(col)
+                try:
+                    formats = chart_config.get("formats", {})
+                    numeric_candidates = []
+                    for col in df.columns:
+                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                            continue
+                        s = pd.to_numeric(df[col], errors="coerce")
+                        if s.notna().any():
+                            numeric_candidates.append(col)
 
-                if numeric_candidates:
-                    # Initialiser le sélecteur de métrique si nécessaire
-                    if "sidebar_viz_metric" not in st.session_state:
-                        st.session_state.sidebar_viz_metric = numeric_candidates[0]
-                    if "sidebar_viz_type" not in st.session_state:
-                        st.session_state.sidebar_viz_type = "graphique"
+                    if numeric_candidates:
+                        def format_metric_label(col):
+                            spec = formats.get(col, {})
+                            return spec.get("title") or spec.get("label") or col
 
-                    def format_metric_label(col):
-                        spec = formats.get(col, {})
-                        return spec.get("title") or spec.get("label") or col
+                        # Sélecteur de variable
+                        selected_metric = st.selectbox(
+                            "Variable",
+                            numeric_candidates,
+                            index=0,
+                            format_func=format_metric_label,
+                            key="sidebar_metric_selector"
+                        )
 
-                    # Sélecteur de variable
-                    selected_metric = st.selectbox(
-                        "",
-                        numeric_candidates,
-                        index=numeric_candidates.index(st.session_state.sidebar_viz_metric) if st.session_state.sidebar_viz_metric in numeric_candidates else 0,
-                        format_func=format_metric_label,
-                        key="sidebar_metric_selector"
-                    )
-                    st.session_state.sidebar_viz_metric = selected_metric
+                        # Radio buttons pour choisir le type de visualisation (pas de rerun)
+                        viz_type = st.radio(
+                            "Type",
+                            ["📊 Graphique", "🗺️ Carte"],
+                            horizontal=True,
+                            key="sidebar_viz_type_radio"
+                        )
 
-                    # Boutons pour choisir le type de visualisation
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("📊 Graphique", use_container_width=True, key="sidebar_btn_chart"):
-                            st.session_state.sidebar_viz_type = "graphique"
-                            st.rerun()
-                    with col2:
-                        if st.button("🗺️ Carte", use_container_width=True, key="sidebar_btn_map"):
-                            st.session_state.sidebar_viz_type = "carte"
-                            st.rerun()
+                        # Créer la config pour la visualisation
+                        manual_spec = formats.get(
+                            selected_metric,
+                            {"kind": "number", "label": selected_metric, "title": selected_metric}
+                        )
+                        manual_config = {"selected_columns": [selected_metric], "formats": formats}
+                        target_id = str(geo_context_viz.get("target_id", ""))
 
-                    # Créer la config pour la visualisation
-                    manual_spec = formats.get(
-                        selected_metric,
-                        {"kind": "number", "label": selected_metric, "title": selected_metric}
-                    )
-                    manual_config = {"selected_columns": [selected_metric], "formats": formats}
-                    target_id = str(geo_context_viz.get("target_id", ""))
-
-                    # Afficher la visualisation choisie
-                    if st.session_state.sidebar_viz_type == "graphique":
-                        auto_plot_data(df, final_ids, config=manual_config, con=con)
-                    elif st.session_state.sidebar_viz_type == "carte":
-                        is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                        is_epci = target_id.isdigit() and len(target_id) == 9
-                        if is_commune or is_epci:
-                            render_epci_choropleth(
-                                con,
-                                df,
-                                target_id,
-                                geo_context_viz.get("target_name", target_id),
-                                selected_metric,
-                                manual_spec,
-                                sql_query=None
-                            )
-                        else:
-                            st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
-                else:
-                    st.caption("Aucune variable numérique disponible.")
+                        # Afficher la visualisation choisie
+                        if viz_type == "📊 Graphique":
+                            auto_plot_data(df, final_ids, config=manual_config, con=con)
+                        elif viz_type == "🗺️ Carte":
+                            is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                            is_epci = target_id.isdigit() and len(target_id) == 9
+                            if is_commune or is_epci:
+                                render_epci_choropleth(
+                                    con,
+                                    df,
+                                    target_id,
+                                    geo_context_viz.get("target_name", target_id),
+                                    selected_metric,
+                                    manual_spec,
+                                    sql_query=None
+                                )
+                            else:
+                                st.info("Carte disponible pour commune (4-5 chiffres) ou EPCI (9 chiffres).")
+                    else:
+                        st.caption("Aucune variable numérique disponible.")
+                except Exception as e:
+                    st.error(f"Erreur d'affichage : {str(e)[:100]}")
+                    print(f"[SIDEBAR] Erreur: {e}")
             else:
                 st.caption("Aucune donnée disponible pour visualisation.")
         else:
@@ -2931,71 +2942,6 @@ for i_msg, msg in enumerate(st.session_state.messages):
                     formats = saved_config.get("formats", {})
                     styled_df, col_config = style_df(msg["data"], formats)
                     st.dataframe(styled_df, hide_index=True, column_config=col_config, use_container_width=True)
-                # --- ✅ AJOUT : Carte et graphique juste après Données brutes (sans nouvelle bulle) ---
-                with st.expander("📊 Carte et graphique", expanded=False):
-                    df_local = msg["data"]
-                    formats = saved_config.get("formats", {})
-                
-                    # Candidats numériques
-                    numeric_candidates = []
-                    for col in df_local.columns:
-                        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-                            continue
-                        s = pd.to_numeric(df_local[col], errors="coerce")
-                        if s.notna().any():
-                            numeric_candidates.append(col)
-                
-                    def format_metric_label(col):
-                        spec = formats.get(col, {})
-                        return spec.get("title") or spec.get("label") or col
-                
-                    if numeric_candidates:
-                        c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
-                
-                        manual_metric = c1.selectbox(
-                            "Choisir une variable",
-                            numeric_candidates,
-                            index=0,
-                            format_func=format_metric_label,
-                            key=f"cg_metric_{i_msg}",
-                            label_visibility="collapsed",
-                        )
-                
-                        manual_spec = formats.get(
-                            manual_metric,
-                            {"kind": "number", "label": manual_metric, "title": manual_metric}
-                        )
-                        # 🔧 FIX : Passer TOUS les formats, pas seulement celui de la métrique sélectionnée
-                        manual_config = {"selected_columns": [manual_metric], "formats": formats}
-                
-                        debug_info = msg.get("debug_info", {})
-                        current_ids = debug_info.get("final_ids", [])
-                
-                        # Target ID : on préfère celui du message (si sauvegardé), sinon le contexte courant
-                        geo_ctx = st.session_state.get("current_geo_context", {}) or {}
-                        target_id = str(debug_info.get("map_target_id") or geo_ctx.get("target_id") or "")
-                
-                        if c2.button("Graphique", use_container_width=True, key=f"cg_btn_chart_{i_msg}"):
-                            auto_plot_data(df_local, current_ids, config=manual_config, con=con)
-                
-                        if c3.button("Carte", use_container_width=True, key=f"cg_btn_map_{i_msg}"):
-                            is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                            is_epci = target_id.isdigit() and len(target_id) == 9
-                            if is_commune or is_epci:
-                                sql_query = debug_info.get("sql_query")
-                                render_epci_choropleth(
-                                    con,
-                                    df_local,
-                                    target_id,
-                                    geo_ctx.get("target_name", target_id),
-                                    manual_metric,
-                                    manual_spec,
-                                    sql_query=sql_query
-                                )
-                            else:
-                                st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
-                    else:
-                        st.caption("Aucune variable numérique exploitable pour afficher un graphique ou une carte.")
 
             except Exception as e: 
                 pass
@@ -3269,49 +3215,28 @@ if prompt_to_process:
                             debug_container["final_ids"] = fallback_context["all_ids"]
                             debug_steps.append({"icon": "🔎", "label": "Résolution Géo (Fallback IA)", "type": "table", "content": fallback_context["debug_search"]})
                         else:
-                            # 🆕 DERNIER RECOURS : Sélecteur avec tous les territoires (36000+)
-                            status_container.update(label="⚠️ Aucun territoire détecté", state="error")
+                            # 🆕 DEMANDER DES PRÉCISIONS : Envoyer un message conversationnel
+                            status_container.update(label="⚠️ Territoire non identifié", state="error")
 
-                            # 🔧 FIX: Afficher le sélecteur dans un placeholder dédié EN DEHORS du status_container
-                            with territory_selector_placeholder.container():
-                                st.warning("⚠️ Je ne détecte pas de territoire. Veuillez en choisir un dans la liste ci-dessous.")
+                            # Message demandant des précisions
+                            clarification_message = """🤔 Je n'arrive pas à identifier le territoire dont vous parlez.
 
-                                # Charger tous les territoires
-                                all_territories = con.execute("SELECT ID, NOM_COUV FROM territoires ORDER BY NOM_COUV").df()
+Pouvez-vous préciser votre recherche en indiquant :
+- Le nom complet de la commune (ex: "Alençon", "Paris 15e arrondissement")
+- Le nom du département avec son numéro (ex: "Orne", "Orne 61", "département 61")
+- Le nom de la région (ex: "Normandie", "Île-de-France")
+- Le nom complet de l'intercommunalité avec son type (ex: "CC des Pays de L'Aigle", "Métropole de Lyon")
 
-                                if not all_territories.empty:
-                                    # Créer le format "Nom (ID)" pour chaque territoire
-                                    territory_options = [f"{row['NOM_COUV']} ({row['ID']})" for _, row in all_territories.iterrows()]
-                                    territory_ids = all_territories['ID'].tolist()
+Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne" si plusieurs communes portent le même nom)."""
 
-                                    # Afficher le sélecteur
-                                    selected_territory = st.selectbox(
-                                        "🔍 Choisissez votre territoire :",
-                                        options=territory_options,
-                                        key="territory_selector_fallback"
-                                    )
+                            message_placeholder.warning(clarification_message)
 
-                                    if st.button("✅ Valider ce territoire", key="validate_territory_fallback"):
-                                        # Extraire l'ID du format "Nom (ID)"
-                                        selected_idx = territory_options.index(selected_territory)
-                                        selected_id = territory_ids[selected_idx]
-                                        selected_name = all_territories.iloc[selected_idx]['NOM_COUV']
-
-                                        # Créer le contexte géographique
-                                        manual_context = {
-                                            'target_id': selected_id,
-                                            'target_name': selected_name,
-                                            'all_ids': [selected_id],
-                                            'display_context': f"{selected_name} ({selected_id})",
-                                            'lieux_cites': [selected_name],
-                                            'debug_search': [{"Recherche": "Sélection manuelle", "Trouvé": selected_name, "ID": selected_id}],
-                                            'parent_clause': ''
-                                        }
-
-                                        st.session_state.current_geo_context = manual_context
-                                        st.session_state.trigger_run_prompt = prompt_to_process  # 🔧 FIX: Utiliser trigger_run_prompt
-                                        st.session_state.force_geo_context = True
-                                        st.rerun()
+                            # Sauvegarder le message dans l'historique
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": clarification_message,
+                                "debug_info": debug_container
+                            })
 
                             st.stop()
                     
