@@ -547,6 +547,10 @@ with st.sidebar:
     div[data-testid="stSidebarUserContent"] { 
     margin-top: -80px !important; 
     }
+
+    div[data-testid="stSidebarHeader"] {
+    z-index:2;
+    }
     </style>
     """, unsafe_allow_html=True)
 
