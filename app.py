@@ -2983,91 +2983,91 @@ if prompt_to_process:
                     "content": "⚠️ Je n'ai pas pu traiter votre demande. Essayez de reformuler votre question.",
                     "debug_info": {"error": error_msg, "trace": error_trace[-500:]}
                 })
-```
-# --- E. AFFICHAGE PERSISTANT DES BOUTONS "ACTIONS RAPIDES" (ALIGNÉ CHAT) ---
-_dbg("ui.persistent_buttons.check", messages_count=len(st.session_state.messages))
+if False:
+    # --- E. AFFICHAGE PERSISTANT DES BOUTONS "ACTIONS RAPIDES" (ALIGNÉ CHAT) ---
+    _dbg("ui.persistent_buttons.check", messages_count=len(st.session_state.messages))
+    
+    last_data_message = None
+    for msg in reversed(st.session_state.messages):
+        if msg.get("role") == "assistant" and msg.get("data") is not None and not msg["data"].empty:
+            last_data_message = msg
+            break
+    
+    if last_data_message:
+        df = last_data_message["data"]
+        chart_config = last_data_message.get("chart_config", {})
+        formats = chart_config.get("formats", {})
+    
+        # Contexte géographique
+        geo_context = st.session_state.get("current_geo_context", {})
+        target_id = str(geo_context.get("target_id", ""))
+    
+        # Candidats numériques
+        numeric_candidates = []
+        for col in df.columns:
+            if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
+                continue
+            series = pd.to_numeric(df[col], errors="coerce")
+            if series.notna().any():
+                numeric_candidates.append(col)
+    
+        _dbg("ui.persistent_buttons.candidates", count=len(numeric_candidates), target_id=target_id)
+    
+        if numeric_candidates:
+            # ✅ WRAP DANS UNE BULLE -> alignement identique aux expanders du chat
+            with st.chat_message("assistant", avatar="🛠️"):
+                with st.expander("📊 Carte et graphique", expanded=False):
+    
+                    def format_metric_label(col):
+                        spec = formats.get(col, {})
+                        return spec.get("title") or spec.get("label") or col
+    
+                    c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
+    
+                    manual_metric = c1.selectbox(
+                        "Choisir une variable",
+                        numeric_candidates,
+                        index=0,
+                        format_func=format_metric_label,
+                        key="persistent_manual_metric_select",
+                        label_visibility="collapsed",
+                    )
+    
+                    manual_spec = formats.get(
+                        manual_metric,
+                        {"kind": "number", "label": manual_metric, "title": manual_metric}
+                    )
+                    manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
+    
+                    # IDs
+                    debug_info = last_data_message.get("debug_info", {})
+                    current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
+    
+                    if c2.button("Graphique", use_container_width=True, key="persistent_manual_chart_button"):
+                        _dbg("button.persistent_chart.clicked", metric=manual_metric)
+                        auto_plot_data(df, current_ids, config=manual_config, con=con)
+    
+                    if c3.button("Carte", use_container_width=True, key="persistent_manual_map_button"):
+                        _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
+    
+                        is_commune = target_id.isdigit() and len(target_id) in (4, 5)
+                        is_epci = target_id.isdigit() and len(target_id) == 9
+    
+                        if is_commune or is_epci:
+                            sql_query = debug_info.get("sql_query")
+    
+                            render_epci_choropleth(
+                                con,
+                                df,
+                                target_id,
+                                geo_context.get("target_name", target_id),
+                                manual_metric,
+                                manual_spec,
+                                sql_query=sql_query
+                            )
+                        else:
+                            st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
 
-last_data_message = None
-for msg in reversed(st.session_state.messages):
-    if msg.get("role") == "assistant" and msg.get("data") is not None and not msg["data"].empty:
-        last_data_message = msg
-        break
-
-if last_data_message:
-    df = last_data_message["data"]
-    chart_config = last_data_message.get("chart_config", {})
-    formats = chart_config.get("formats", {})
-
-    # Contexte géographique
-    geo_context = st.session_state.get("current_geo_context", {})
-    target_id = str(geo_context.get("target_id", ""))
-
-    # Candidats numériques
-    numeric_candidates = []
-    for col in df.columns:
-        if col.upper() in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]:
-            continue
-        series = pd.to_numeric(df[col], errors="coerce")
-        if series.notna().any():
-            numeric_candidates.append(col)
-
-    _dbg("ui.persistent_buttons.candidates", count=len(numeric_candidates), target_id=target_id)
-
-    if numeric_candidates:
-        # ✅ WRAP DANS UNE BULLE -> alignement identique aux expanders du chat
-        with st.chat_message("assistant", avatar="🛠️"):
-            with st.expander("📊 Carte et graphique", expanded=False):
-
-                def format_metric_label(col):
-                    spec = formats.get(col, {})
-                    return spec.get("title") or spec.get("label") or col
-
-                c1, c2, c3 = st.columns([5, 1, 1], vertical_alignment="bottom")
-
-                manual_metric = c1.selectbox(
-                    "Choisir une variable",
-                    numeric_candidates,
-                    index=0,
-                    format_func=format_metric_label,
-                    key="persistent_manual_metric_select",
-                    label_visibility="collapsed",
-                )
-
-                manual_spec = formats.get(
-                    manual_metric,
-                    {"kind": "number", "label": manual_metric, "title": manual_metric}
-                )
-                manual_config = {"selected_columns": [manual_metric], "formats": {manual_metric: manual_spec}}
-
-                # IDs
-                debug_info = last_data_message.get("debug_info", {})
-                current_ids = debug_info.get("final_ids", geo_context.get("all_ids", []))
-
-                if c2.button("Graphique", use_container_width=True, key="persistent_manual_chart_button"):
-                    _dbg("button.persistent_chart.clicked", metric=manual_metric)
-                    auto_plot_data(df, current_ids, config=manual_config, con=con)
-
-                if c3.button("Carte", use_container_width=True, key="persistent_manual_map_button"):
-                    _dbg("button.persistent_map.clicked", target_id=target_id, manual_metric=manual_metric)
-
-                    is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                    is_epci = target_id.isdigit() and len(target_id) == 9
-
-                    if is_commune or is_epci:
-                        sql_query = debug_info.get("sql_query")
-
-                        render_epci_choropleth(
-                            con,
-                            df,
-                            target_id,
-                            geo_context.get("target_name", target_id),
-                            manual_metric,
-                            manual_spec,
-                            sql_query=sql_query
-                        )
-                    else:
-                        st.info("La carte est disponible pour une commune (4-5 chiffres) ou un EPCI (9 chiffres).")
-```
 else:
     _dbg("ui.persistent_buttons.no_data")
 
