@@ -3785,6 +3785,78 @@ if st.session_state.trigger_run_prompt:
 elif user_input:
     prompt_to_process = user_input
 
+# --- Helper pour messages d'attente personnalisés ---
+def get_waiting_message(step, territory_name=None, prompt=None):
+    """
+    Génère un message d'attente personnalisé basé sur le contexte.
+
+    Args:
+        step: Type d'étape ('reformulation', 'geo_search', 'rag', 'sql', 'viz', etc.)
+        territory_name: Nom du territoire détecté (optionnel)
+        prompt: Le prompt pour extraire des indices sur les indicateurs (optionnel)
+
+    Returns:
+        str: Message personnalisé
+    """
+    import hashlib
+
+    # Utiliser un hash du prompt pour avoir des variations déterministes
+    variant = 0
+    if prompt:
+        hash_val = int(hashlib.md5(prompt.encode()).hexdigest()[:4], 16)
+        variant = hash_val % 3  # 3 variations possibles
+
+    messages = {
+        'reformulation': [
+            "J'analyse votre demande...",
+            "Je reformule pour bien comprendre...",
+            "Je clarifie la question..."
+        ],
+        'geo_search': [
+            f"🌍 Je recherche {territory_name}..." if territory_name else "🌍 Je recherche les territoires mentionnés...",
+            f"🌍 Je localise {territory_name}..." if territory_name else "🌍 J'identifie les territoires...",
+            f"🌍 Détection de {territory_name}..." if territory_name else "🌍 Détection géographique en cours..."
+        ],
+        'rag': [
+            f"📚 Je cherche les indicateurs pour {territory_name}..." if territory_name else "📚 Je cherche les indicateurs pertinents dans le glossaire...",
+            f"📚 Je parcours le glossaire pour {territory_name}..." if territory_name else "📚 Je parcours le glossaire des variables...",
+            f"📚 Recherche des variables disponibles pour {territory_name}..." if territory_name else "📚 Recherche des variables disponibles..."
+        ],
+        'sql': [
+            f"🔢 Je récupère les données de {territory_name}..." if territory_name else "🔢 Je récupère les données chiffrées...",
+            f"🔢 Extraction des chiffres pour {territory_name}..." if territory_name else "🔢 Extraction des données statistiques...",
+            f"🔢 Je collecte les statistiques de {territory_name}..." if territory_name else "🔢 Je collecte les données..."
+        ],
+        'viz': [
+            f"🎨 Je prépare la visualisation pour {territory_name}..." if territory_name else "🎨 Je prépare la visualisation...",
+            "🎨 Je crée le graphique...",
+            "🎨 Mise en forme des résultats..."
+        ],
+        'fallback': [
+            "🔍 Recherche élargie du territoire avec l'IA...",
+            "🔍 Je cherche dans d'autres sources...",
+            "🔍 Recherche approfondie en cours..."
+        ],
+        'complete': [
+            "✅ Terminé",
+            "✅ Analyse terminée",
+            "✅ C'est prêt !"
+        ],
+        'not_found': [
+            "Aucune donnée trouvée",
+            "Aucun résultat",
+            "Pas de données disponibles"
+        ],
+        'error': [
+            "⚠️ Territoire non identifié",
+            "⚠️ Territoire introuvable",
+            "⚠️ Lieu non reconnu"
+        ]
+    }
+
+    return messages.get(step, ["En cours..."])[variant]
+
+
 # --- D. EXÉCUTION DU TRAITEMENT ---
 if prompt_to_process:
     print("[TERRIBOT] ===============================")
@@ -3816,8 +3888,8 @@ if prompt_to_process:
             
             # On crée le statut À L'INTÉRIEUR de ce placeholder
             with loader_placeholder:
-                status_container = st.status("J'analyse votre demande...", expanded=False)
-            
+                status_container = st.status(get_waiting_message('reformulation', prompt=prompt_to_process), expanded=False)
+
             # Le reste des initialisations reste inchangé...
             debug_container = {}
             debug_steps = []
@@ -3826,11 +3898,11 @@ if prompt_to_process:
             full_response_text = ""
             df = pd.DataFrame()
             chart_config = {}
-        
+
             try:
                 with status_container:
                     # 1. REFORMULATION
-                    status_container.update(label="Je reformule pour bien comprendre...")
+                    status_container.update(label=get_waiting_message('reformulation', prompt=prompt_to_process))
                     history_text = "\n".join([f"{m['role']}: {m.get('content','')}" for m in st.session_state.messages[-4:]])
                     current_geo_name = st.session_state.current_geo_context['target_name'] if st.session_state.current_geo_context else ""
 
@@ -3875,9 +3947,10 @@ if prompt_to_process:
 
                     # 2. GEO SCOPE
                     new_context = None
-                    status_container.update(label="🌍 Je recherche les territoires mentionnés...")
+                    current_territory = st.session_state.current_geo_context.get("target_name") if st.session_state.current_geo_context else None
+                    status_container.update(label=get_waiting_message('geo_search', territory_name=current_territory, prompt=rewritten_prompt))
                     _dbg("pipeline.geo.before", force_geo_context=bool(st.session_state.get("force_geo_context")),
-                        current_geo=st.session_state.current_geo_context.get("target_name") if st.session_state.current_geo_context else None)
+                        current_geo=current_territory)
 
                     # --- MODIFICATION ICI : Gestion du Verrou ---
                     if st.session_state.get("force_geo_context"):
@@ -4028,7 +4101,7 @@ if prompt_to_process:
 
                     elif not st.session_state.current_geo_context:
                         # 🆕 FALLBACK IA : Tenter une recherche sémantique dans territoires.txt
-                        status_container.update(label="🔍 Recherche élargie du territoire avec l'IA...")
+                        status_container.update(label=get_waiting_message('fallback', prompt=prompt_to_process))
                         fallback_context = ai_fallback_territory_search(con, prompt_to_process)
 
                         if fallback_context:
@@ -4042,7 +4115,7 @@ if prompt_to_process:
                             debug_steps.append({"icon": "🔎", "label": "Résolution Géo (Fallback IA)", "type": "table", "content": fallback_context["debug_search"]})
                         else:
                             # 🆕 DEMANDER DES PRÉCISIONS : Envoyer un message conversationnel
-                            status_container.update(label="⚠️ Territoire non identifié", state="error")
+                            status_container.update(label=get_waiting_message('error', prompt=prompt_to_process), state="error")
 
                             # Message demandant des précisions
                             clarification_message = """🤔 Je n'arrive pas à identifier le territoire dont vous parlez.
@@ -4075,7 +4148,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     if geo_context:
                         debug_container["final_ids"] = geo_context['all_ids']
                     # 3. RAG (Recherche Variables - Méthode Hybride)
-                    status_container.update(label="📚 Je cherche les indicateurs pertinents dans le glossaire...")
+                    territory_for_rag = geo_context.get('target_name') if geo_context else None
+                    status_container.update(label=get_waiting_message('rag', territory_name=territory_for_rag, prompt=rewritten_prompt))
                     # On appelle notre nouvelle fonction combinée
                     print("[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start")
                     _dbg("pipeline.rag.inputs", rewritten_prompt=rewritten_prompt[:200], df_glossaire_rows=len(df_glossaire))
@@ -4101,7 +4175,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     # 4. SQL GENERATION
                     ids_sql = ", ".join([f"'{str(i)}'" for i in geo_context['all_ids']])
                     parent_clause = geo_context.get('parent_clause', '')
-                    status_container.update(label="🔢 Je récupère les données chiffrées...")
+                    territory_for_sql = geo_context.get('target_name') if geo_context else None
+                    status_container.update(label=get_waiting_message('sql', territory_name=territory_for_sql, prompt=rewritten_prompt))
 
                     # Extraction des schémas complets des tables utilisées
                     try:
@@ -4189,9 +4264,10 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         
                         if not df.empty:
                             _dbg("sql.exec.head", head=df.head(3).to_dict(orient="records"))
-                            
-                            status_container.update(label="🎨 Je prépare la visualisation...")
-                            
+
+                            territory_for_viz = geo_context.get('target_name') if geo_context else None
+                            status_container.update(label=get_waiting_message('viz', territory_name=territory_for_viz, prompt=rewritten_prompt))
+
                             # On configure le graph PENDANT que le loader est encore là
                             print("[TERRIBOT][PIPE] 📈 get_chart_configuration() start")
                             chart_config = get_chart_configuration(df, rewritten_prompt, glossaire_context, client, MODEL_NAME)
@@ -4204,9 +4280,9 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             chart_config["formats"] = enhanced_formats
                             _dbg("pipeline.chart_config.enhanced", formats=enhanced_formats)
 
-                            status_container.update(label="Terminé", state="complete")
+                            status_container.update(label=get_waiting_message('complete', prompt=rewritten_prompt), state="complete")
                         else:
-                            status_container.update(label="Aucune donnée trouvée", state="error")
+                            status_container.update(label=get_waiting_message('not_found', prompt=rewritten_prompt), state="error")
                             message_placeholder.warning("Aucune donnée trouvée.")
                             st.stop()
 
