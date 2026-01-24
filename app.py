@@ -2385,16 +2385,26 @@ def analyze_territorial_scope(con, rewritten_prompt):
                 """Extrais TOUS les lieux géographiques et territoires mentionnés dans le texte.
 
                 IMPORTANT - Types de territoires à détecter :
-                - Communes (ex: "Paris", "L'Aigle", "Saint-Denis", "Fontenay")
+                - Communes (ex: "Paris", "L'Aigle", "Saint-Denis", "Fontenay", "Lyon", "Marseille")
                 - EPCI/Intercommunalités (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "Grand Paris", "CU d'Arras", "CA Durance Luberon")
                 - Départements (ex: "Orne", "61", "Hauts-de-Seine", "dans le 94", "département 04")
                 - Régions (ex: "Normandie", "Île-de-France", "PACA")
+                - Pays (ex: "France") - SEULEMENT si explicitement mentionné
 
-                RÈGLES :
-                - Conserve EXACTEMENT le nom complet tel qu'écrit (avec "CC", "CU", "CA", "Métropole", "Grand", etc.)
+                RÈGLES CRITIQUES :
+                - Extrait UNIQUEMENT les lieux EXPLICITEMENT mentionnés dans le texte
+                - NE DEVINE PAS de territoire plus large (ex: si "Saint-Denis" est mentionné, NE DIS PAS "France")
+                - NE GÉNÉRALISE PAS (ex: "Paris" ≠ "France", "Lyon" ≠ "France")
+                - Conserve EXACTEMENT le nom tel qu'écrit (avec "CC", "CU", "CA", "Métropole", "Grand", etc.)
                 - Ne raccourcis PAS les noms (garde "CC des Pays de L'Aigle", pas juste "L'Aigle")
                 - Si plusieurs territoires sont mentionnés, extrais-les tous
                 - Si un contexte département est précisé (ex: "dans le 94", "département 61"), extrais-le séparément
+
+                ATTENTION AUX PIÈGES :
+                - "Saint-Denis" → commune Saint-Denis (PAS "France")
+                - "Paris" → commune Paris (PAS "France")
+                - "Lyon" → commune Lyon (PAS "France")
+                - "taux de pauvreté en France" → pays France (OUI)
 
                 FORMAT DE RÉPONSE JSON :
                 {
@@ -2402,10 +2412,15 @@ def analyze_territorial_scope(con, rewritten_prompt):
                     "departement_context": "94" OU null
                 }
 
-                Exemples :
+                EXEMPLES :
+                - "Quel est le taux de pauvreté à Saint-Denis ?" → {"lieux": ["Saint-Denis"], "departement_context": null}
                 - "Fontenay dans le 94" → {"lieux": ["Fontenay"], "departement_context": "94"}
                 - "CC Durance Luberon" → {"lieux": ["CC Durance Luberon"], "departement_context": null}
                 - "Manosque, Alpes-de-Haute-Provence" → {"lieux": ["Manosque"], "departement_context": "04"}
+                - "Quel est le taux de chômage en France ?" → {"lieux": ["France"], "departement_context": null}
+                - "Population de Lyon" → {"lieux": ["Lyon"], "departement_context": null}
+
+                RÉPONDS UNIQUEMENT AVEC LE JSON, SANS EXPLICATION.
                 """,
                 rewritten_prompt,
             ),
@@ -3825,11 +3840,25 @@ if prompt_to_process:
                         model=MODEL_NAME,
                         input=build_messages(
                             f"""
-                            Tu es un expert en reformulation. CONTEXTE GEO ACTUEL : '{current_geo_name}'.
+                            Tu es un expert en reformulation de questions territoriales. CONTEXTE GEO ACTUEL : '{current_geo_name}'.
+
                             OBJECTIFS :
-                            1. Rendre la question autonome.
-                            2. SI "ramène à la population" ou "et pour X ?", REPRENDS le SUJET PRÉCÉDENT.
-                            3. Si aucun lieu explicite dans la question, réinjecte '{current_geo_name}'.
+                            1. Rendre la question autonome et claire
+                            2. SI "ramène à la population" ou "et pour X ?", REPRENDS le SUJET PRÉCÉDENT
+                            3. Si aucun lieu explicite dans la question, réinjecte '{current_geo_name}'
+
+                            RÈGLES CRITIQUES :
+                            - CONSERVE EXACTEMENT les noms de lieux mentionnés (ex: "Saint-Denis" reste "Saint-Denis", PAS "France")
+                            - NE généralise PAS un lieu spécifique vers un territoire plus large
+                            - NE remplace PAS un nom de commune/ville par un pays/région
+                            - Si l'utilisateur mentionne "Saint-Denis", "Paris", "Lyon", etc., GARDE le nom exact
+
+                            EXEMPLES :
+                            - "Quel est le taux de pauvreté à Saint-Denis ?" → "Quel est le taux de pauvreté à Saint-Denis ?"
+                            - "et pour Fontenay ?" (après Paris) → "Quel est le taux de pauvreté à Fontenay ?"
+                            - "quelle est la population ?" (contexte: Lyon) → "Quelle est la population de Lyon ?"
+
+                            RÉPONDS UNIQUEMENT AVEC LA QUESTION REFORMULÉE, SANS EXPLICATION.
                             """,
                             f"Historique:\n{history_text}\n\nDernière question: {prompt_to_process}",
                         )
