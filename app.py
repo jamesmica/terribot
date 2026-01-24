@@ -311,6 +311,55 @@ def _dbg(label, **kw):
     except Exception:
         pass
 
+# --- HELPER FUNCTIONS FOR INSEE CODES ---
+def is_valid_insee_code(code_str):
+    """
+    Vérifie si une chaîne est un code INSEE valide (commune, EPCI, etc.).
+    Gère les cas spéciaux de la Corse (2A, 2B).
+
+    Returns:
+        bool: True si le code est valide
+    """
+    if not code_str:
+        return False
+
+    code_str = str(code_str).strip()
+
+    # Codes purement numériques (communes, EPCI, etc.)
+    if code_str.isdigit():
+        return True
+
+    # Codes Corse : commence par 2A ou 2B suivi de chiffres
+    # Ex: "2A004", "2B033"
+    if len(code_str) >= 3:
+        dept_prefix = code_str[:2].upper()
+        if dept_prefix in ['2A', '2B']:
+            # Vérifier que le reste est numérique
+            rest = code_str[2:]
+            return rest.isdigit() if rest else True
+
+    return False
+
+def is_commune_or_epci_code(code_str):
+    """
+    Vérifie si un code est un code de commune (4-5 caractères) ou EPCI (9 caractères).
+    Gère les codes Corse (2A, 2B).
+
+    Returns:
+        bool: True si le code est un code de commune ou EPCI
+    """
+    if not code_str:
+        return False
+
+    code_str = str(code_str).strip()
+
+    # Vérifier que c'est un code INSEE valide
+    if not is_valid_insee_code(code_str):
+        return False
+
+    # Vérifier la longueur
+    return len(code_str) in (4, 5, 9)
+
 # --- 1. CONFIGURATION & STYLE (DOIT ÊTRE EN PREMIER) ---
 st.set_page_config(
     page_title="Terribot | Assistant Territorial",
@@ -1321,9 +1370,9 @@ def search_territory_smart(con, input_str):
     _dbg("geo.search_smart.dept", dept_code=dept_code, clean_input=clean_input)
 
     # 2. Match Exact sur le Code INSEE (Priorité Absolue)
-    if input_str.strip().isdigit():
+    if is_valid_insee_code(input_str.strip()):
         try:
-            _dbg("geo.search_smart.sql", sql=("ID_exact" if input_str.strip().isdigit() else "strict_or_fuzzy"))
+            _dbg("geo.search_smart.sql", sql=("ID_exact" if is_valid_insee_code(input_str.strip()) else "strict_or_fuzzy"))
             res = con.execute("SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = ? LIMIT 1", [input_str.strip()]).fetchone()
             if res: return res
         except: pass
@@ -1640,10 +1689,17 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
     1. Si l'utilisateur tape juste le nom d'une ville (ex: "Dunkerque", "Manosque"), c'est TOUJOURS la "Commune" (ID 4 ou 5 chiffres). Pas l'EPCI, pas le Département.
        ⚠️ MÊME si le contexte mentionne un département (ex: "Manosque, Alpes-de-Haute-Provence"), choisis LA COMMUNE.
 
-    2. Si l'utilisateur précise explicitement un EPCI avec son préfixe (ex: "CC Durance Luberon", "Métropole de Lyon", "CU d'Arras"):
+    1bis. ARRONDISSEMENTS : Si l'utilisateur mentionne un arrondissement (ex: "15e arrondissement de Paris", "3ème arrondissement de Lyon", "Marseille 8e"):
+       - Cherche UNIQUEMENT le candidat de type "Commune" correspondant à cet arrondissement spécifique
+       - Format dans la base : "Paris 15e Arrondissement" (code 75115), "Lyon 3e Arrondissement" (69383), "Marseille 8e Arrondissement" (13208)
+       - NE choisis JAMAIS la commune principale (Paris, Lyon, Marseille) si un numéro d'arrondissement est mentionné
+       - Match le numéro exact de l'arrondissement
+
+    2. Si l'utilisateur précise explicitement un EPCI avec son préfixe (ex: "CC Durance Luberon", "CA Durance Lubéron Verdon", "Métropole de Lyon", "CU d'Arras"):
        - Cherche UNIQUEMENT le candidat de type "EPCI/Interco" (ID 9 chiffres)
        - NE CHOISIS JAMAIS le département, même s'il est mentionné dans le contexte
-       - Match EXACTEMENT le nom de l'EPCI mentionné
+       - Match le nom de l'EPCI en ignorant les variantes d'orthographe (Luberon/Lubéron, tirets, espaces)
+       - Privilégie les candidats contenant tous les mots-clés du nom recherché
 
     3. Si l'utilisateur tape SEULEMENT un nom de département (ex: "Alpes-de-Haute-Provence") OU un numéro (ex: "04"), c'est le Département.
 
@@ -2662,7 +2718,7 @@ def render_epci_choropleth(
 
     # Détecter si l'ID passé est une commune ou un EPCI
     commune_id_str = str(commune_id)
-    is_epci = commune_id_str.isdigit() and len(commune_id_str) == 9
+    is_epci = is_valid_insee_code(commune_id_str) and len(commune_id_str) == 9
 
     if is_epci:
         # L'ID est déjà un EPCI, on l'utilise directement
@@ -3784,6 +3840,10 @@ if st.session_state.trigger_run_prompt:
 # Priorité 2 : L'utilisateur vient de taper une nouvelle question
 elif user_input:
     prompt_to_process = user_input
+    # Effacer les anciens boutons de confirmation quand l'utilisateur tape un nouveau prompt
+    st.session_state.ambiguity_candidates = None
+    st.session_state.pending_prompt = None
+    st.session_state.pending_geo_text = None
 
 # --- Helper pour messages d'attente personnalisés ---
 def get_waiting_message(step, territory_name=None, prompt=None):
@@ -3947,8 +4007,8 @@ if prompt_to_process:
 
                     # 2. GEO SCOPE
                     new_context = None
-                    current_territory = st.session_state.current_geo_context.get("target_name") if st.session_state.current_geo_context else None
-                    status_container.update(label=get_waiting_message('geo_search', territory_name=current_territory, prompt=rewritten_prompt))
+                    # Ne pas afficher l'ancien nom de territoire pendant la recherche du nouveau
+                    status_container.update(label=get_waiting_message('geo_search', territory_name=None, prompt=rewritten_prompt))
                     _dbg("pipeline.geo.before", force_geo_context=bool(st.session_state.get("force_geo_context")),
                         current_geo=current_territory)
 
@@ -4304,7 +4364,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     map_allowed = metric_kind == "percent" or any(
                         kw in metric_label for kw in ["taux", "part", "ratio", "moyen", "moyenne", "médiane"]
                     )
-                    is_commune_or_epci = target_id and target_id.isdigit() and len(target_id) in (4, 5, 9)
+                    is_commune_or_epci = target_id and is_commune_or_epci_code(target_id)
                     map_eligible = map_allowed and is_commune_or_epci and metric_col
 
                     _dbg(
@@ -4547,8 +4607,8 @@ if "sidebar_viz_placeholder" in st.session_state:
                         if viz_type == "📊 Graphique":
                             auto_plot_data(df, final_ids, config=manual_config, con=con, in_sidebar=True)
                         elif viz_type == "🗺️ Carte":
-                            is_commune = target_id.isdigit() and len(target_id) in (4, 5)
-                            is_epci = target_id.isdigit() and len(target_id) == 9
+                            is_commune = is_valid_insee_code(target_id) and len(target_id) in (4, 5)
+                            is_epci = is_valid_insee_code(target_id) and len(target_id) == 9
                             if is_commune or is_epci:
                                 render_epci_choropleth(
                                     con,
