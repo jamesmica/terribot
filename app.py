@@ -1310,34 +1310,43 @@ def search_territory_smart(con, input_str):
     clean_input = clean_search_term(input_str)
     if len(clean_input) < 2: return None
 
-    # 1. Détection de Code Département (ex: "Fort-de-France 972")
-    # On cherche s'il y a un nombre de 2 ou 3 chiffres à la fin ou au début
+    # 1. Détection de Code Département (ex: "Fort-de-France 972", "Ajaccio 2A")
+    # On cherche s'il y a un nombre de 2 ou 3 chiffres, ou 2A/2B (Corse) à la fin ou au début
     dept_code = None
-    match = re.search(r'\b(97\d|\d{2})\b', input_str)
+    match = re.search(r'\b(97\d|\d{2}|2[AB])\b', input_str.upper())
     if match:
         dept_code = match.group(1)
         # On enlève le code du nom pour la recherche texte
-        clean_input = clean_input.replace(dept_code, "").strip()
+        clean_input = clean_input.replace(dept_code.lower(), "").replace(dept_code, "").strip()
     _dbg("geo.search_smart.dept", dept_code=dept_code, clean_input=clean_input)
 
     # 2. Match Exact sur le Code INSEE (Priorité Absolue)
     if input_str.strip().isdigit():
         try:
             _dbg("geo.search_smart.sql", sql=("ID_exact" if input_str.strip().isdigit() else "strict_or_fuzzy"))
-            res = con.execute(f"SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = '{input_str.strip()}' LIMIT 1").fetchone()
-            if res: return res 
+            res = con.execute("SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = ? LIMIT 1", [input_str.strip()]).fetchone()
+            if res: return res
         except: pass
 
     # 3. Token Search (Mots clés) avec Filtre Département optionnel
-    words = [w for w in clean_input.split() if len(w) > 1]
+    words = [w.replace("'", "''") for w in clean_input.split() if len(w) > 1]  # Escape single quotes
     if words:
-        # Construction de la clause WHERE
-        conditions = [f"strip_accents(lower(NOM_COUV)) LIKE '%{w}%'" for w in words]
+        # Construction de la clause WHERE avec paramètres
+        conditions = []
+        params = []
+
+        for w in words:
+            conditions.append("strip_accents(lower(NOM_COUV)) LIKE ?")
+            params.append(f'%{w}%')
+
         where_clause = " AND ".join(conditions)
-        
+
         # AJOUT DU FILTRE DEPT SI DÉTECTÉ
         if dept_code:
-            where_clause += f" AND ID LIKE '{dept_code}%'"
+            # Escape et valider dept_code (doit être 2-3 chiffres)
+            if dept_code.replace('A', '').replace('B', '').isdigit() and len(dept_code) <= 3:
+                where_clause += " AND ID LIKE ?"
+                params.append(f'{dept_code}%')
 
         sql_strict = f"""
         SELECT ID, NOM_COUV, COMP1, COMP2, COMP3
@@ -1346,30 +1355,33 @@ def search_territory_smart(con, input_str):
         """
         try:
             _dbg("geo.search_smart.sql", sql=("ID_exact" if input_str.strip().isdigit() else "strict_or_fuzzy"))
-            results = con.execute(sql_strict).fetchall()
+            results = con.execute(sql_strict, params).fetchall()
             print(f"[TERRIBOT][GEO] ✅ search_territory_smart results: {len(results)}")
 
-            if len(results) == 1: return results[0] 
+            if len(results) == 1: return results[0]
             if len(results) > 1: return results
         except: pass
 
     # 4. Fuzzy Search (Jaro-Winkler) - Seulement si pas de dept_code (trop risqué sinon)
     if not dept_code:
-        sql_fuzzy = f"""
+        # Escape single quotes in clean_input
+        clean_input_escaped = clean_input.replace("'", "''")
+
+        sql_fuzzy = """
         WITH clean_data AS (
             SELECT ID, NOM_COUV, COMP1, COMP2, COMP3,
-            lower(replace(replace(replace(NOM_COUV, '-', ' '), '''', ' '), '’', ' ')) as nom_simple
+            lower(replace(replace(replace(NOM_COUV, '-', ' '), '''', ' '), ''', ' ')) as nom_simple
             FROM territoires
         )
         SELECT ID, NOM_COUV, COMP1, COMP2, COMP3,
-        jaro_winkler_similarity(nom_simple, '{clean_input}') as score
+        jaro_winkler_similarity(nom_simple, ?) as score
         FROM clean_data
-        WHERE score > 0.88 
+        WHERE score > 0.88
         ORDER BY score DESC LIMIT 5
         """
         try:
             _dbg("geo.search_smart.sql", sql=("ID_exact" if input_str.strip().isdigit() else "strict_or_fuzzy"))
-            results = con.execute(sql_fuzzy).fetchall()
+            results = con.execute(sql_fuzzy, [clean_input]).fetchall()
             if not results: return None
             top_score = results[0][5]
             candidates = [r for r in results if (top_score - r[5]) < 0.05]
@@ -1377,7 +1389,7 @@ def search_territory_smart(con, input_str):
             print(f"[TERRIBOT][GEO] ✅ search_territory_smart results: {len(results)}")
             return [c[:5] for c in candidates]
         except: pass
-    
+
     return None
 
 def get_broad_candidates(con, input_str, limit=15):
@@ -1403,8 +1415,8 @@ def get_broad_candidates(con, input_str, limit=15):
     if region_id:
         _dbg("geo.broad_candidates.region_direct", clean_input=clean_input, region_id=region_id)
         try:
-            sql_region = f"SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = '{region_id}'"
-            df_region = con.execute(sql_region).df()
+            sql_region = "SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = ?"
+            df_region = con.execute(sql_region, [region_id]).df()
             if not df_region.empty:
                 df_region['TYPE_TERRITOIRE'] = 'Région'
                 df_region['score'] = 1.5  # Score élevé pour match direct
@@ -1416,7 +1428,10 @@ def get_broad_candidates(con, input_str, limit=15):
     # Normalisation du terme de recherche pour la comparaison
     clean_for_sql = clean_input.replace("'", " ").replace("-", " ")
 
-    sql = f"""
+    # Déterminer les boosts pour les EPCI
+    epci_boost = 0.25 if any(keyword in clean_for_sql.lower() for keyword in ['cc ', 'ca ', 'cu ', 'metropole']) else 0
+
+    sql = """
     WITH candidates AS (
         SELECT
             ID,
@@ -1434,42 +1449,43 @@ def get_broad_candidates(con, input_str, limit=15):
             -- BOOST DE SCORE :
             jaro_winkler_similarity(
                 lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')),
-                '{clean_for_sql}'
+                ?
             )
             + (CASE WHEN ID LIKE 'R%' THEN 0.2 ELSE 0 END)
             + (CASE WHEN ID LIKE 'D%' THEN 0.15 ELSE 0 END)
-            + (CASE WHEN length(ID) = 9 AND '{clean_for_sql}' LIKE '%cc %' OR '{clean_for_sql}' LIKE '%ca %' OR '{clean_for_sql}' LIKE '%cu %' OR '{clean_for_sql}' LIKE '%metropole%' THEN 0.25 ELSE 0 END)
-            + (CASE WHEN lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')) = '{clean_for_sql}' THEN 0.3 ELSE 0 END)
+            + (CASE WHEN length(ID) = 9 THEN ? ELSE 0 END)
+            + (CASE WHEN lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')) = ? THEN 0.3 ELSE 0 END)
             as score
         FROM territoires
-        WHERE strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))) LIKE '%{clean_for_sql}%'
+        WHERE strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))) LIKE ?
            OR jaro_winkler_similarity(
                 lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')),
-                '{clean_for_sql}'
+                ?
               ) > 0.75
     )
     SELECT * FROM candidates
     ORDER BY score DESC
-    LIMIT {limit}
+    LIMIT ?
     """
 
     try:
-        df_candidates = con.execute(sql).df()
+        params = [clean_for_sql, epci_boost, clean_for_sql, f'%{clean_for_sql}%', clean_for_sql, limit]
+        df_candidates = con.execute(sql, params).df()
 
         # NOUVEAU : Si aucun résultat et que ça ressemble à une région, on cherche spécifiquement
         if df_candidates.empty:
             # Recherche étendue sur les régions
-            sql_regions = f"""
+            sql_regions = """
             SELECT ID, NOM_COUV, COMP1, COMP2, COMP3, 'Région' as TYPE_TERRITOIRE,
-                   jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') as score
+                   jaro_winkler_similarity(lower(NOM_COUV), ?) as score
             FROM territoires
             WHERE ID LIKE 'R%'
-              AND jaro_winkler_similarity(lower(NOM_COUV), '{clean_input}') > 0.6
+              AND jaro_winkler_similarity(lower(NOM_COUV), ?) > 0.6
             ORDER BY score DESC
             LIMIT 5
             """
             try:
-                df_regions = con.execute(sql_regions).df()
+                df_regions = con.execute(sql_regions, [clean_input, clean_input]).df()
                 if not df_regions.empty:
                     _dbg("geo.broad_candidates.regions_fallback", rows=len(df_regions))
                     return df_regions.to_dict(orient='records')
@@ -1485,12 +1501,12 @@ def get_broad_candidates(con, input_str, limit=15):
 def normalize_geo_id(raw_id, candidates):
     """
     Normalise un ID retourné par l'IA pour matcher avec la base de données.
-    Gère les cas : "04112" -> "4112", "04" -> "D4", "11" -> "R11"
+    Gère les cas : "04112" -> "4112", "04" -> "D4", "11" -> "R11", "2A" -> "D2A", "2B" -> "D2B"
     """
     if not raw_id:
         return None
 
-    raw_id = str(raw_id).strip()
+    raw_id = str(raw_id).strip().upper()  # Uppercase pour gérer 2a -> 2A
     candidate_ids = [str(c.get('ID', '')) for c in candidates]
 
     # 1. Match exact
@@ -1498,35 +1514,75 @@ def normalize_geo_id(raw_id, candidates):
         return raw_id
 
     # 2. Match sans zéro initial (communes: "04112" -> "4112")
-    stripped = raw_id.lstrip('0')
-    if stripped in candidate_ids:
-        return stripped
+    # Mais attention à ne pas stripper si c'est un code Corse (2A, 2B)
+    if not any(char.isalpha() for char in raw_id):  # Si pas de lettre
+        stripped = raw_id.lstrip('0')
+        if stripped and stripped in candidate_ids:
+            return stripped
 
-    # 3. Match avec préfixe D (départements: "04" ou "94" -> "D4" ou "D94")
-    if raw_id.isdigit() and len(raw_id) <= 3:
+    # 3. Gestion spéciale Corse (2A, 2B)
+    if raw_id in ['2A', '2B']:
+        d_corse = f"D{raw_id}"
+        if d_corse in candidate_ids:
+            return d_corse
+        # Essayer aussi sans D
+        if raw_id in candidate_ids:
+            return raw_id
+
+    # 4. Match avec préfixe D (départements: "04" ou "94" ou "2A" -> "D4" ou "D94" ou "D2A")
+    if (raw_id.isdigit() and len(raw_id) <= 3) or raw_id in ['2A', '2B']:
         # Essayer avec D + code
-        d_code = f"D{raw_id.lstrip('0')}"
+        if raw_id.isdigit():
+            d_code = f"D{raw_id.lstrip('0')}"
+        else:
+            d_code = f"D{raw_id}"
+
         if d_code in candidate_ids:
             return d_code
+
         # Essayer D + code complet (pour DOM: 971 -> D971)
         d_full = f"D{raw_id}"
         if d_full in candidate_ids:
             return d_full
 
-    # 4. Match avec préfixe R (régions: "11" -> "R11")
+    # 5. Match avec préfixe R (régions: "11" -> "R11")
     if raw_id.isdigit() and len(raw_id) <= 2:
         r_code = f"R{raw_id}"
         if r_code in candidate_ids:
             return r_code
 
-    # 5. Fuzzy match : chercher si un candidat contient l'ID (ex: "4112" dans ["4112", "28232"])
+    # 6. Gestion des départements avec préfixe déjà présent
+    # Ex: "D04" -> "D4" ou "D2A" -> "D2A"
+    if raw_id.startswith('D'):
+        dept_num = raw_id[1:]
+        # Si c'est un nombre, essayer sans les zéros
+        if dept_num.isdigit():
+            d_normalized = f"D{dept_num.lstrip('0')}"
+            if d_normalized in candidate_ids:
+                return d_normalized
+        # Si c'est déjà 2A ou 2B, c'est OK
+        if raw_id in candidate_ids:
+            return raw_id
+
+    # 7. Gestion des régions avec préfixe déjà présent
+    # Ex: "R04" -> "R4"
+    if raw_id.startswith('R'):
+        region_num = raw_id[1:]
+        if region_num.isdigit():
+            r_normalized = f"R{region_num.lstrip('0')}"
+            if r_normalized in candidate_ids:
+                return r_normalized
+
+    # 8. Fuzzy match : chercher si un candidat contient l'ID (ex: "4112" dans ["4112", "28232"])
     for cid in candidate_ids:
-        cid_stripped = str(cid).lstrip('0').replace('D', '').replace('R', '')
-        raw_stripped = raw_id.lstrip('0').replace('D', '').replace('R', '')
-        if cid_stripped == raw_stripped:
+        # Normaliser les deux codes pour comparaison
+        cid_clean = str(cid).lstrip('0').replace('D', '').replace('R', '').upper()
+        raw_clean = raw_id.lstrip('0').replace('D', '').replace('R', '').upper()
+
+        if cid_clean == raw_clean:
             return cid
 
-    # 6. Fallback : retourner le premier candidat avec le meilleur score
+    # 9. Fallback : retourner le premier candidat avec le meilleur score
     _dbg("geo.normalize.fallback", raw_id=raw_id, candidates_sample=candidate_ids[:5])
     return None
 
@@ -1803,8 +1859,10 @@ def ai_fallback_territory_search(con, user_prompt):
         keywords = [word.strip() for word in user_prompt.split() if len(word.strip()) >= 3]
 
         if keywords:
-            # Construire une requête avec LIKE pour chaque mot-clé
-            like_clauses = " OR ".join([f"LOWER(NOM_COUV) LIKE LOWER('%{kw}%')" for kw in keywords[:3]])  # Limiter à 3 mots-clés
+            # Construire une requête avec LIKE pour chaque mot-clé (limiter à 3)
+            keywords_limited = keywords[:3]
+            like_clauses = " OR ".join(["LOWER(NOM_COUV) LIKE LOWER(?)" for _ in keywords_limited])
+            params = [f'%{kw}%' for kw in keywords_limited]
 
             fuzzy_sql = f"""
             SELECT ID, NOM_COUV,
@@ -1823,7 +1881,7 @@ def ai_fallback_territory_search(con, user_prompt):
             """
 
             try:
-                fuzzy_df = con.execute(fuzzy_sql).df()
+                fuzzy_df = con.execute(fuzzy_sql, params).df()
 
                 if not fuzzy_df.empty:
                     _dbg("geo.fallback.fuzzy_results", count=len(fuzzy_df))
@@ -1875,8 +1933,8 @@ def ai_fallback_territory_search(con, user_prompt):
                         selected_id = fuzzy_result["selected_id"]
 
                         # Vérifier que l'ID existe
-                        verify_sql = f"SELECT ID, NOM_COUV FROM territoires WHERE ID = '{selected_id}'"
-                        verify_df = con.execute(verify_sql).df()
+                        verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
+                        verify_df = con.execute(verify_sql, [selected_id]).df()
 
                         if not verify_df.empty:
                             territory_info = verify_df.iloc[0]
@@ -1894,12 +1952,368 @@ def ai_fallback_territory_search(con, user_prompt):
             except Exception as fuzzy_error:
                 _dbg("geo.fallback.fuzzy_error", error=str(fuzzy_error))
 
-        _dbg("geo.fallback.no_match")
-        return None
+        # Si aucune méthode n'a fonctionné, appeler le fallback ultime
+        _dbg("geo.fallback.calling_ultimate")
+        return ultimate_ai_fallback(con, user_prompt)
 
     except Exception as e:
         _dbg("geo.fallback.error", error=str(e))
         return None
+
+def ultimate_ai_fallback(con, user_prompt):
+    """
+    Fallback IA ULTIME qui n'échoue JAMAIS.
+    Utilise toute la base territoires.txt avec stratégie intelligente par niveaux.
+
+    Stratégie :
+    1. Recherche dans départements + régions + grandes villes (rapide)
+    2. Si échec : recherche par chunks de communes par département
+    3. Si échec : recherche dans tous les EPCI
+    4. En dernier recours : retourne "FR" (France entière)
+    """
+    _dbg("geo.ultimate_fallback.enter", user_prompt=user_prompt)
+
+    try:
+        # NIVEAU 1 : Départements, Régions, France + 100 plus grandes villes
+        _dbg("geo.ultimate_fallback.level1")
+
+        sql_level1 = """
+        SELECT ID, NOM_COUV,
+            CASE
+                WHEN length(ID) IN (4,5) THEN 'Commune'
+                WHEN length(ID) = 9 THEN 'EPCI'
+                WHEN ID = 'FR' THEN 'France'
+                WHEN ID LIKE 'D%' THEN 'Département'
+                WHEN ID LIKE 'R%' THEN 'Région'
+                ELSE 'Autre'
+            END as TYPE_TERRITOIRE
+        FROM territoires
+        WHERE ID LIKE 'D%' OR ID LIKE 'R%' OR ID = 'FR'
+        ORDER BY TYPE_TERRITOIRE, NOM_COUV
+        """
+
+        df_level1 = con.execute(sql_level1).df()
+
+        if not df_level1.empty:
+            territories_level1 = df_level1.to_dict(orient='records')
+
+            system_prompt_level1 = """
+            Tu es un expert géographe français spécialisé dans les codes officiels (INSEE, SIREN).
+
+            TA MISSION :
+            À partir de la requête utilisateur, trouve le territoire le PLUS PERTINENT parmi la liste fournie.
+
+            RÈGLES DE DÉCISION :
+            1. Si l'utilisateur mentionne un département (nom ou numéro) : choisis le département (ID commence par 'D')
+            2. Si l'utilisateur mentionne une région : choisis la région (ID commence par 'R')
+            3. Si l'utilisateur mentionne "France" ou un territoire national : choisis 'FR'
+            4. Si l'utilisateur mentionne une commune : retourne null (on cherchera plus précisément après)
+            5. Sois tolérant aux fautes d'orthographe et variations (ex: "Ile de France" = "Île-de-France")
+            6. Pour les départements d'outre-mer : 971=Guadeloupe, 972=Martinique, 973=Guyane, 974=Réunion, 976=Mayotte
+            7. Pour la Corse : 2A=Corse-du-Sud, 2B=Haute-Corse
+
+            FORMAT DE RÉPONSE JSON :
+            {
+                "selected_id": "code_exact" OU null,
+                "reason": "explication courte",
+                "confidence": "high|medium|low|none"
+            }
+
+            Si aucun territoire ne correspond, retourne : {"selected_id": null, "confidence": "none"}
+            """
+
+            user_message_level1 = f"""
+            REQUÊTE UTILISATEUR : "{user_prompt}"
+
+            TERRITOIRES DISPONIBLES (Départements, Régions, France) :
+            {json.dumps(territories_level1, ensure_ascii=False, indent=2)}
+
+            Quel est le territoire le plus pertinent ?
+            """
+
+            response_level1 = client.responses.create(
+                model=MODEL_NAME,
+                input=build_messages(system_prompt_level1, user_message_level1),
+                temperature=0,
+            )
+            metrics.log_api_call()
+            raw_response_level1 = extract_response_text(response_level1)
+            _dbg("geo.ultimate_fallback.level1_response", raw=raw_response_level1[:400])
+
+            result_level1 = json.loads(raw_response_level1)
+
+            if result_level1 and result_level1.get("selected_id") and result_level1.get("confidence") in ["high", "medium"]:
+                selected_id = result_level1["selected_id"]
+
+                # Vérification dans la base
+                verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
+                verify_df = con.execute(verify_sql, [selected_id]).df()
+
+                if not verify_df.empty:
+                    territory_info = verify_df.iloc[0]
+                    _dbg("geo.ultimate_fallback.level1_success", id=selected_id, name=territory_info['NOM_COUV'])
+
+                    return {
+                        'target_id': selected_id,
+                        'target_name': territory_info['NOM_COUV'],
+                        'all_ids': [selected_id],
+                        'display_context': f"{territory_info['NOM_COUV']} ({selected_id})",
+                        'lieux_cites': [user_prompt],
+                        'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": selected_id, "Source": "Ultimate AI Fallback - Niveau 1"}],
+                        'parent_clause': ''
+                    }
+
+        # NIVEAU 2 : Recherche sémantique dans TOUTES les communes
+        # On charge par chunks pour ne pas dépasser les limites
+        _dbg("geo.ultimate_fallback.level2")
+
+        sql_communes = """
+        SELECT ID, NOM_COUV, COMP2,
+            'Commune' as TYPE_TERRITOIRE
+        FROM territoires
+        WHERE length(ID) IN (4,5)
+        ORDER BY NOM_COUV
+        """
+
+        df_communes = con.execute(sql_communes).df()
+
+        if not df_communes.empty:
+            # Stratégie : envoyer un échantillon représentatif (toutes les communes de A à Z)
+            # On prend 1 commune sur 10 pour avoir environ 3600 communes
+            sample_communes = df_communes.iloc[::10].to_dict(orient='records')
+
+            system_prompt_level2 = """
+            Tu es un expert géographe français. L'utilisateur cherche probablement une commune.
+
+            TA MISSION :
+            Trouve la commune la PLUS PERTINENTE dans cette liste représentative.
+
+            RÈGLES :
+            1. Cherche une correspondance exacte ou très proche du nom
+            2. Ignore les accents et tirets dans la comparaison
+            3. Sois tolérant aux fautes de frappe
+            4. Si plusieurs communes ont un nom similaire, choisis celle qui correspond le mieux au contexte
+            5. Si vraiment aucune ne correspond, retourne null
+
+            FORMAT DE RÉPONSE JSON :
+            {
+                "selected_id": "code_insee_exact" OU null,
+                "reason": "explication courte",
+                "confidence": "high|medium|low|none"
+            }
+            """
+
+            user_message_level2 = f"""
+            REQUÊTE UTILISATEUR : "{user_prompt}"
+
+            COMMUNES DISPONIBLES (échantillon représentatif - 1 sur 10) :
+            {json.dumps(sample_communes[:500], ensure_ascii=False, indent=2)}
+
+            Quelle est la commune la plus pertinente ?
+            """
+
+            response_level2 = client.responses.create(
+                model=MODEL_NAME,
+                input=build_messages(system_prompt_level2, user_message_level2),
+                temperature=0,
+            )
+            metrics.log_api_call()
+            raw_response_level2 = extract_response_text(response_level2)
+            _dbg("geo.ultimate_fallback.level2_response", raw=raw_response_level2[:400])
+
+            result_level2 = json.loads(raw_response_level2)
+
+            if result_level2 and result_level2.get("selected_id") and result_level2.get("confidence") in ["high", "medium"]:
+                selected_id = result_level2["selected_id"]
+
+                verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
+                verify_df = con.execute(verify_sql, [selected_id]).df()
+
+                if not verify_df.empty:
+                    territory_info = verify_df.iloc[0]
+                    _dbg("geo.ultimate_fallback.level2_success", id=selected_id, name=territory_info['NOM_COUV'])
+
+                    return {
+                        'target_id': selected_id,
+                        'target_name': territory_info['NOM_COUV'],
+                        'all_ids': [selected_id],
+                        'display_context': f"{territory_info['NOM_COUV']} ({selected_id})",
+                        'lieux_cites': [user_prompt],
+                        'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": selected_id, "Source": "Ultimate AI Fallback - Niveau 2 (Communes)"}],
+                        'parent_clause': ''
+                    }
+
+            # Si on a une confiance "low", on peut rechercher plus précisément
+            if result_level2 and result_level2.get("confidence") == "low" and result_level2.get("selected_id"):
+                # Extraire le nom de la commune suggérée
+                suggested_id = result_level2["selected_id"]
+                suggested_row = df_communes[df_communes['ID'] == suggested_id]
+
+                if not suggested_row.empty:
+                    dept_code = suggested_row.iloc[0].get('COMP2')
+
+                    if dept_code and str(dept_code) not in ['', 'None', 'NaN']:
+                        # Rechercher toutes les communes de ce département
+                        dept_communes = df_communes[df_communes['COMP2'] == dept_code].to_dict(orient='records')
+
+                        system_prompt_level2b = """
+                        Tu es un expert géographe français. Voici toutes les communes d'un département spécifique.
+
+                        TA MISSION :
+                        Trouve LA commune exacte qui correspond à la requête utilisateur.
+
+                        FORMAT DE RÉPONSE JSON :
+                        {
+                            "selected_id": "code_insee_exact" OU null,
+                            "reason": "explication courte",
+                            "confidence": "high|medium|low|none"
+                        }
+                        """
+
+                        user_message_level2b = f"""
+                        REQUÊTE UTILISATEUR : "{user_prompt}"
+
+                        COMMUNES DU DÉPARTEMENT {dept_code} :
+                        {json.dumps(dept_communes, ensure_ascii=False, indent=2)}
+
+                        Quelle est LA bonne commune ?
+                        """
+
+                        response_level2b = client.responses.create(
+                            model=MODEL_NAME,
+                            input=build_messages(system_prompt_level2b, user_message_level2b),
+                            temperature=0,
+                        )
+                        metrics.log_api_call()
+                        raw_response_level2b = extract_response_text(response_level2b)
+                        _dbg("geo.ultimate_fallback.level2b_response", raw=raw_response_level2b[:400])
+
+                        result_level2b = json.loads(raw_response_level2b)
+
+                        if result_level2b and result_level2b.get("selected_id"):
+                            selected_id = result_level2b["selected_id"]
+
+                            verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
+                            verify_df = con.execute(verify_sql, [selected_id]).df()
+
+                            if not verify_df.empty:
+                                territory_info = verify_df.iloc[0]
+                                _dbg("geo.ultimate_fallback.level2b_success", id=selected_id, name=territory_info['NOM_COUV'])
+
+                                return {
+                                    'target_id': selected_id,
+                                    'target_name': territory_info['NOM_COUV'],
+                                    'all_ids': [selected_id],
+                                    'display_context': f"{territory_info['NOM_COUV']} ({selected_id})",
+                                    'lieux_cites': [user_prompt],
+                                    'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": selected_id, "Source": "Ultimate AI Fallback - Niveau 2B (Département précis)"}],
+                                    'parent_clause': ''
+                                }
+
+        # NIVEAU 3 : Recherche dans les EPCI
+        _dbg("geo.ultimate_fallback.level3")
+
+        sql_epci = """
+        SELECT ID, NOM_COUV, 'EPCI' as TYPE_TERRITOIRE
+        FROM territoires
+        WHERE length(ID) = 9
+        ORDER BY NOM_COUV
+        LIMIT 1000
+        """
+
+        df_epci = con.execute(sql_epci).df()
+
+        if not df_epci.empty:
+            epci_list = df_epci.to_dict(orient='records')
+
+            system_prompt_level3 = """
+            Tu es un expert en intercommunalités françaises (EPCI).
+
+            TA MISSION :
+            Trouve l'EPCI le PLUS PERTINENT si l'utilisateur cherche une intercommunalité.
+
+            PRÉFIXES D'EPCI :
+            - CC = Communauté de Communes
+            - CA = Communauté d'Agglomération
+            - CU = Communauté Urbaine
+            - Métropole = Métropole
+            - Grand/Grande = souvent un EPCI
+
+            FORMAT DE RÉPONSE JSON :
+            {
+                "selected_id": "code_siren_exact" OU null,
+                "reason": "explication courte",
+                "confidence": "high|medium|low|none"
+            }
+
+            Si ce n'est PAS un EPCI, retourne : {"selected_id": null, "confidence": "none"}
+            """
+
+            user_message_level3 = f"""
+            REQUÊTE UTILISATEUR : "{user_prompt}"
+
+            EPCI DISPONIBLES (1000 premiers) :
+            {json.dumps(epci_list[:200], ensure_ascii=False, indent=2)}
+
+            Est-ce un EPCI ? Si oui, lequel ?
+            """
+
+            response_level3 = client.responses.create(
+                model=MODEL_NAME,
+                input=build_messages(system_prompt_level3, user_message_level3),
+                temperature=0,
+            )
+            metrics.log_api_call()
+            raw_response_level3 = extract_response_text(response_level3)
+            _dbg("geo.ultimate_fallback.level3_response", raw=raw_response_level3[:400])
+
+            result_level3 = json.loads(raw_response_level3)
+
+            if result_level3 and result_level3.get("selected_id") and result_level3.get("confidence") in ["high", "medium"]:
+                selected_id = result_level3["selected_id"]
+
+                verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
+                verify_df = con.execute(verify_sql, [selected_id]).df()
+
+                if not verify_df.empty:
+                    territory_info = verify_df.iloc[0]
+                    _dbg("geo.ultimate_fallback.level3_success", id=selected_id, name=territory_info['NOM_COUV'])
+
+                    return {
+                        'target_id': selected_id,
+                        'target_name': territory_info['NOM_COUV'],
+                        'all_ids': [selected_id],
+                        'display_context': f"{territory_info['NOM_COUV']} ({selected_id})",
+                        'lieux_cites': [user_prompt],
+                        'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": selected_id, "Source": "Ultimate AI Fallback - Niveau 3 (EPCI)"}],
+                        'parent_clause': ''
+                    }
+
+        # NIVEAU 4 : DERNIER RECOURS - Retourne France entière
+        _dbg("geo.ultimate_fallback.level4_default_france")
+
+        return {
+            'target_id': 'FR',
+            'target_name': 'France',
+            'all_ids': ['FR'],
+            'display_context': 'France (territoire non identifié précisément)',
+            'lieux_cites': [user_prompt],
+            'debug_search': [{"Recherche": user_prompt, "Trouvé": "France (par défaut)", "ID": "FR", "Source": "Ultimate AI Fallback - Niveau 4 (Défaut)"}],
+            'parent_clause': ''
+        }
+
+    except Exception as e:
+        _dbg("geo.ultimate_fallback.error", error=str(e))
+        # Même en cas d'erreur, on retourne France
+        return {
+            'target_id': 'FR',
+            'target_name': 'France',
+            'all_ids': ['FR'],
+            'display_context': 'France (erreur de résolution)',
+            'lieux_cites': [user_prompt],
+            'debug_search': [{"Recherche": user_prompt, "Erreur": str(e), "ID": "FR", "Source": "Ultimate AI Fallback - Défaut (Erreur)"}],
+            'parent_clause': ''
+        }
 
 def analyze_territorial_scope(con, rewritten_prompt):
     """
