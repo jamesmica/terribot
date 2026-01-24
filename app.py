@@ -1601,13 +1601,27 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
     TA MISSION :
     Identifier le territoire unique qui correspond à la recherche de l'utilisateur parmi une liste de candidats.
 
-    RÈGLES DE DÉCISION :
-    1. Si l'utilisateur tape juste le nom d'une ville (ex: "Dunkerque"), c'est TOUJOURS la "Commune" (ID 4 ou 5 chiffres). Pas l'EPCI.
-    2. Si l'utilisateur précise explicitement un EPCI (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "CU d'Arras", "Grand Paris", "CA du Bassin d'Arcachon"):
-       - Cherche le candidat de type "EPCI/Interco" (ID 9 chiffres)
-       - Match EXACTEMENT le nom complet mentionné
-    3. Si l'utilisateur tape un numéro (ex: "59"), c'est le Département.
-    4. En cas de doute total (ex: homonymes parfaits dans deux départements sans contexte), renvoie "AMBIGUITE".
+    RÈGLES DE DÉCISION STRICTES :
+    1. Si l'utilisateur tape juste le nom d'une ville (ex: "Dunkerque", "Manosque"), c'est TOUJOURS la "Commune" (ID 4 ou 5 chiffres). Pas l'EPCI, pas le Département.
+       ⚠️ MÊME si le contexte mentionne un département (ex: "Manosque, Alpes-de-Haute-Provence"), choisis LA COMMUNE.
+
+    2. Si l'utilisateur précise explicitement un EPCI avec son préfixe (ex: "CC Durance Luberon", "Métropole de Lyon", "CU d'Arras"):
+       - Cherche UNIQUEMENT le candidat de type "EPCI/Interco" (ID 9 chiffres)
+       - NE CHOISIS JAMAIS le département, même s'il est mentionné dans le contexte
+       - Match EXACTEMENT le nom de l'EPCI mentionné
+
+    3. Si l'utilisateur tape SEULEMENT un nom de département (ex: "Alpes-de-Haute-Provence") OU un numéro (ex: "04"), c'est le Département.
+
+    4. AMBIGUÏTÉ - Retourne is_ambiguous: true et confidence: "low" dans ces cas :
+       - Homonymes parfaits dans différents départements sans contexte clair (ex: "Saint-Denis" existe partout)
+       - Plusieurs EPCI avec des noms similaires
+       - Doute entre commune et EPCI (sauf si préfixe CC/CA/CU présent)
+       - Confiance < 80% sur le choix
+
+    5. CONFIANCE :
+       - "high" : Correspondance exacte, aucun doute (>90%)
+       - "medium" : Bonne correspondance mais avec contexte incomplet (70-90%)
+       - "low" : Correspondance incertaine, plusieurs choix possibles (<70%)
 
     PRÉFIXES D'EPCI À RECONNAÎTRE :
     - CC = Communauté de Communes
@@ -1626,8 +1640,16 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
     {
         "selected_id": "code_insee_exact_du_candidat" OU null,
         "reason": "explication courte",
-        "is_ambiguous": true/false
+        "is_ambiguous": true/false,
+        "confidence": "high|medium|low",
+        "candidates_for_user": [
+            {"id": "code1", "name": "Nom complet 1", "type": "Commune|EPCI|Département", "context": "Info supplémentaire"},
+            {"id": "code2", "name": "Nom complet 2", "type": "Commune|EPCI|Département", "context": "Info supplémentaire"}
+        ]
     }
+
+    ⚠️ Si is_ambiguous: true, remplis OBLIGATOIREMENT candidates_for_user avec 2 à 5 candidats pertinents.
+    Si is_ambiguous: false, tu peux laisser candidates_for_user vide [].
     """
 
     user_message = f"""
@@ -2372,6 +2394,49 @@ def analyze_territorial_scope(con, rewritten_prompt):
             # Validation IA pour CE lieu
             ai_decision = ai_validate_territory(client, MODEL_NAME, lieu, candidates, full_sentence_context=rewritten_prompt)
 
+            # VÉRIFICATION D'AMBIGUÏTÉ OU CONFIANCE FAIBLE
+            if ai_decision:
+                is_ambiguous = ai_decision.get("is_ambiguous", False)
+                confidence = ai_decision.get("confidence", "high")
+                candidates_for_user = ai_decision.get("candidates_for_user", [])
+
+                # Si ambiguïté OU confiance faible/moyenne, on demande à l'utilisateur
+                if is_ambiguous or confidence in ["low", "medium"]:
+                    _dbg("geo.analyze.ambiguity_detected", lieu=lieu, is_ambiguous=is_ambiguous, confidence=confidence)
+
+                    # Préparer les candidats pour l'utilisateur
+                    if not candidates_for_user:
+                        # Si l'IA n'a pas fourni de candidats, on utilise les candidats de la recherche
+                        candidates_for_user = []
+                        for c in candidates[:5]:  # Limiter à 5
+                            type_territoire = c.get('TYPE_TERRITOIRE', 'Autre')
+                            comp2 = c.get('COMP2', '')
+                            dept_name = ''
+                            if comp2 and str(comp2) not in ['', 'None', 'NaN']:
+                                # Chercher le nom du département
+                                try:
+                                    dept_info = con.execute("SELECT NOM_COUV FROM territoires WHERE ID = ?", [str(comp2)]).fetchone()
+                                    if dept_info:
+                                        dept_name = f" ({dept_info[0]})"
+                                except:
+                                    pass
+
+                            candidates_for_user.append({
+                                "id": str(c['ID']),
+                                "name": c['NOM_COUV'],
+                                "type": type_territoire,
+                                "context": f"{type_territoire}{dept_name}"
+                            })
+
+                    # Retourner un résultat spécial qui indique qu'il faut demander à l'utilisateur
+                    return {
+                        "needs_user_clarification": True,
+                        "query": lieu,
+                        "candidates": candidates_for_user,
+                        "confidence": confidence,
+                        "reason": ai_decision.get("reason", "Plusieurs territoires possibles")
+                    }
+
             if ai_decision and ai_decision.get("selected_id"):
                 sel_id = str(ai_decision["selected_id"])
 
@@ -2402,7 +2467,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
                 if winner:
                     winner_id = str(winner['ID'])
                     found_ids.append(winner_id)
-                    debug_info.append({"Recherche": lieu, "Trouvé": winner['NOM_COUV'], "ID": winner_id})
+                    debug_info.append({"Recherche": lieu, "Trouvé": winner['NOM_COUV'], "ID": winner_id, "Confiance": ai_decision.get("confidence", "unknown")})
 
                     # Premier lieu = cible principale
                     if first_pass:
@@ -3542,13 +3607,29 @@ if test_prompt and not st.session_state.get("_test_prompt_ran"):
 # -- A. RÉSOLUTION D'AMBIGUÏTÉ (Affichage des boutons si nécessaire) --
 if st.session_state.ambiguity_candidates:
     _dbg("ui.ambiguity.render", candidates=st.session_state.ambiguity_candidates)
-    
-    st.warning(f"🤔 Plusieurs territoires trouvés pour '{st.session_state.get('pending_geo_text','ce lieu')}'. Veuillez préciser :")
-    cols = st.columns(min(len(st.session_state.ambiguity_candidates), 4))
-    
-    for i, cand in enumerate(st.session_state.ambiguity_candidates[:4]):
+
+    st.warning(f"🤔 Plusieurs territoires trouvés pour **{st.session_state.get('pending_geo_text','ce lieu')}**. Veuillez préciser :")
+
+    # Affichage amélioré avec informations contextuelles
+    num_candidates = len(st.session_state.ambiguity_candidates)
+    if num_candidates <= 3:
+        cols = st.columns(num_candidates)
+    else:
+        cols = st.columns(3)  # Maximum 3 colonnes pour la lisibilité
+
+    for i, cand in enumerate(st.session_state.ambiguity_candidates[:6]):  # Limité à 6 pour l'affichage
+        col_index = i % 3
+
+        # Construire le label du bouton avec contexte
+        button_label = f"**{cand['nom']}**"
+        if 'type' in cand and cand['type']:
+            button_label += f"\n\n_{cand['type']}_"
+        if 'context' in cand and cand['context']:
+            button_label += f"\n\n{cand['context']}"
+        button_label += f"\n\nCode: `{cand['id']}`"
+
         # On affiche le bouton
-        if cols[i].button(f"{cand['nom']} ({cand['id']})", key=f"amb_btn_{cand['id']}"):
+        if cols[col_index].button(button_label, key=f"amb_btn_{cand['id']}_{i}", use_container_width=True):
             print("[TERRIBOT][UI] ✅ User selected ambiguity candidate")
             _dbg("ui.ambiguity.choice", cand=cand)
 
@@ -3739,9 +3820,60 @@ if prompt_to_process:
 
                         
                     # --- GESTION DE L'AMBIGUÏTÉ DÉTECTÉE ---
-                    # Si une ambiguïté est détectée ET que ce n'est pas le contexte qu'on vient juste de forcer
+                    # Si une ambiguïté est détectée OU une clarification utilisateur est nécessaire
                     fallback_context = None  # 🔧 FIX: Initialiser pour éviter NameError
-                    if new_context and new_context.get("ambiguity"):
+
+                    # NOUVEAU: Gestion du besoin de clarification utilisateur
+                    if new_context and new_context.get("needs_user_clarification"):
+                        print("[TERRIBOT][PIPE] 🤔 User clarification needed -> storing candidates + rerun")
+                        _dbg("pipeline.clarification", query=new_context.get("query"), candidates=new_context.get("candidates"), confidence=new_context.get("confidence"))
+
+                        # Formater les candidats pour l'UI
+                        formatted_candidates = []
+                        for cand in new_context.get("candidates", []):
+                            # Récupérer les infos complètes du candidat depuis la base
+                            try:
+                                cand_full_info = con.execute("SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = ?", [cand['id']]).fetchone()
+                                if cand_full_info:
+                                    formatted_candidates.append({
+                                        "id": str(cand_full_info[0]),
+                                        "nom": cand_full_info[1],
+                                        "comps": [cand_full_info[2], cand_full_info[3], cand_full_info[4]],
+                                        "type": cand.get("type", ""),
+                                        "context": cand.get("context", "")
+                                    })
+                            except Exception as e:
+                                _dbg("pipeline.clarification.candidate_error", error=str(e))
+                                # Si erreur, utiliser les infos minimales
+                                formatted_candidates.append({
+                                    "id": cand['id'],
+                                    "nom": cand['name'],
+                                    "comps": [],
+                                    "type": cand.get("type", ""),
+                                    "context": cand.get("context", "")
+                                })
+
+                        st.session_state.ambiguity_candidates = formatted_candidates
+                        st.session_state.pending_geo_text = new_context.get("query")
+                        st.session_state.pending_prompt = prompt_to_process
+
+                        debug_container["steps"] = debug_steps
+                        debug_container["final_ids"] = (st.session_state.current_geo_context or {}).get("all_ids", [])
+
+                        confidence_msg = {
+                            "low": "faible confiance",
+                            "medium": "confiance moyenne",
+                            "high": "haute confiance"
+                        }.get(new_context.get("confidence", "low"), "incertain")
+
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": f"🤔 Plusieurs territoires possibles pour **{new_context['query']}** ({confidence_msg}). {new_context.get('reason', '')} Veuillez choisir ci-dessus."
+                        })
+                        st.rerun()
+
+                    # ANCIEN: Gestion de l'ambiguïté classique
+                    elif new_context and new_context.get("ambiguity"):
                         # Petite sécurité : si le lieu ambigu est le même que celui qu'on a déjà validé, on ignore l'ambiguïté
                         if st.session_state.current_geo_context and new_context['input_text'] in st.session_state.current_geo_context['target_name']:
                             pass # On garde le contexte actuel
