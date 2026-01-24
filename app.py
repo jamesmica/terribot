@@ -1472,7 +1472,42 @@ def get_broad_candidates(con, input_str, limit=15):
         params = [clean_for_sql, epci_boost, clean_for_sql, f'%{clean_for_sql}%', clean_for_sql, limit]
         df_candidates = con.execute(sql, params).df()
 
-        # NOUVEAU : Si aucun résultat et que ça ressemble à une région, on cherche spécifiquement
+        # NOUVEAU : Recherche spécifique EPCI si peu de résultats et qu'on détecte un préfixe EPCI
+        epci_keywords_lower = clean_input.lower()
+        has_epci_prefix = any(prefix in epci_keywords_lower for prefix in ['cc ', 'ca ', 'cu ', 'metropole', 'communaute'])
+
+        if has_epci_prefix and len(df_candidates) < 5:
+            _dbg("geo.broad_candidates.epci_specific_search")
+
+            # Extraire les mots-clés (sans les préfixes CC/CA/CU)
+            keywords = clean_for_sql
+            for prefix in ['cc ', 'ca ', 'cu ', 'communaute de communes', 'communaute d agglomeration', 'communaute urbaine', 'metropole']:
+                keywords = keywords.replace(prefix, '')
+            keywords = keywords.strip()
+
+            # Recherche permissive dans les EPCI uniquement
+            sql_epci = """
+            SELECT ID, NOM_COUV, COMP1, COMP2, COMP3, 'EPCI/Interco' as TYPE_TERRITOIRE,
+                   jaro_winkler_similarity(
+                       strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))),
+                       ?
+                   ) as score
+            FROM territoires
+            WHERE length(ID) = 9
+              AND strip_accents(lower(NOM_COUV)) LIKE ?
+            ORDER BY score DESC
+            LIMIT 10
+            """
+            try:
+                df_epci = con.execute(sql_epci, [keywords, f'%{keywords}%']).df()
+                if not df_epci.empty:
+                    _dbg("geo.broad_candidates.epci_found", rows=len(df_epci))
+                    # Fusionner avec les candidats existants
+                    df_candidates = pd.concat([df_epci, df_candidates]).drop_duplicates(subset=['ID']).head(limit)
+            except Exception as epci_error:
+                _dbg("geo.broad_candidates.epci_error", error=str(epci_error))
+
+        # Recherche étendue sur les régions si toujours vide
         if df_candidates.empty:
             # Recherche étendue sur les régions
             sql_regions = """
@@ -2342,7 +2377,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
     Analyse le prompt pour extraire et résoudre les territoires mentionnés.
     Retourne un contexte géographique complet avec IDs et noms.
     """
-    # 1. Extraction des lieux via IA
+    # 1. Extraction des lieux ET du contexte département via IA
     try:
         extraction = client.responses.create(
             model=MODEL_NAME,
@@ -2350,23 +2385,37 @@ def analyze_territorial_scope(con, rewritten_prompt):
                 """Extrais TOUS les lieux géographiques et territoires mentionnés dans le texte.
 
                 IMPORTANT - Types de territoires à détecter :
-                - Communes (ex: "Paris", "L'Aigle", "Saint-Denis")
-                - EPCI/Intercommunalités (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "Grand Paris", "CU d'Arras")
-                - Départements (ex: "Orne", "61", "Hauts-de-Seine")
+                - Communes (ex: "Paris", "L'Aigle", "Saint-Denis", "Fontenay")
+                - EPCI/Intercommunalités (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "Grand Paris", "CU d'Arras", "CA Durance Luberon")
+                - Départements (ex: "Orne", "61", "Hauts-de-Seine", "dans le 94", "département 04")
                 - Régions (ex: "Normandie", "Île-de-France", "PACA")
 
                 RÈGLES :
                 - Conserve EXACTEMENT le nom complet tel qu'écrit (avec "CC", "CU", "CA", "Métropole", "Grand", etc.)
                 - Ne raccourcis PAS les noms (garde "CC des Pays de L'Aigle", pas juste "L'Aigle")
                 - Si plusieurs territoires sont mentionnés, extrais-les tous
+                - Si un contexte département est précisé (ex: "dans le 94", "département 61"), extrais-le séparément
 
-                Réponds en JSON: {"lieux": ["Territoire 1", "Territoire 2"]}""",
+                FORMAT DE RÉPONSE JSON :
+                {
+                    "lieux": ["Territoire 1", "Territoire 2"],
+                    "departement_context": "94" OU null
+                }
+
+                Exemples :
+                - "Fontenay dans le 94" → {"lieux": ["Fontenay"], "departement_context": "94"}
+                - "CC Durance Luberon" → {"lieux": ["CC Durance Luberon"], "departement_context": null}
+                - "Manosque, Alpes-de-Haute-Provence" → {"lieux": ["Manosque"], "departement_context": "04"}
+                """,
                 rewritten_prompt,
             ),
             timeout=30,
         )
-        lieux_cites = json.loads(extract_response_text(extraction)).get("lieux", [])
-        _dbg("geo.analyze.extraction", lieux=lieux_cites)
+        extraction_result = json.loads(extract_response_text(extraction))
+        lieux_cites = extraction_result.get("lieux", [])
+        departement_context = extraction_result.get("departement_context")
+
+        _dbg("geo.analyze.extraction", lieux=lieux_cites, dept_context=departement_context)
     except Exception as e:
         _dbg("geo.analyze.extraction_error", error=str(e))
         return None
@@ -2385,6 +2434,43 @@ def analyze_territorial_scope(con, rewritten_prompt):
         try:
             # Recherche large pour CE lieu
             candidates = get_broad_candidates(con, lieu)
+
+            # FILTRAGE PAR DÉPARTEMENT si contexte présent
+            if departement_context and candidates:
+                _dbg("geo.analyze.dept_filter", dept=departement_context, before=len(candidates))
+
+                # Normaliser le code département (ex: "94" → "D94", "04" → "D4")
+                dept_code_variants = [
+                    departement_context,
+                    f"D{departement_context}",
+                    f"D{departement_context.lstrip('0')}"
+                ]
+
+                filtered_candidates = []
+                for c in candidates:
+                    comp2 = str(c.get('COMP2', ''))
+                    # Vérifier si le département du candidat correspond
+                    if comp2 in dept_code_variants:
+                        filtered_candidates.append(c)
+
+                if filtered_candidates:
+                    candidates = filtered_candidates
+                    _dbg("geo.analyze.dept_filter_success", after=len(candidates))
+                else:
+                    _dbg("geo.analyze.dept_filter_no_match", tried=dept_code_variants)
+
+            # NOUVEAU : Si c'est un EPCI (détection de préfixe) et qu'on n'a pas de candidats ou des candidats de mauvaise qualité, utiliser le fallback web
+            lieu_lower = lieu.lower()
+            is_epci_query = any(prefix in lieu_lower for prefix in ['cc ', 'ca ', 'cu ', 'metropole', 'communaute'])
+
+            if is_epci_query and (not candidates or all(c.get('TYPE_TERRITOIRE') != 'EPCI/Interco' for c in candidates)):
+                _dbg("geo.analyze.epci_web_fallback", lieu=lieu, candidates_count=len(candidates) if candidates else 0)
+
+                # Appeler directement le fallback web pour trouver le code SIREN
+                web_result = ai_fallback_territory_search(con, lieu)
+                if web_result and not web_result.get("needs_user_clarification"):
+                    # On a trouvé via web search !
+                    return web_result
 
             if not candidates:
                 _dbg("geo.analyze.no_candidates", lieu=lieu)
