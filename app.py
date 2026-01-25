@@ -300,13 +300,16 @@ def _dbg(label, **kw):
         payload = " ".join([f"{k}={repr(v)[:200]}" for k, v in kw.items()])
     except Exception:
         payload = "(payload error)"
-    message = f"[TERRIBOT][DBG] {label} :: {payload}"
+
+    # ✅ Ajouter le timestamp dans le message principal
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]  # Heure avec millisecondes
+    message = f"[TERRIBOT][DBG][{timestamp}] {label} :: {payload}"
     print(message)
+
     try:
         if "debug_logs" not in st.session_state:
             st.session_state.debug_logs = []
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        st.session_state.debug_logs.append(f"{timestamp} {message}")
+        st.session_state.debug_logs.append(message)
         st.session_state.debug_logs = st.session_state.debug_logs[-200:]
     except Exception:
         pass
@@ -1193,10 +1196,19 @@ def semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top
         return pd.DataFrame()
 
 def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_indices, top_k=80):
+    _dbg("rag.hybrid.start",
+         query=query[:200],
+         df_glossaire_rows=len(df_glossaire),
+         has_embeddings=glossary_embeddings is not None,
+         valid_indices_count=len(valid_indices) if valid_indices is not None else 0,
+         top_k=top_k)
+
     candidates = {}
 
     # 1. RECHERCHE VECTORIELLE
+    _dbg("rag.hybrid.semantic_search_start", query=query[:100])
     df_sem = semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top_k=top_k, threshold=0.35)
+    _dbg("rag.hybrid.semantic_search_done", results_count=len(df_sem))
 
     for _, row in df_sem.iterrows():
         var = row['Nom au sein de la base de données']
@@ -1301,6 +1313,11 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
         # 3. Injection du nom PHYSIQUE dans le prompt
         # L'IA reçoit directement le nom qui marche. Plus besoin de deviner.
         result_context += f"✅ TABLE: \"{final_table_name}\" | VAR: \"{physical_column}\" | DESC: \"{desc}\"\n"
+
+    _dbg("rag.hybrid.end",
+         candidates_count=len(sorted_vars),
+         result_length=len(result_context),
+         result_preview=result_context[:400])
 
     return result_context
 
@@ -2474,6 +2491,8 @@ def analyze_territorial_scope(con, rewritten_prompt):
     Analyse le prompt pour extraire et résoudre les territoires mentionnés.
     Retourne un contexte géographique complet avec IDs et noms.
     """
+    _dbg("geo.analyze.start", rewritten_prompt=rewritten_prompt[:200])
+
     # 1. Extraction des lieux ET du contexte département via IA
     try:
         extraction = client.responses.create(
@@ -3975,7 +3994,11 @@ if prompt_to_process:
                     history_text = "\n".join([f"{m['role']}: {m.get('content','')}" for m in st.session_state.messages[-4:]])
                     current_geo_name = st.session_state.current_geo_context['target_name'] if st.session_state.current_geo_context else ""
 
-                    _dbg("pipeline.rewrite.call", history_tail=history_text[-400:], current_geo_name=current_geo_name)
+                    _dbg("pipeline.rewrite.inputs",
+                         prompt_to_process=prompt_to_process,
+                         history_tail=history_text[-400:],
+                         current_geo_name=current_geo_name,
+                         has_current_geo=bool(st.session_state.current_geo_context))
 
                     reformulation = client.responses.create(
                         model=MODEL_NAME,
@@ -4005,7 +4028,10 @@ if prompt_to_process:
                         )
                     )
                     rewritten_prompt = extract_response_text(reformulation)
-                    _dbg("pipeline.rewrite.done", rewritten_prompt=rewritten_prompt)
+                    _dbg("pipeline.rewrite.done",
+                         original=prompt_to_process,
+                         rewritten=rewritten_prompt,
+                         changed=prompt_to_process != rewritten_prompt)
 
                     debug_container["reformulation"] = f"Original: {prompt_to_process}\nReformulé: {rewritten_prompt}"
                     
@@ -4068,8 +4094,14 @@ if prompt_to_process:
                         if has_territory:
                             # Analyse normale
                             print("[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running")
+                            _dbg("pipeline.geo.before_analysis", rewritten_prompt=rewritten_prompt[:200])
                             new_context = analyze_territorial_scope(con, rewritten_prompt)
-                            _dbg("pipeline.geo.after", new_context=new_context)
+                            _dbg("pipeline.geo.after",
+                                 success=new_context is not None,
+                                 target_id=new_context.get('target_id') if new_context else None,
+                                 target_name=new_context.get('target_name') if new_context else None,
+                                 all_ids_count=len(new_context.get('all_ids', [])) if new_context else 0,
+                                 display_context=new_context.get('display_context') if new_context else None)
                         else:
                             # Aucun nouveau territoire mentionné
                             print("[TERRIBOT][PIPE] ⏭️ No new territory mentioned, skipping search")
@@ -4222,16 +4254,23 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     status_container.update(label=get_waiting_message('rag', territory_name=territory_for_rag, prompt=rewritten_prompt))
                     # On appelle notre nouvelle fonction combinée
                     print("[TERRIBOT][PIPE] 📚 RAG hybrid_variable_search() start")
-                    _dbg("pipeline.rag.inputs", rewritten_prompt=rewritten_prompt[:200], df_glossaire_rows=len(df_glossaire))
+                    _dbg("pipeline.rag.inputs",
+                         rewritten_prompt=rewritten_prompt[:200],
+                         df_glossaire_rows=len(df_glossaire),
+                         has_embeddings=glossary_embeddings is not None,
+                         valid_indices_count=len(valid_indices) if valid_indices is not None else 0)
 
                     glossaire_context = hybrid_variable_search(
-                        rewritten_prompt, 
-                        con, 
-                        df_glossaire, 
-                        glossary_embeddings, 
+                        rewritten_prompt,
+                        con,
+                        df_glossaire,
+                        glossary_embeddings,
                         valid_indices
                     )
-                    _dbg("pipeline.rag.done", glossaire_context_len=len(glossaire_context), preview=glossaire_context[:400])
+                    _dbg("pipeline.rag.done",
+                         glossaire_context_len=len(glossaire_context),
+                         preview=glossaire_context[:400],
+                         is_empty=len(glossaire_context.strip()) == 0)
 
                     # Debugging visuel
                     debug_container["rag_context"] = glossaire_context
@@ -4248,11 +4287,20 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     territory_for_sql = geo_context.get('target_name') if geo_context else None
                     status_container.update(label=get_waiting_message('sql', territory_name=territory_for_sql, prompt=rewritten_prompt))
 
+                    _dbg("pipeline.sql.inputs",
+                         all_ids=geo_context.get('all_ids', [])[:10],
+                         all_ids_count=len(geo_context.get('all_ids', [])),
+                         parent_clause=parent_clause,
+                         territory_name=territory_for_sql,
+                         glossaire_context_preview=glossaire_context[:300])
+
                     # Extraction des schémas complets des tables utilisées
                     try:
                         table_schemas = extract_table_schemas_from_context(glossaire_context, con)
+                        _dbg("pipeline.sql.schemas_extracted", schemas_length=len(table_schemas))
                     except Exception as e:
                         print(f"[TERRIBOT][SCHEMA] ⚠️ Erreur extraction schémas: {e}")
+                        _dbg("pipeline.sql.schemas_error", error=str(e))
                         table_schemas = ""  # Fallback: continuer sans les schémas complets
 
                     system_prompt = f"""
@@ -4325,15 +4373,21 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
 
                     if con:
                         try:
+                            _dbg("sql.exec.before_run", sql_preview=sql_query[:500], con_type=type(con).__name__)
                             df = con.execute(sql_query).df()
                             metrics.log_sql_query(success=True)
-                            _dbg("sql.exec.result", empty=df.empty, rows=len(df), cols=list(df.columns))
+                            _dbg("sql.exec.result", empty=df.empty, rows=len(df), cols=list(df.columns), shape=df.shape)
                         except Exception as e:
                             metrics.log_sql_query(success=False)
+                            _dbg("sql.exec.error", error=str(e), error_type=type(e).__name__)
                             raise e
-                        
+
                         if not df.empty:
                             _dbg("sql.exec.head", head=df.head(3).to_dict(orient="records"))
+                            _dbg("sql.exec.dtypes", dtypes=str(df.dtypes.to_dict()))
+                            # Compter les valeurs nulles par colonne
+                            null_counts = df.isnull().sum().to_dict()
+                            _dbg("sql.exec.null_counts", nulls=null_counts)
 
                             territory_for_viz = geo_context.get('target_name') if geo_context else None
                             status_container.update(label=get_waiting_message('viz', territory_name=territory_for_viz, prompt=rewritten_prompt))
@@ -4352,6 +4406,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
 
                             status_container.update(label=get_waiting_message('complete', prompt=rewritten_prompt), state="complete")
                         else:
+                            _dbg("sql.exec.empty_dataframe", warning="DataFrame is empty - no data returned from SQL query")
                             status_container.update(label=get_waiting_message('not_found', prompt=rewritten_prompt), state="error")
                             message_placeholder.warning("Aucune donnée trouvée.")
                             st.stop()
