@@ -763,12 +763,12 @@ def ai_enhance_formats(df: pd.DataFrame, initial_specs: dict, client, model):
         2. **Euros** (kind="currency"):
            - Revenus, salaires, budgets
            - decimals=0 pour les grands montants (>10000)
-           - decimals=2 pour les petits montants (<1000)
+           - decimals=1 pour les petits montants (<1000)
 
         3. **Nombres** (kind="number"):
            - Population : decimals=0
-           - Grands nombres (>1000) : decimals=0
-           - Petits nombres avec décimales : decimals=1 ou 2
+           - Grands nombres (>100) : decimals=0
+           - Petits nombres avec décimales : decimals=1
            - Nombres entiers : decimals=0
 
         4. **Titres** :
@@ -781,8 +781,8 @@ def ai_enhance_formats(df: pd.DataFrame, initial_specs: dict, client, model):
             "column_name": {
                 "kind": "percent|currency|number",
                 "decimals": 0-2,
-                "title": "Titre court et lisible",
-                "label": "Nom court"
+                "title": "Titre court lisible en texte clair et normal",
+                "label": "Nom court de variable"
             },
             ...
         }
@@ -4279,7 +4279,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     3. CALCULS ET TYPES :
                     - Tables format LARGE. Pas de colonne "VAR".
                     - Utilise `TRY_CAST(table."colonne" AS DOUBLE)` pour tout calcul.
-                    - Calcule toujours des ratios (ex: Part du chômage = CHOM / ACT) pour rendre les territoires comparables.
+                    - Calcule toujours des ratios (ex: Part du chômage = CHOM / ACT) pour rendre les territoires comparables. Sauf si on te demande une question simple et directe comme "Quelle est la population ?" "Quel est le nombre d'habitants"
                     - N'utilise pas des variables trop complexes ou peu lisibles (ex: des rangs, des indices composites)
                     - Calcul des parts et des taux simples, évite les ratios, les rangs, les différences
                     - Gère la division par zéro : `NULLIF(..., 0)`.
