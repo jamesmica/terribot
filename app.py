@@ -770,6 +770,7 @@ def ai_enhance_formats(df: pd.DataFrame, initial_specs: dict, client, model):
            - Grands nombres (>100) : decimals=0
            - Petits nombres avec décimales : decimals=1
            - Nombres entiers : decimals=0
+           - Mots-clés : "par habitant", "pour 1 000 habitants", "pour 10 000 habitants", etc...
 
         4. **Titres** :
            - Créer des titres courts et lisibles (max 50 caractères)
