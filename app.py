@@ -526,8 +526,12 @@ def get_db_connection():
 
         # 3. SAUVEGARDE GLOBALE (C'est la clé !)
         st.session_state.valid_tables_list = valid_tables
-        st.session_state.db_schemas = schemas 
+        st.session_state.db_schemas = schemas
         print(f"[TERRIBOT][DB] 📋 Tables valides enregistrées : {len(valid_tables)}")
+        _dbg("db.tables_saved",
+             count=len(valid_tables),
+             sample=valid_tables[:10] if valid_tables else [],
+             schemas_count=len(schemas))
 
         print(f"[TERRIBOT][DB] 📦 {len(parquet_files)} vues créées.") # Résumé en une ligne
 
@@ -542,8 +546,8 @@ def get_db_connection():
         glossaire_exists=os.path.exists(glossaire_path), territoires_exists=os.path.exists(territoires_path))
 
         con.execute(f"""
-            CREATE OR REPLACE TABLE glossaire AS 
-            SELECT * FROM read_csv('{glossaire_path}', auto_detect=TRUE, ignore_errors=TRUE)
+            CREATE OR REPLACE TABLE glossaire AS
+            SELECT * FROM read_csv('{glossaire_path}', delim=';', header=TRUE, ignore_errors=TRUE)
         """)
         
         con.execute(f"""
@@ -1315,27 +1319,48 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
     valid_tables = st.session_state.get("valid_tables_list", [])
     db_schemas = st.session_state.get("db_schemas", {})
 
+    _dbg("rag.hybrid.session_state_check",
+         has_valid_tables=len(valid_tables) > 0,
+         valid_tables_count=len(valid_tables),
+         has_db_schemas=len(db_schemas) > 0)
+
     if not valid_tables:
         try:
-            # IMPORTANT: Use "SHOW ALL TABLES" to include views, not just tables
-            result = con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
-            valid_tables = [t[0] for t in result]
-            _dbg("rag.hybrid.tables_fallback", count=len(valid_tables))
+            # FALLBACK: Rebuild table list from parquet files in data/ directory
+            # This matches the logic in get_db_connection()
+            import os
+            data_dir = "data"
+            if os.path.exists(data_dir):
+                parquet_files = [f for f in os.listdir(data_dir) if f.endswith('.parquet')]
+                valid_tables = []
+                for f in parquet_files:
+                    # Apply same normalization as in get_db_connection()
+                    raw_name = f.replace('.parquet', '').upper()
+                    table_name = re.sub(r'[^A-Z0-9]', '_', raw_name)
+                    valid_tables.append(table_name)
 
-            # Update session_state so next time we don't need fallback
-            st.session_state.valid_tables_list = valid_tables
+                _dbg("rag.hybrid.tables_fallback",
+                     count=len(valid_tables),
+                     sample=valid_tables[:5] if valid_tables else [],
+                     method="parquet_scan")
 
-            # Also build schemas for these tables
-            if not db_schemas:
-                db_schemas = {}
-                for table_name in valid_tables:
-                    try:
-                        cols_info = con.execute(f"DESCRIBE \"{table_name}\"").fetchall()
-                        db_schemas[table_name] = [c[0] for c in cols_info]
-                    except:
-                        pass
-                st.session_state.db_schemas = db_schemas
-                _dbg("rag.hybrid.schemas_fallback", count=len(db_schemas))
+                # Update session_state so next time we don't need fallback
+                st.session_state.valid_tables_list = valid_tables
+
+                # Also build schemas for these tables
+                if not db_schemas:
+                    db_schemas = {}
+                    for table_name in valid_tables:
+                        try:
+                            cols_info = con.execute(f"DESCRIBE \"{table_name}\"").fetchall()
+                            db_schemas[table_name] = [c[0] for c in cols_info]
+                        except:
+                            pass
+                    st.session_state.db_schemas = db_schemas
+                    _dbg("rag.hybrid.schemas_fallback", count=len(db_schemas))
+            else:
+                _dbg("rag.hybrid.tables_fallback_error", error="data directory not found")
+                valid_tables = []
         except Exception as e_tables:
             _dbg("rag.hybrid.tables_fallback_error", error=str(e_tables))
             valid_tables = []
@@ -1366,9 +1391,17 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
                     if t in candidate_name or candidate_name in t:
                         final_table_name = t
                         break
-        
+
         if final_table_name == "UNKNOWN":
-            _dbg("rag.hybrid.table_unknown", var=var, raw_source=raw_source, candidate=candidate_name)
+            _dbg("rag.hybrid.table_unknown",
+                 var=var,
+                 raw_source=raw_source,
+                 candidate_name=candidate_name,
+                 candidate_key=candidate_key,
+                 valid_tables_count=len(valid_tables),
+                 normalized_map_keys=list(normalized_table_map.keys())[:10],
+                 CMF_10_in_valid=("CMF_10" in valid_tables),
+                 CMF_10_in_map=(candidate_key in normalized_table_map))
             continue
 
         # 2. Résolution de la COLONNE (NOUVEAU & CRITIQUE)
