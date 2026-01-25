@@ -360,6 +360,59 @@ def is_commune_or_epci_code(code_str):
     # Vérifier la longueur
     return len(code_str) in (4, 5, 9)
 
+def has_meaningful_data(df):
+    """
+    Vérifie si le DataFrame contient des données qui ont du sens à être visualisées.
+    Retourne False si toutes les colonnes numériques ont des valeurs identiques pour tous les territoires.
+
+    Args:
+        df: DataFrame avec les données
+
+    Returns:
+        tuple: (bool, str) - (True/False, message d'explication)
+    """
+    if df.empty:
+        return False, "Le DataFrame est vide"
+
+    # Colonnes à ignorer (identifiants, noms)
+    ignore_cols = ['ID', 'NOM_COUV', 'AN', 'ANNEE', 'YEAR', 'CODGEO']
+
+    # Trouver toutes les colonnes numériques sauf celles à ignorer
+    numeric_cols = []
+    for col in df.columns:
+        if col.upper() not in ignore_cols and pd.api.types.is_numeric_dtype(df[col]):
+            numeric_cols.append(col)
+
+    if not numeric_cols:
+        return False, "Aucune colonne numérique trouvée"
+
+    _dbg("data.meaningful.check", numeric_cols=numeric_cols, rows=len(df))
+
+    # Vérifier si au moins UNE colonne a des valeurs différentes
+    has_variation = False
+    identical_cols = []
+
+    for col in numeric_cols:
+        # Obtenir les valeurs uniques (en ignorant les NaN)
+        unique_values = df[col].dropna().unique()
+
+        if len(unique_values) > 1:
+            # Il y a au moins 2 valeurs différentes dans cette colonne
+            has_variation = True
+            _dbg("data.meaningful.variation_found", col=col, unique_count=len(unique_values), values=unique_values[:5])
+        else:
+            identical_cols.append(col)
+            if len(unique_values) == 1:
+                _dbg("data.meaningful.identical_values", col=col, value=unique_values[0])
+
+    if not has_variation:
+        # Toutes les colonnes ont des valeurs identiques
+        message = f"Toutes les valeurs sont identiques pour tous les territoires ({len(df)} lignes). Colonnes concernées : {', '.join(identical_cols)}"
+        _dbg("data.meaningful.no_variation", message=message)
+        return False, message
+
+    return True, "OK"
+
 # --- 1. CONFIGURATION & STYLE (DOIT ÊTRE EN PREMIER) ---
 st.set_page_config(
     page_title="Terribot | Assistant Territorial",
@@ -4385,6 +4438,10 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         if not df.empty:
                             _dbg("sql.exec.head", head=df.head(3).to_dict(orient="records"))
 
+                            # 🔍 VÉRIFICATION DES DONNÉES : ont-elles du sens à être visualisées ?
+                            data_is_meaningful, data_message = has_meaningful_data(df)
+                            _dbg("data.meaningful.result", is_meaningful=data_is_meaningful, message=data_message)
+
                             territory_for_viz = geo_context.get('target_name') if geo_context else None
                             status_container.update(label=get_waiting_message('viz', territory_name=territory_for_viz, prompt=rewritten_prompt))
 
@@ -4441,7 +4498,11 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     with chart_placeholder:
                         current_ids = debug_container.get("final_ids", [])
 
-                        if map_eligible:
+                        # 🔍 Vérifier si les données ont du sens à être visualisées
+                        if not data_is_meaningful:
+                            # Données identiques pour tous les territoires → Pas de graphique
+                            st.warning(f"⚠️ **Données non visualisables** : {data_message}\n\nℹ️ Un graphique comparatif n'a de sens que si les valeurs diffèrent entre les territoires. Veuillez consulter les données brutes ci-dessous.")
+                        elif map_eligible:
                             # Si la carte est éligible, créer un choix entre graphique et carte
                             viz_choice = st.radio(
                                 "Visualisation",
@@ -4469,6 +4530,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 auto_plot_data(df, current_ids, config=chart_config, con=con)
 
                     # Sauvegarder les informations pour les actions rapides
+                    debug_container["data_is_meaningful"] = data_is_meaningful
+                    debug_container["data_message"] = data_message
                     debug_container["map_eligible"] = map_eligible
                     if map_eligible:
                         debug_container["map_target_id"] = target_id
@@ -4476,8 +4539,9 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         debug_container["map_metric_spec"] = metric_spec
 
                     # Affichage des données brutes (seulement si df n'est pas vide)
+                    # Si les données ne sont pas significatives, afficher le tableau expanded par défaut
                     with data_placeholder:
-                        with st.expander("📝 Voir les données brutes", expanded=False):
+                        with st.expander("📝 Voir les données brutes", expanded=(not data_is_meaningful)):
                             styled_df, col_config = style_df(df, chart_config.get('formats', {}))
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, use_container_width=True)
 
@@ -4523,7 +4587,9 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         "chart_config": chart_config.copy(),
                         "final_ids": debug_container.get("final_ids", geo_context.get("all_ids", [])),
                         "geo_context": geo_context.copy() if geo_context else {},
-                        "sql_query": debug_container.get("sql_query")
+                        "sql_query": debug_container.get("sql_query"),
+                        "data_is_meaningful": data_is_meaningful,
+                        "data_message": data_message
                     }
 
                     # 🔧 Afficher un message pour indiquer que les visualisations sont disponibles dans la sidebar
@@ -4619,8 +4685,13 @@ if "sidebar_viz_placeholder" in st.session_state:
             final_ids = viz_data.get("final_ids", [])
             geo_context_viz = viz_data.get("geo_context", {})
             sql_query_viz = viz_data.get("sql_query")
+            data_is_meaningful = viz_data.get("data_is_meaningful", True)
+            data_message = viz_data.get("data_message", "")
 
-            if df is not None and not df.empty:
+            # 🔍 Vérifier si les données ont du sens à être visualisées
+            if not data_is_meaningful:
+                st.warning(f"⚠️ **Données non visualisables**\n\n{data_message}\n\nConsultez les données brutes dans la conversation.")
+            elif df is not None and not df.empty:
                 try:
                     formats = chart_config.get("formats", {})
                     numeric_candidates = []
