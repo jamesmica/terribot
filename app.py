@@ -4007,6 +4007,7 @@ if prompt_to_process:
 
                     # 2. GEO SCOPE
                     new_context = None
+                    current_territory = st.session_state.current_geo_context.get("target_name") if st.session_state.current_geo_context else None
                     # Ne pas afficher l'ancien nom de territoire pendant la recherche du nouveau
                     status_container.update(label=get_waiting_message('geo_search', territory_name=None, prompt=rewritten_prompt))
                     _dbg("pipeline.geo.before", force_geo_context=bool(st.session_state.get("force_geo_context")),
