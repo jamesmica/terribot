@@ -667,7 +667,7 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
     if not numeric_cols: return {"selected_columns": [], "formats": {}}
 
     stats = {}
-    for c in numeric_cols[:10]:
+    for c in numeric_cols[:20]:
         s = pd.to_numeric(df[c], errors="coerce").dropna()
         if len(s) > 0: stats[c] = {"min": float(s.min()), "max": float(s.max())}
 
@@ -757,7 +757,7 @@ def ai_enhance_formats(df: pd.DataFrame, initial_specs: dict, client, model):
         RÈGLES DE FORMATAGE :
         1. **Pourcentages** (kind="percent"):
            - Si valeurs entre 0-1 : c'est un ratio à convertir (decimals=1)
-           - Si valeurs entre 0-100 : c'est déjà un pourcentage (decimals=0 ou 1)
+           - Si valeurs entre 0-100 : c'est déjà un pourcentage ou un ratio (decimals=0 ou 1)
            - Mots-clés : "taux", "part", "ratio", "%", "pct"
 
         2. **Euros** (kind="currency"):
