@@ -806,8 +806,8 @@ Tester dans cet ordre :
 2. Si kind="percent" → decimals=1 (toujours 1 décimale pour les %)
 
 3. Si kind="currency" :
-   - Si max > 10 000 → decimals=0
-   - Sinon → decimals=2
+   - Si max > 100 → decimals=0
+   - Sinon → decimals=1
 
 4. Si "par habitant" dans nom ET max < 100 → decimals=1
 
@@ -4057,7 +4057,6 @@ if prompt_to_process:
                         # On ne lance PAS analyze_territorial_scope, on garde l'existant
                         if st.session_state.current_geo_context:
                             geo_context = st.session_state.current_geo_context
-                            message_placeholder.info(f"📍 **Périmètre validé :** {geo_context['display_context']}")
                             # On force new_context à None pour sauter les blocs suivants
                             new_context = None 
                     else:
@@ -4190,8 +4189,6 @@ if prompt_to_process:
                         st.session_state.current_geo_context = new_context
                         _dbg("pipeline.geo.context_set", geo=st.session_state.current_geo_context)
 
-                        message_placeholder.info(f"📍 **Périmètre :** {new_context['display_context']}")
-
                         debug_container["geo_extraction"] = new_context["lieux_cites"]
                         debug_container["geo_resolution"] = new_context["debug_search"]
                         debug_container["final_ids"] = new_context["all_ids"]
@@ -4208,7 +4205,6 @@ if prompt_to_process:
 
                         if fallback_context:
                             st.session_state.current_geo_context = fallback_context
-                            message_placeholder.info(f"📍 **Périmètre trouvé (fallback IA) :** {fallback_context['display_context']}")
                             _dbg("pipeline.fallback.success", context=fallback_context)
 
                             debug_container["geo_extraction"] = fallback_context["lieux_cites"]
