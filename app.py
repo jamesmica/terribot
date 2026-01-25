@@ -977,7 +977,11 @@ def style_df(df: pd.DataFrame, specs: dict):
 
     # On force la conversion en numérique pour être sûr
     for col in df_display.columns:
-        df_display[col] = pd.to_numeric(df_display[col], errors='ignore')
+        try:
+            df_display[col] = pd.to_numeric(df_display[col])
+        except (ValueError, TypeError):
+            # Si la conversion échoue, on garde la colonne telle quelle
+            pass
 
     def fr_num(x, decimals=0, suffix="", factor=1):
         if pd.isna(x): return "-" # Tiret pour les nulls
@@ -1309,14 +1313,32 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
     from difflib import get_close_matches
 
     valid_tables = st.session_state.get("valid_tables_list", [])
+    db_schemas = st.session_state.get("db_schemas", {})
+
     if not valid_tables:
         try:
-            valid_tables = [t[0] for t in con.execute("SHOW TABLES").fetchall()]
+            # IMPORTANT: Use "SHOW ALL TABLES" to include views, not just tables
+            result = con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
+            valid_tables = [t[0] for t in result]
             _dbg("rag.hybrid.tables_fallback", count=len(valid_tables))
+
+            # Update session_state so next time we don't need fallback
+            st.session_state.valid_tables_list = valid_tables
+
+            # Also build schemas for these tables
+            if not db_schemas:
+                db_schemas = {}
+                for table_name in valid_tables:
+                    try:
+                        cols_info = con.execute(f"DESCRIBE \"{table_name}\"").fetchall()
+                        db_schemas[table_name] = [c[0] for c in cols_info]
+                    except:
+                        pass
+                st.session_state.db_schemas = db_schemas
+                _dbg("rag.hybrid.schemas_fallback", count=len(db_schemas))
         except Exception as e_tables:
             _dbg("rag.hybrid.tables_fallback_error", error=str(e_tables))
             valid_tables = []
-    db_schemas = st.session_state.get("db_schemas", {}) # <--- Récupération des schémas
 
     normalized_table_map = {standardize_name(t): t for t in valid_tables}
 
@@ -3782,7 +3804,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     if in_sidebar:
         chart["width"] = 400
 
-    st.vega_lite_chart(df_melted, chart, use_container_width=not in_sidebar)
+    st.vega_lite_chart(df_melted, chart, width='content' if in_sidebar else 'stretch')
 
 
 # --- 9. UI PRINCIPALE ---
@@ -3839,7 +3861,7 @@ for i_msg, msg in enumerate(st.session_state.messages):
                     # On utilise les formats stockés dans la config
                     formats = saved_config.get("formats", {})
                     styled_df, col_config = style_df(msg["data"], formats)
-                    st.dataframe(styled_df, hide_index=True, column_config=col_config, use_container_width=True)
+                    st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
             except Exception as e: 
                 pass
@@ -3883,7 +3905,7 @@ if st.session_state.ambiguity_candidates:
         button_label += f"\n\nCode: `{cand['id']}`"
 
         # On affiche le bouton
-        if cols[col_index].button(button_label, key=f"amb_btn_{cand['id']}_{i}", use_container_width=True):
+        if cols[col_index].button(button_label, key=f"amb_btn_{cand['id']}_{i}", width='stretch'):
             print("[TERRIBOT][UI] ✅ User selected ambiguity candidate")
             _dbg("ui.ambiguity.choice", cand=cand)
 
@@ -4549,7 +4571,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     with data_placeholder:
                         with st.expander("📝 Voir les données brutes", expanded=False):
                             styled_df, col_config = style_df(df, chart_config.get('formats', {}))
-                            st.dataframe(styled_df, hide_index=True, column_config=col_config, use_container_width=True)
+                            st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
                     # 📊 Stocker les données de visualisation dans session_state pour la sidebar
                     # 🔧 FIX: Ne pas utiliser ai_enhance_formats, utiliser directement les formats de base
