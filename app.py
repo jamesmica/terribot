@@ -509,27 +509,27 @@ def inject_placeholder_animation():
     components.html("""
     <script>
 const questions = [
-            "Compare le revenu médian à Bordeaux et à Toulouse",
-            "Quel est le taux de chômage des jeunes à Marseille ?",
-            "Quelle est la part des cadres à Neuilly-sur-Seine ?",
-            "Compare la pauvreté à Roubaix avec la moyenne nationale",
-            "Y a-t-il plus de propriétaires à Vannes ou à Lorient ?",
-            "Quelle est la part des 15-24 ans à Rennes ?",
-            "Compare le niveau de vie à Vincennes et Saint-Mandé",
-            "Combien de résidences secondaires à La Rochelle ?",
-            "Quel est le taux de bacheliers à Strasbourg ?",
-            "Y a t il beaucoup de jeunes à Saint-Michel dans l'Aisne ?",
-            "Compare la densité de population à Lyon et Villeurbanne",
-            "La part des familles monoparentales à Saint-Denis",
-            "Compare le chômage à Lens avec le département du Pas-de-Calais",
-            "Quelle est la part de logements sociaux à Sarcelles ?",
-            "Les revenus sont-ils plus élevés à Nantes ou à Angers ?",
-            "Compare la part des seniors (65+) à Nice et Menton",
-            "Quel est le taux d'activité des femmes à Lille ?",
-            "Compare les non-diplômés à Maubeuge et Valenciennes",
-            "Quelle est la taille moyenne des ménages à Paris ?",
-            "Compare le revenu des habitants de Fontenay-sous-Bois aux villes voisines",
-            "Quelle est la part des maisons à Brest ?"
+            "Fais un état des lieux de la précarité à Manosque",
+            "Toulouse est-elle une ville vieillissante ?",
+            "Comment se portent les familles monoparentales à Roubaix ?",
+            "Les jeunes quittent-ils le territoire de Saint-Étienne ?",
+            "Quel est le profil socio-économique des habitants de Sarcelles ?",
+            "L'accès à l'emploi des femmes progresse-t-il à Lens ?",
+            "Compare la situation sociale de Mulhouse avec Strasbourg",
+            "Qui sont les habitants de Limoges Métropole ?",
+            "La précarité des seniors est-elle un enjeu à Perpignan ?",
+            "Comment évolue la structure familiale à Nantes ?",
+            "Les conditions de logement se dégradent-elles à Marseille ?",
+            "Dresse un portrait social de la communauté d'agglomération de Béthune",
+            "L'isolement des personnes âgées est-il marqué à Nice ?",
+            "Quels sont les publics vulnérables à Calais ?",
+            "Compare le tissu social de Maubeuge et Valenciennes",
+            "La population de Brest rajeunit-elle ou vieillit-elle ?",
+            "Quel est l'état de l'insertion professionnelle des jeunes à Amiens ?",
+            "Les inégalités se creusent-elles entre Grigny et le reste de l'Essonne ?",
+            "Fais un diagnostic de la monoparentalité dans les Bouches-du-Rhône",
+            "La population active diminue-t-elle à Saint-Nazaire ?",
+            "Quels enjeux sociaux identifie-t-on sur le territoire de Dunkerque ?"
         ];
         let idx = 0;
         function cyclePlaceholder() {
