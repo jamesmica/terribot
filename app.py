@@ -368,9 +368,12 @@ st.set_page_config(
     initial_sidebar_state=440
 )
 
-# CSS custom pour corriger la largeur des graphiques Vega-Lite
+# CSS custom pour corriger la largeur des graphiques Vega-Lite et la largeur max des tooltips leaflet
 st.markdown("""
 <style>
+    .leaflet-tooltip img {
+      max-width: 128px;
+    }
     /* Forcer la largeur correcte pour les graphiques Vega-Lite */
     .stVegaLiteChart > div {
         width: auto !important;
@@ -3738,7 +3741,7 @@ for i_msg, msg in enumerate(st.session_state.messages):
                 final_ids = msg.get("debug_info", {}).get("final_ids", [])
 
                 # Affichage Graphique avec la BONNE config
-                with st.expander("📊 Voir le graphique", expanded=True):
+                with st.expander("📊 Voir le graphique", expanded=False):
                     auto_plot_data(msg["data"], final_ids, config=saved_config, con=con)
 
                 # Affichage Data (Expander) - Uniformisé avec le nouveau message
@@ -4396,7 +4399,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             )
 
                             if viz_choice == "📊 Graphique":
-                                with st.expander("📊 Voir le graphique", expanded=True):
+                                with st.expander("📊 Voir le graphique", expanded=False):
                                     auto_plot_data(df, current_ids, config=chart_config, con=con)
                             else:  # Carte
                                 render_epci_choropleth(
@@ -4410,7 +4413,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 )
                         else:
                             # Pas de carte éligible, afficher uniquement le graphique
-                            with st.expander("📊 Voir le graphique", expanded=True):
+                            with st.expander("📊 Voir le graphique", expanded=False):
                                 auto_plot_data(df, current_ids, config=chart_config, con=con)
 
                     # Sauvegarder les informations pour les actions rapides
@@ -4472,7 +4475,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     }
 
                     # 🔧 Afficher un message pour indiquer que les visualisations sont disponibles dans la sidebar
-                    message_placeholder.info("📊 Les visualisations interactives sont disponibles dans le panneau de droite")
+                    message_placeholder.info("📊 Les visualisations interactives sont disponibles dans la sidebar")
 
 
                 # C. Streaming du Texte
@@ -4494,7 +4497,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             1. ⛔ NE JAMAIS mentionner "le tableau", "vos données", "la colonne", "l'extrait" ou "la ligne". Fais comme si tu connaissais ces chiffres par cœur.
                             2. ⛔ NE JAMAIS citer les noms techniques des variables (ex: "taux_chomage_15_64" ou "indicateur_voisins"). Utilise le langage courant ("Taux de chômage").
                             3. ⛔ SI une colonne contient des 0 et des 1 (booléens), NE LES CITE PAS. Interprète-les (ex: "C'est supérieur à la moyenne").
-                            4. CONTEXTUALISE : Si des villes demandées sont absentes des données, dis simplement "Je dispose des données pour X et Y" sans dire "dans le fichier fourni".
+                            4. CONTEXTUALISE : Si des villes demandées sont absentes des données, dis simplement "Je dispose seulement des données pour X et Y" sans dire "dans le fichier fourni".
                             5. STRUCTURE : Va à l'essentiel.
 
                             Unités des données : {json.dumps(chart_config.get('formats', {}))}
