@@ -371,8 +371,10 @@ st.set_page_config(
 # CSS custom pour corriger la largeur des graphiques Vega-Lite et la largeur max des tooltips leaflet
 st.markdown("""
 <style>
-    .leaflet-tooltip img {
-      max-width: 64px;
+    .leaflet-tooltip {
+      max-width: 80px;
+      white-space: normal;      /* autorise le retour à la ligne */
+      word-wrap: break-word;    /* casse les mots longs */
     }
     /* Forcer la largeur correcte pour les graphiques Vega-Lite */
     .stVegaLiteChart > div {
