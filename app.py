@@ -749,51 +749,121 @@ def ai_enhance_formats(df: pd.DataFrame, initial_specs: dict, client, model):
             return initial_specs
 
         # Demander à l'IA d'améliorer le formatage
-        system_prompt = """Tu es un expert en visualisation de données et formatage de nombres.
+        system_prompt = """Tu es un expert en visualisation de données statistiques françaises et formatage de nombres.
 
-        TA MISSION :
-        Analyser les colonnes et déterminer le meilleur formatage pour chaque variable en fonction du contexte.
+TA MISSION : Analyser chaque colonne et déterminer le meilleur formatage en fonction du NOM de la colonne ET des VALEURS.
 
-        RÈGLES DE FORMATAGE :
-        1. **Pourcentages** (kind="percent"):
-           - Si valeurs entre 0-1 : c'est un ratio à convertir (decimals=1)
-           - Si valeurs entre 0-100 : c'est déjà un pourcentage ou un ratio (decimals=0 ou 1)
-           - Mots-clés : "taux", "part", "ratio", "%", "pct"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 ARBRE DE DÉCISION POUR LE TYPE (kind)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-        2. **Euros** (kind="currency"):
-           - Revenus, salaires, budgets
-           - decimals=0 pour les grands montants (>10000)
-           - decimals=1 pour les petits montants (<1000)
+1️⃣ DÉTECTER SI C'EST UN POURCENTAGE :
 
-        3. **Nombres** (kind="number"):
-           - Population : decimals=0
-           - Grands nombres (>100) : decimals=0
-           - Petits nombres avec décimales : decimals=1
-           - Nombres entiers : decimals=0
-           - Mots-clés : "par habitant", "pour 1 000 habitants", "pour 10 000 habitants", etc...
+   OPTION A : Ratio en base 1 (0-1) à convertir en pourcentage
+   ✓ Conditions : max ≤ 1.5 ET min ≥ 0
+   ✓ Exemple : 0.157, 0.432, 0.891 → Ce sont des ratios
+   → kind="percent", percent_factor=100, decimals=1
 
-        4. **Titres** :
-           - Créer des titres courts et lisibles (max 50 caractères)
-           - Éviter les codes techniques et acronymes
-           - Utiliser des majuscules appropriées
+   OPTION B : Pourcentage déjà en base 100
+   ✓ Conditions : (nom contient "taux", "part", "pct", "pourcent", "%" OU "ratio")
+                   ET max ≤ 100 ET max > 1.5
+   ✓ Exemple : 15.7, 23.4, 45.2 dans colonne "Taux de chômage"
+   → kind="percent", percent_factor=1, decimals=1
 
-        FORMAT DE RÉPONSE JSON :
-        {
-            "column_name": {
-                "kind": "percent|currency|number",
-                "decimals": 0-2,
-                "title": "Titre court lisible en texte clair et normal",
-                "label": "Nom court de variable"
-            },
-            ...
-        }
-        """
+   ⚠️ EXCEPTION CRITIQUE - Taux de pauvreté :
+   ✓ Si nom contient "TP60" → TOUJOURS percent_factor=1 (déjà en base 100)
+
+2️⃣ DÉTECTER SI C'EST UNE DEVISE :
+
+   ✓ Nom contient : "€", "euro", "revenu", "salaire", "montant", "prix", "budget", "coût"
+   → kind="currency"
+
+3️⃣ DÉTECTER LES RATIOS "PAR HABITANT" (PAS des pourcentages !) :
+
+   ✓ Nom contient : "par habitant", "pour 100 hab", "pour 1 000 hab", "pour 10 000 hab", "/ hab"
+   ✓ IMPORTANT : Ce sont des NOMBRES, PAS des pourcentages
+   → kind="number" (et NON percent !)
+
+4️⃣ SINON :
+   → kind="number"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔢 RÈGLES POUR LES DÉCIMALES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Tester dans cet ordre :
+
+1. Si max > 100 → decimals=0 (séparateur de milliers automatique)
+
+2. Si kind="percent" → decimals=1 (toujours 1 décimale pour les %)
+
+3. Si kind="currency" :
+   - Si max > 10 000 → decimals=0
+   - Sinon → decimals=2
+
+4. Si "par habitant" dans nom ET max < 100 → decimals=1
+
+5. Si has_decimals=true ET max < 100 → decimals=1
+
+6. Sinon → decimals=0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 FORMAT DE RÉPONSE JSON (OBLIGATOIRE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+    "column_name": {
+        "kind": "percent|currency|number",
+        "decimals": 0-2,
+        "percent_factor": 1 ou 100,  // OBLIGATOIRE si kind="percent", sinon omettre
+        "title": "Titre lisible sans code technique",
+        "label": "Nom court"
+    },
+    ...
+}
+
+EXEMPLES CONCRETS :
+
+{
+    "TP6019": {
+        "kind": "percent",
+        "decimals": 1,
+        "percent_factor": 1,
+        "title": "Taux de pauvreté",
+        "label": "Taux pauvreté"
+    },
+    "NBMENFISC19": {
+        "kind": "number",
+        "decimals": 0,
+        "title": "Nombre de ménages fiscaux",
+        "label": "Ménages"
+    },
+    "MED19": {
+        "kind": "currency",
+        "decimals": 0,
+        "title": "Revenu médian",
+        "label": "Revenu médian"
+    },
+    "density_per_km2": {
+        "kind": "number",
+        "decimals": 1,
+        "title": "Densité de population par km²",
+        "label": "Densité/km²"
+    }
+}
+
+⚠️ IMPORTANT :
+- percent_factor doit être 1 ou 100 (jamais autre chose)
+- Ne jamais confondre "par habitant" avec des pourcentages
+- Les valeurs entre 0-1 sont TOUJOURS des ratios à convertir (sauf TP60)
+- Répondre UNIQUEMENT avec le JSON, sans texte avant ou après
+"""
 
         user_message = f"""Voici les colonnes à formater :
 
 {json.dumps(columns_info, ensure_ascii=False, indent=2)}
 
-Analyse chaque colonne et retourne le meilleur formatage."""
+Analyse chaque colonne et retourne le formatage optimal au format JSON."""
 
         response = client.responses.create(
             model=model,
@@ -865,53 +935,18 @@ def style_df(df: pd.DataFrame, specs: dict):
         if not pd.api.types.is_numeric_dtype(df_display[col]):
             continue
 
-        # On récupère la config IA si elle existe, sinon des valeurs par défaut
+        # 🎨 Récupérer les specs fournies par l'IA (ou valeurs par défaut)
         s = specs.get(col, specs.get("NOM_COUV", {})) if col == "Nom" else specs.get(col, {})
         kind = (s.get("kind") or "number").lower()
-        dec = int(s.get("decimals", 1)) # Par défaut 1 décimale
+        dec = int(s.get("decimals", 1))  # Par défaut 1 décimale
+        percent_factor = int(s.get("percent_factor", 1))  # 1 ou 100 selon l'IA
 
-        # --- RÈGLE INTELLIGENTE : 0 décimale si tout est > 100 ---
-        valid_vals = pd.Series(dtype="float64")
-        try:
-            # On regarde les valeurs non nulles
-            valid_vals = df_display[col].dropna().abs()
-            if not valid_vals.empty:
-                # Si la plus petite valeur est supérieure à 100 (ex: Pop, Revenus, Années)
-                if valid_vals.min() >= 100:
-                    dec = 0
-                # Cas spécial pour les entiers parfaits (ex: nb d'écoles = 3.0 -> 3)
-                elif (valid_vals % 1 == 0).all():
-                    dec = 0
-        except: pass
-        # ---------------------------------------------------------
-        # Heuristique: inférer les % si la colonne le suggère
-        if kind == "number":
-            try:
-                name_upper = col.upper()
-                # 🔧 FIX: Ajout de "TP60" pour détecter les taux de pauvreté
-                percent_hint = any(key in name_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%", "TP60"])
-                if not valid_vals.empty:
-                    max_val = valid_vals.max()
-                    min_val = valid_vals.min()
-                    if percent_hint and max_val <= 100:
-                        kind = "percent"
-                    elif 0 <= min_val and max_val <= 1.5:
-                        kind = "percent"
-            except Exception:
-                pass
-
-        # Formater les valeurs dans le DataFrame
-        if kind in ["currency", "euro"]:  # 🔧 Support "euro" en plus de "currency"
+        # ✅ Formater selon le type déterminé par l'IA
+        if kind in ["currency", "euro"]:
             df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "€") if pd.notna(x) else "-")
         elif kind == "percent":
-            # Heuristique : Si c'est < 5 (ex: 0.15), on multiplie par 100.
-            # 🔧 FIX: Les taux de pauvreté (TP60*) sont déjà en base 100
-            is_poverty_rate = "TP60" in col.upper()
-            def format_percent(x):
-                if pd.isna(x): return "-"
-                factor = 1 if is_poverty_rate else (100 if abs(x) < 5 else 1)
-                return fr_num(x, dec, "%", factor=factor)
-            df_display[col] = df_display[col].apply(format_percent)
+            # ✅ Utiliser le percent_factor fourni par l'IA (plus d'heuristique !)
+            df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "%", factor=percent_factor) if pd.notna(x) else "-")
         else:
             df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "") if pd.notna(x) else "-")
 
@@ -3158,18 +3193,14 @@ def render_epci_choropleth(
             return (s + (f" {suffix}" if suffix else "")).strip()
         except: return str(x)
 
-    # ---------- FORMATAGE / FACTEUR % (SÉCURISÉ) ----------
+    # ---------- FORMATAGE / FACTEUR % (FOURNI PAR L'IA) ----------
     # On calcule valid_values dans tous les cas pour éviter NameError
     all_values = [f.get("properties", {}).get("value") for f in geojson.get("features", [])]
     valid_values = [v for v in all_values if v is not None and not pd.isna(v)]
 
-    percent_factor = 1
-    if kind == "percent" and valid_values:
-        val_mean = sum(abs(v) for v in valid_values) / len(valid_values)
-        # 🔧 FIX: Les taux de pauvreté (TP60*) sont déjà en base 100, ne pas multiplier
-        is_poverty_rate = "TP60" in metric_col.upper()
-        percent_factor = 1 if is_poverty_rate else (100 if val_mean < 5 else 1)
-        _dbg("map.percent.factor", val_mean=val_mean, factor=percent_factor, sample_values=valid_values[:5], is_poverty=is_poverty_rate)
+    # ✅ Utiliser le percent_factor fourni par l'IA (plus d'heuristique !)
+    percent_factor = int(metric_spec.get("percent_factor", 1))  # 1 ou 100 selon l'IA
+    _dbg("map.percent.factor", factor=percent_factor, sample_values=valid_values[:5] if valid_values else [])
 
     # ---------- TOOLTIP ----------
     for feature in geojson.get("features", []):
@@ -3398,11 +3429,11 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     original_metric = selected_metrics[0]
     spec = format_specs.get(original_metric, {})
 
-    # Format automatique intelligent basé sur les valeurs réelles
-    y_format = ",.0f"  # Défaut : nombres entiers avec séparateur milliers
-    y_suffix = ""  # 🔧 Suffixe pour les unités (€, etc.)
+    # ✅ Utiliser les specs fournies par l'IA
     is_percent = spec.get("kind") == "percent"
     is_currency = spec.get("kind") in ["currency", "euro"]
+    decimals = int(spec.get("decimals", 1))
+    percent_factor = int(spec.get("percent_factor", 1))  # 1 ou 100 selon l'IA
 
     # Utiliser chart_title si disponible et multi-métrique, sinon le titre de la première métrique
     has_multiple_metrics = len(selected_metrics) > 1
@@ -3411,46 +3442,30 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     else:
         title_y = spec.get("title", spec.get("label", "Valeur"))
 
-    # 🔧 Ajouter "(en €)" au titre si c'est une donnée monétaire
+    # Ajouter "(en €)" au titre si c'est une donnée monétaire
     if is_currency and "(en €)" not in title_y and "€" not in title_y:
         title_y = f"{title_y} (en €)"
 
-    # Analyser les valeurs pour déterminer le meilleur format
-    if len(new_selected_metrics) > 0:
-        # Prendre la première métrique pour analyse
-        first_metric = new_selected_metrics[0] if new_selected_metrics else selected_metrics[0]
-        if first_metric in df_plot.columns:
-            values = pd.to_numeric(df_plot[first_metric], errors='coerce').dropna()
+    # ✅ Format basé sur les specs IA (plus d'heuristique sur les valeurs !)
+    y_suffix = ""
 
-            if not values.empty:
-                max_val = values.max()
-                min_val = values.min()
-                has_decimals = not (values % 1 == 0).all()
-
-                if is_percent:
-                    # Pour les pourcentages
-                    if max_val <= 1.5:
-                        # Format 0-1 -> convertir en %
-                        y_format = ".1%"
-                    elif has_decimals:
-                        y_format = ",.1f"  # Garder 1 décimale
-                        y_suffix = " %"  # 🔧 Ajouter le symbole % pour les valeurs en base 100
-                    else:
-                        y_format = ",.0f"  # Pas de décimale
-                        y_suffix = " %"  # 🔧 Ajouter le symbole % pour les valeurs en base 100
-                elif is_currency:
-                    y_format = ",.0f"  # Euros sans décimales
-                    y_suffix = " €"  # 🔧 Ajouter le symbole €
-                else:
-                    # Pour les nombres normaux
-                    if max_val >= 1000:
-                        y_format = ",.0f"  # Grands nombres : pas de décimale, séparateur milliers
-                    elif has_decimals and max_val < 100:
-                        y_format = ",.1f"  # Petits nombres avec décimales
-                    elif has_decimals:
-                        y_format = ",.2f"  # Nombres moyens avec 2 décimales
-                    else:
-                        y_format = ",.0f"  # Nombres entiers
+    if is_percent:
+        # Pour les pourcentages : selon le percent_factor
+        if percent_factor == 100:
+            # Base 1 (0-1) -> format Vega qui multiplie automatiquement
+            y_format = f".{decimals}%"
+            y_suffix = ""  # Le % est géré par Vega
+        else:
+            # Base 100 (déjà en %) -> afficher tel quel + %
+            y_format = f",.{decimals}f"
+            y_suffix = " %"
+    elif is_currency:
+        y_format = f",.{decimals}f"
+        y_suffix = " €"
+    else:
+        # Nombres normaux
+        y_format = f",.{decimals}f"
+        y_suffix = ""
 
     # 6. MELT
     id_vars = [label_col]
