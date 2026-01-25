@@ -4476,10 +4476,6 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         "sql_query": debug_container.get("sql_query")
                     }
 
-                    # 🔧 Afficher un message pour indiquer que les visualisations sont disponibles dans la sidebar
-                    message_placeholder.info("📊 Les visualisations interactives sont disponibles dans la sidebar")
-
-
                 # C. Streaming du Texte
                 if not df.empty:
                     print("[TERRIBOT][PIPE] 📝 Streaming response start")
