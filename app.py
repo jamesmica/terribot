@@ -1444,10 +1444,27 @@ def search_territory_smart(con, input_str):
 def get_broad_candidates(con, input_str, limit=15):
     """
     Récupère une liste large de candidats potentiels via DuckDB (FTS + Fuzzy).
-    Inclut une recherche spécifique pour les régions.
+    Inclut une recherche spécifique pour les régions et les arrondissements.
     """
     _dbg("geo.broad_candidates.enter", input_str=input_str, limit=limit)
-    clean_input = clean_search_term(input_str)
+
+    # Normalisation spéciale pour les arrondissements
+    # "15e arrondissement de Paris" → "Paris 15e Arrondissement"
+    # "Lyon 3e" → "Lyon 3e Arrondissement"
+    arrondissement_normalized = input_str
+    arrondissement_patterns = [
+        (r'(\d+)(?:er|e|ème)\s+arrondissement\s+de\s+(\w+)', r'\2 \1e Arrondissement'),  # "15e arrondissement de Paris" → "Paris 15e Arrondissement"
+        (r'(\w+)\s+(\d+)(?:er|e|ème)(?:\s+arrondissement)?', r'\1 \2e Arrondissement'),  # "Lyon 3e" → "Lyon 3e Arrondissement"
+    ]
+
+    for pattern, replacement in arrondissement_patterns:
+        match = re.search(pattern, arrondissement_normalized, re.IGNORECASE)
+        if match:
+            arrondissement_normalized = re.sub(pattern, replacement, arrondissement_normalized, flags=re.IGNORECASE)
+            _dbg("geo.broad_candidates.arrondissement_normalized", original=input_str, normalized=arrondissement_normalized)
+            break
+
+    clean_input = clean_search_term(arrondissement_normalized)
 
     # NOUVEAU : Liste des régions françaises connues pour fallback
     REGIONS_MAPPING = {
@@ -1521,11 +1538,14 @@ def get_broad_candidates(con, input_str, limit=15):
         params = [clean_for_sql, epci_boost, clean_for_sql, f'%{clean_for_sql}%', clean_for_sql, limit]
         df_candidates = con.execute(sql, params).df()
 
-        # NOUVEAU : Recherche spécifique EPCI si peu de résultats et qu'on détecte un préfixe EPCI
+        # NOUVEAU : Recherche spécifique EPCI si peu de résultats et qu'on détecte :
+        # - un préfixe EPCI (CC, CA, CU, Métropole, Communauté)
+        # - OU plusieurs mots (qui peuvent indiquer un EPCI sans préfixe)
         epci_keywords_lower = clean_input.lower()
         has_epci_prefix = any(prefix in epci_keywords_lower for prefix in ['cc ', 'ca ', 'cu ', 'metropole', 'communaute'])
+        has_multiple_words = len(clean_for_sql.split()) >= 3  # 3 mots ou plus suggère un EPCI
 
-        if has_epci_prefix and len(df_candidates) < 5:
+        if (has_epci_prefix or has_multiple_words) and len(df_candidates) < 5:
             _dbg("geo.broad_candidates.epci_specific_search")
 
             # Extraire les mots-clés (sans les préfixes CC/CA/CU)
@@ -1535,20 +1555,49 @@ def get_broad_candidates(con, input_str, limit=15):
             keywords = keywords.strip()
 
             # Recherche permissive dans les EPCI uniquement
-            sql_epci = """
-            SELECT ID, NOM_COUV, COMP1, COMP2, COMP3, 'EPCI/Interco' as TYPE_TERRITOIRE,
-                   jaro_winkler_similarity(
-                       strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))),
-                       ?
-                   ) as score
-            FROM territoires
-            WHERE length(ID) = 9
-              AND strip_accents(lower(NOM_COUV)) LIKE ?
-            ORDER BY score DESC
-            LIMIT 10
-            """
+            # On recherche les EPCI où TOUS les mots-clés apparaissent dans le nom (ordre indifférent)
+            keywords_list = keywords.split()
+            where_conditions = []
+            params_epci = []
+
+            for kw in keywords_list:
+                if len(kw) >= 3:  # Ignorer les mots trop courts
+                    where_conditions.append("strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))) LIKE ?")
+                    params_epci.append(f'%{kw}%')
+
+            if where_conditions:
+                where_clause = " AND ".join(where_conditions)
+                sql_epci = f"""
+                SELECT ID, NOM_COUV, COMP1, COMP2, COMP3, 'EPCI/Interco' as TYPE_TERRITOIRE,
+                       jaro_winkler_similarity(
+                           strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))),
+                           ?
+                       ) as score
+                FROM territoires
+                WHERE length(ID) = 9
+                  AND ({where_clause})
+                ORDER BY score DESC
+                LIMIT 10
+                """
+                params_epci.insert(0, keywords)  # Pour jaro_winkler_similarity
+            else:
+                # Fallback : recherche simple si pas de mots-clés valides
+                sql_epci = """
+                SELECT ID, NOM_COUV, COMP1, COMP2, COMP3, 'EPCI/Interco' as TYPE_TERRITOIRE,
+                       jaro_winkler_similarity(
+                           strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))),
+                           ?
+                       ) as score
+                FROM territoires
+                WHERE length(ID) = 9
+                  AND strip_accents(lower(NOM_COUV)) LIKE ?
+                ORDER BY score DESC
+                LIMIT 10
+                """
+                params_epci = [keywords, f'%{keywords}%']
+
             try:
-                df_epci = con.execute(sql_epci, [keywords, f'%{keywords}%']).df()
+                df_epci = con.execute(sql_epci, params_epci).df()
                 if not df_epci.empty:
                     _dbg("geo.broad_candidates.epci_found", rows=len(df_epci))
                     # Fusionner avec les candidats existants
@@ -2442,7 +2491,8 @@ def analyze_territorial_scope(con, rewritten_prompt):
 
                 IMPORTANT - Types de territoires à détecter :
                 - Communes (ex: "Paris", "L'Aigle", "Saint-Denis", "Fontenay", "Lyon", "Marseille")
-                - EPCI/Intercommunalités (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "Grand Paris", "CU d'Arras", "CA Durance Luberon")
+                - Arrondissements municipaux (ex: "15e arrondissement de Paris", "Paris 15e", "3ème arrondissement de Lyon", "Lyon 3e", "Marseille 8e arrondissement")
+                - EPCI/Intercommunalités (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "Grand Paris", "CU d'Arras", "CA Durance Luberon", "Durance Luberon Verdon")
                 - Départements (ex: "Orne", "61", "Hauts-de-Seine", "dans le 94", "département 04")
                 - Régions (ex: "Normandie", "Île-de-France", "PACA")
                 - Pays (ex: "France") - SEULEMENT si explicitement mentionné
@@ -2453,6 +2503,11 @@ def analyze_territorial_scope(con, rewritten_prompt):
                 - NE GÉNÉRALISE PAS (ex: "Paris" ≠ "France", "Lyon" ≠ "France")
                 - Conserve EXACTEMENT le nom tel qu'écrit (avec "CC", "CU", "CA", "Métropole", "Grand", etc.)
                 - Ne raccourcis PAS les noms (garde "CC des Pays de L'Aigle", pas juste "L'Aigle")
+                - ARRONDISSEMENTS : Si un numéro d'arrondissement est mentionné (1er, 2e, 3e, ... 20e), INCLUS-LE dans le nom
+                  → "15e arrondissement de Paris" = extraire "Paris 15e Arrondissement" (pas juste "Paris")
+                  → "Lyon 3e" = extraire "Lyon 3e Arrondissement" (pas juste "Lyon")
+                  → "Marseille 8e arrondissement" = extraire "Marseille 8e Arrondissement"
+                - EPCI sans préfixe : Si un nom ressemble à un EPCI mais sans préfixe (ex: "Durance Luberon Verdon"), conserve-le tel quel
                 - Si plusieurs territoires sont mentionnés, extrais-les tous
                 - Si un contexte département est précisé (ex: "dans le 94", "département 61"), extrais-le séparément
 
@@ -2472,9 +2527,13 @@ def analyze_territorial_scope(con, rewritten_prompt):
                 - "Quel est le taux de pauvreté à Saint-Denis ?" → {"lieux": ["Saint-Denis"], "departement_context": null}
                 - "Fontenay dans le 94" → {"lieux": ["Fontenay"], "departement_context": "94"}
                 - "CC Durance Luberon" → {"lieux": ["CC Durance Luberon"], "departement_context": null}
+                - "Durance Luberon Verdon" → {"lieux": ["Durance Luberon Verdon"], "departement_context": null}
                 - "Manosque, Alpes-de-Haute-Provence" → {"lieux": ["Manosque"], "departement_context": "04"}
                 - "Quel est le taux de chômage en France ?" → {"lieux": ["France"], "departement_context": null}
                 - "Population de Lyon" → {"lieux": ["Lyon"], "departement_context": null}
+                - "Revenu médian dans le 15e arrondissement de Paris" → {"lieux": ["Paris 15e Arrondissement"], "departement_context": null}
+                - "Taux de chômage du 3e arrondissement de Lyon" → {"lieux": ["Lyon 3e Arrondissement"], "departement_context": null}
+                - "Population de Marseille 8e" → {"lieux": ["Marseille 8e Arrondissement"], "departement_context": null}
 
                 RÉPONDS UNIQUEMENT AVEC LE JSON, SANS EXPLICATION.
                 """,
