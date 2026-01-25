@@ -3348,7 +3348,9 @@ def render_epci_choropleth(
 
     # ✅ Utiliser le percent_factor fourni par l'IA (plus d'heuristique !)
     percent_factor = int(metric_spec.get("percent_factor", 1))  # 1 ou 100 selon l'IA
-    _dbg("map.percent.factor", factor=percent_factor, sample_values=valid_values[:5] if valid_values else [])
+    # ✅ Utiliser les décimales fournies par l'IA (comme pour les graphiques)
+    decimals = int(metric_spec.get("decimals", 1))
+    _dbg("map.percent.factor", factor=percent_factor, decimals=decimals, sample_values=valid_values[:5] if valid_values else [])
 
     # ---------- TOOLTIP ----------
     for feature in geojson.get("features", []):
@@ -3357,9 +3359,9 @@ def render_epci_choropleth(
 
         if value is not None:
             if kind == "percent":
-                value_str = fr_num(value, decimals=1, suffix="%", factor=percent_factor)
+                value_str = fr_num(value, decimals=decimals, suffix="%", factor=percent_factor)
             else:
-                value_str = fr_num(value, decimals=0)
+                value_str = fr_num(value, decimals=decimals)
 
             tooltip_text = f"<b>{nom}</b><br>{metric_title}: {value_str}"
 
@@ -3380,10 +3382,10 @@ def render_epci_choropleth(
         # Formater les valeurs pour chaque catégorie
         def format_legend_value(val):
             if kind == "percent":
-                return fr_num(val, decimals=1, suffix="%", factor=percent_factor)
+                return fr_num(val, decimals=decimals, suffix="%", factor=percent_factor)
             else:
                 # 🔧 FIX: Pas de suffix pour les nombres (suffix n'était pas défini)
-                return fr_num(val, decimals=0, suffix="")
+                return fr_num(val, decimals=decimals, suffix="")
 
         cat1_label = f"Moins de {format_legend_value(quartiles[1])}"
         cat2_label = f"De {format_legend_value(quartiles[1])} à {format_legend_value(quartiles[2])}"
