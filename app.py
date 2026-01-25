@@ -3494,18 +3494,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 # Renommer "France" en "Tendance France" dans la légende
                 df_melted.loc[df_melted[label_col] == france_label, label_col] = f"Tendance {france_label}"
 
-    # 7. HEURISTIQUE DE CORRECTION DU % (1600% -> 16%)
-    if is_percent:
-        # 🔧 FIX: Ne PAS diviser par 100 les taux de pauvreté (TP60*) car ils sont déjà en base 100
-        is_poverty_rate = any("TP60" in str(m).upper() for m in selected_metrics)
-
-        # Si c'est censé être du % mais que la moyenne des valeurs est > 1.5,
-        # c'est que les données sont en base 100 (ex: 15.5) et pas en base 1 (0.155)
-        # Vega attend du base 1 pour afficher %. On divise donc par 100.
-        val_mean = df_melted["Valeur"].mean()
-        if val_mean > 1.5 and not is_poverty_rate:
-             df_melted["Valeur"] = df_melted["Valeur"] / 100.0
-
     # 8. VEGA
     is_multi_metric = len(new_selected_metrics) > 1
     # Toujours utiliser des graphiques groupés, jamais empilés
