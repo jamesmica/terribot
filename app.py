@@ -372,7 +372,7 @@ st.set_page_config(
 st.markdown("""
 <style>
     .leaflet-tooltip img {
-      max-width: 128px;
+      max-width: 64px;
     }
     /* Forcer la largeur correcte pour les graphiques Vega-Lite */
     .stVegaLiteChart > div {
