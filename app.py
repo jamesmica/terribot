@@ -26,6 +26,75 @@ import base64
 import urllib.request
 import urllib.error
 
+# --- DATA SETUP: Download parquet files if needed (bypasses Git LFS issues) ---
+def check_and_download_data():
+    """Check if data files exist, download if needed (bypasses Git LFS quota issues)."""
+    data_dir = "data"
+
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+        print("[TERRIBOT][SETUP] ⚠️  Data directory created")
+
+    # Check if we have actual parquet files (not just LFS pointers)
+    parquet_files = [f for f in os.listdir(data_dir) if f.endswith('.parquet')]
+
+    if not parquet_files:
+        print("[TERRIBOT][SETUP] ⚠️  No parquet files found, checking for LFS pointers...")
+
+    # Check if files are LFS pointers (ASCII text, ~130 bytes, starts with "version https://git-lfs")
+    lfs_pointers = 0
+    actual_files = 0
+
+    for f in parquet_files:
+        filepath = os.path.join(data_dir, f)
+        file_size = os.path.getsize(filepath)
+
+        if file_size < 200:  # Likely an LFS pointer
+            try:
+                with open(filepath, 'r') as fp:
+                    content = fp.read(100)
+                    if 'git-lfs' in content:
+                        lfs_pointers += 1
+                    else:
+                        actual_files += 1
+            except:
+                actual_files += 1
+        else:
+            actual_files += 1
+
+    # If we have LFS pointers or no files, try to download
+    if lfs_pointers > 0 or len(parquet_files) < 70:
+        print(f"[TERRIBOT][SETUP] ⚠️  Found {lfs_pointers} LFS pointers, {actual_files} actual files")
+        print("[TERRIBOT][SETUP] 📥 Attempting to download data files...")
+        print("[TERRIBOT][SETUP] ℹ️  See DATA_SETUP.md for manual setup instructions")
+
+        try:
+            result = subprocess.run(
+                ["python", "download_data.py"],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode == 0:
+                print("[TERRIBOT][SETUP] ✅ Data files downloaded successfully")
+            else:
+                print(f"[TERRIBOT][SETUP] ⚠️  Data download failed: {result.stderr}")
+                print("[TERRIBOT][SETUP] ℹ️  The app will try to continue, but may fail if data is missing")
+        except subprocess.TimeoutExpired:
+            print("[TERRIBOT][SETUP] ⚠️  Data download timed out")
+        except Exception as e:
+            print(f"[TERRIBOT][SETUP] ⚠️  Could not run download script: {e}")
+            print("[TERRIBOT][SETUP] ℹ️  Please run 'python download_data.py' manually")
+    else:
+        print(f"[TERRIBOT][SETUP] ✅ Found {actual_files} data files")
+
+# Run data check on startup
+try:
+    check_and_download_data()
+except Exception as e:
+    print(f"[TERRIBOT][SETUP] ⚠️  Data setup check failed: {e}")
+
 # Création du dossier de logs si inexistant
 if not os.path.exists("logs"):
     os.makedirs("logs")
