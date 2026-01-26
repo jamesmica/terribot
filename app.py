@@ -9,7 +9,7 @@ import json
 import re
 import unicodedata
 import folium
-from streamlit_folium import folium_static
+from streamlit_folium import st_folium
 import branca.colormap as cm
 
 print("[TERRIBOT] ✅ Script importé / démarrage du fichier")
@@ -3433,7 +3433,7 @@ def render_epci_choropleth(
     # 🔧 Adapter la taille selon le contexte (sidebar ou main)
     map_width = 400 if in_sidebar else 400
     map_height = 400 if in_sidebar else 400
-    folium_static(m, width=map_width, height=map_height)
+    st_folium(m, width=map_width, height=map_height, returned_objects=[])
 
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
