@@ -1078,6 +1078,21 @@ def parse_sql_select_expressions(sql_query: str) -> dict:
     return expressions
 
 
+def simplify_calculation_expression(expression: str) -> str:
+    if not expression:
+        return ""
+    rendered = expression
+    rendered = re.sub(r"\bTRY_CAST\s*\(\s*([^)]+?)\s+AS\s+\w+\s*\)", r"\1", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\bCAST\s*\(\s*([^)]+?)\s+AS\s+\w+\s*\)", r"\1", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\bNULLIF\s*\(\s*([^,]+?)\s*,\s*[^)]+\)", r"\1", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\bCOALESCE\s*\(\s*([^)]+?)\s*\)", r"\1", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\bROUND\s*\(\s*([^)]+?)\s*\)", r"\1", rendered, flags=re.IGNORECASE)
+    for _ in range(3):
+        rendered = re.sub(r"\b[A-Z_]+\s*\(\s*([^)]+?)\s*\)", r"\1", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\s+", " ", rendered).strip()
+    return rendered
+
+
 def build_calculation_display(expression: str, var_definitions: dict) -> str:
     if not expression:
         return ""
@@ -1091,7 +1106,7 @@ def build_calculation_display(expression: str, var_definitions: dict) -> str:
         rendered = re.sub(quoted_pattern, definition, rendered)
         rendered = re.sub(dotted_pattern, definition, rendered)
 
-    rendered = re.sub(r"\s+", " ", rendered).strip()
+    rendered = simplify_calculation_expression(rendered)
     return rendered
 
 
@@ -1264,12 +1279,9 @@ def build_metadata_tooltip(meta: dict) -> str:
     if description:
         parts.append(f"{label} : {description}")
     source = meta.get("source") or ""
-    year = meta.get("year") or ""
     if source:
         parts.append(f"Source : {source}")
-    if year:
-        parts.append(f"Année : {year}")
-    return "\n".join(parts).strip()
+    return "\n\n".join(parts).strip()
 
 
 def style_df(df: pd.DataFrame, specs: dict, metadata=None):
@@ -4344,30 +4356,6 @@ for i_msg, msg in enumerate(st.session_state.messages):
                     # Extraire les métadonnées des colonnes
                     metadata = get_column_metadata(msg["data"], formats, con, rag_context, sql_query)
 
-                    # Afficher les métadonnées au-dessus du tableau
-                    if metadata:
-                        # Regrouper les métadonnées communes
-                        sources = set()
-                        years = set()
-
-                        for col, meta in metadata.items():
-                            if meta.get('source'):
-                                sources.add(meta['source'])
-                            if meta.get('year'):
-                                years.add(meta['year'])
-
-                        # Afficher source et année sur une ligne
-                        info_parts = []
-                        if sources:
-                            sources_str = ", ".join(sorted(sources))
-                            info_parts.append(f"**Source** : {sources_str}")
-                        if years:
-                            years_str = ", ".join(sorted(years))
-                            info_parts.append(f"**Année** : {years_str}")
-
-                        if info_parts:
-                            st.caption(" • ".join(info_parts))
-
                     styled_df, col_config = style_df(msg["data"], formats, metadata)
                     st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
@@ -5147,30 +5135,6 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             # Extraire les métadonnées des colonnes
                             metadata = get_column_metadata(df, formats, con, glossaire_context, debug_container.get("sql_query", ""))
 
-                            # Afficher les métadonnées au-dessus du tableau
-                            if metadata:
-                                # Regrouper les métadonnées communes
-                                sources = set()
-                                years = set()
-
-                                for col, meta in metadata.items():
-                                    if meta.get('source'):
-                                        sources.add(meta['source'])
-                                    if meta.get('year'):
-                                        years.add(meta['year'])
-
-                                # Afficher source et année sur une ligne
-                                info_parts = []
-                                if sources:
-                                    sources_str = ", ".join(sorted(sources))
-                                    info_parts.append(f"**Source** : {sources_str}")
-                                if years:
-                                    years_str = ", ".join(sorted(years))
-                                    info_parts.append(f"**Année** : {years_str}")
-
-                                if info_parts:
-                                    st.caption(" • ".join(info_parts))
-
                             styled_df, col_config = style_df(df, formats, metadata)
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
@@ -5383,13 +5347,8 @@ if "sidebar_viz_placeholder" in st.session_state:
                             if detail_value:
                                 st.caption(f"**{detail_label}** : {detail_value}")
 
-                            info_parts = []
                             if selected_meta.get("source"):
-                                info_parts.append(f"**Source** : {selected_meta['source']}")
-                            if selected_meta.get("year"):
-                                info_parts.append(f"**Année** : {selected_meta['year']}")
-                            if info_parts:
-                                st.caption(" • ".join(info_parts))
+                                st.caption(f"**Source** : {selected_meta['source']}")
                     else:
                         st.caption("Aucune variable numérique disponible.")
                 except Exception as e:
