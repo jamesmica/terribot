@@ -758,6 +758,115 @@ def stream_response_text(response_stream):
         if getattr(event, "type", "") == "response.output_text.delta":
             yield event.delta
 
+def load_territoires_records(con):
+    cached = st.session_state.get("territoires_records_cache")
+    if cached is not None:
+        return cached
+    try:
+        df = con.execute("SELECT ID, NOM, NOM_COUV FROM territoires").df()
+    except Exception as error:
+        _dbg("geo.other_territory.records_error", error=str(error))
+        return []
+    records = df.to_dict(orient="records")
+    st.session_state.territoires_records_cache = records
+    return records
+
+def format_conversation_context(messages):
+    lines = []
+    for msg in messages:
+        role = msg.get("role", "unknown").upper()
+        content = msg.get("content", "")
+        lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+def build_geo_context_from_id(con, territory_id, source_label, search_query=None):
+    row = con.execute(
+        "SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = ? LIMIT 1",
+        [str(territory_id)],
+    ).fetchone()
+    if not row:
+        return None
+
+    comps = [row[2], row[3], row[4]]
+    ordered_ids = [str(row[0])]
+    ordered_ids.extend(
+        [
+            str(comp)
+            for comp in comps
+            if comp and str(comp).lower() not in ["none", "nan", "null", ""]
+        ]
+    )
+    ordered_ids.append("FR")
+    final_ids_ordered = list(dict.fromkeys(ordered_ids))
+
+    debug_entry = {
+        "Trouvé": row[1],
+        "ID": str(row[0]),
+        "Source": source_label,
+    }
+    if search_query:
+        debug_entry["Recherche"] = search_query
+
+    return {
+        "target_name": row[1],
+        "target_id": str(row[0]),
+        "all_ids": final_ids_ordered,
+        "parent_clause": "",
+        "display_context": row[1],
+        "debug_search": [debug_entry],
+        "lieux_cites": [row[1]],
+    }
+
+def ai_select_territory_from_full_context(
+    client,
+    model,
+    territoires_records,
+    conversation_text,
+    pending_geo_text=None,
+):
+    system_prompt = """
+    Tu es un expert géographe français. Ta mission est d'identifier le territoire exact
+    en te basant sur la discussion et la liste complète des territoires fournie.
+
+    RÈGLES :
+    - Choisis UNIQUEMENT un ID qui existe dans la colonne ID de la liste fournie.
+    - Si plusieurs correspondances, prends la plus pertinente selon le contexte.
+    - Si aucun territoire ne convient, retourne null.
+
+    FORMAT DE RÉPONSE JSON STRICT :
+    {
+        "selected_id": "ID_exact_ou_null",
+        "reason": "explication courte"
+    }
+
+    Réponds uniquement avec le JSON, sans texte additionnel.
+    """
+
+    user_prompt = f"""
+    TERRITOIRE CIBLE (si mention explicite) : {pending_geo_text or "Non spécifié"}
+
+    DISCUSSION COMPLÈTE :
+    {conversation_text}
+
+    TERRITOIRES DISPONIBLES (colonnes ID, NOM, NOM_COUV) :
+    {json.dumps(territoires_records, ensure_ascii=False)}
+    """
+
+    response = client.responses.create(
+        model=model,
+        input=build_messages(system_prompt, user_prompt),
+        temperature=0,
+    )
+    metrics.log_api_call()
+    raw_response = extract_response_text(response)
+    _dbg("geo.other_territory.response", raw=raw_response[:400])
+
+    try:
+        return json.loads(raw_response)
+    except json.JSONDecodeError as error:
+        _dbg("geo.other_territory.parse_error", error=str(error), raw=raw_response[:400])
+        return None
+
 # --- 4. FONCTIONS INTELLIGENTES (FORMATAGE & SÉLECTION) ---
 def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: str, client, model: str):
     """
@@ -4314,6 +4423,8 @@ if "pending_geo_text" not in st.session_state:
     st.session_state.pending_geo_text = None
 if "ambiguity_candidates" not in st.session_state:
     st.session_state.ambiguity_candidates = None
+if "other_territory_used" not in st.session_state:
+    st.session_state.other_territory_used = False
 
 for i_msg, msg in enumerate(st.session_state.messages):
     avatar = "🤖" if msg["role"] == "assistant" else "👤"
@@ -4441,6 +4552,48 @@ if st.session_state.ambiguity_candidates:
 
             st.rerun()
 
+    if not st.session_state.other_territory_used and st.button("Autre territoire", key="amb_other_territory", width="stretch"):
+        st.session_state.other_territory_used = True
+        territoires_records = load_territoires_records(con)
+        if not territoires_records:
+            st.error("Impossible de charger territoires.txt pour la recherche avancée.")
+        else:
+            conversation_text = format_conversation_context(st.session_state.messages)
+            pending_geo_text = st.session_state.get("pending_geo_text")
+            pending_prompt = st.session_state.get("pending_prompt")
+
+            with st.spinner("Recherche avancée du territoire..."):
+                ai_result = ai_select_territory_from_full_context(
+                    client,
+                    MODEL_NAME,
+                    territoires_records,
+                    conversation_text,
+                    pending_geo_text=pending_geo_text,
+                )
+
+            selected_id = ai_result.get("selected_id") if ai_result else None
+            if selected_id and str(selected_id).lower() not in ["null", "none", ""]:
+                new_context = build_geo_context_from_id(
+                    con,
+                    selected_id,
+                    "Choix IA (Autre territoire)",
+                    search_query=pending_geo_text or pending_prompt,
+                )
+                if new_context:
+                    st.session_state.current_geo_context = new_context
+                    st.session_state.trigger_run_prompt = pending_prompt
+                    st.session_state.force_geo_context = True
+                    st.session_state.ambiguity_candidates = None
+                    st.session_state.pending_prompt = None
+                    st.session_state.pending_geo_text = None
+                    st.session_state.other_territory_used = False
+                    _dbg("ui.ambiguity.other_territory", current_geo_context=new_context)
+                    st.rerun()
+                else:
+                    st.error("Le territoire proposé n'a pas été trouvé dans la base.")
+            else:
+                st.error("Je n'ai pas pu identifier un territoire avec la recherche avancée.")
+
 # -- B. INPUT PRINCIPAL --
 user_input = st.chat_input("Posez votre question...")
 
@@ -4461,6 +4614,7 @@ elif user_input:
     st.session_state.ambiguity_candidates = None
     st.session_state.pending_prompt = None
     st.session_state.pending_geo_text = None
+    st.session_state.other_territory_used = False
 
 # --- Helper pour messages d'attente personnalisés ---
 def get_waiting_message(step, territory_name=None, prompt=None):
@@ -4787,6 +4941,7 @@ if prompt_to_process:
                         st.session_state.ambiguity_candidates = formatted_candidates
                         st.session_state.pending_geo_text = new_context.get("query")
                         st.session_state.pending_prompt = prompt_to_process
+                        st.session_state.other_territory_used = False
 
                         debug_container["steps"] = debug_steps
                         debug_container["final_ids"] = (st.session_state.current_geo_context or {}).get("all_ids", [])
@@ -4818,6 +4973,7 @@ if prompt_to_process:
 
 
                             st.session_state.pending_prompt = prompt_to_process
+                            st.session_state.other_territory_used = False
                             print("[TERRIBOT][BUG?] debug_steps referenced here — is it defined in this scope?")
 
                             debug_container["steps"] = debug_steps # <--- SAUVEGARDE
