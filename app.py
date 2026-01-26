@@ -3434,7 +3434,7 @@ def render_epci_choropleth(
     map_height = 320
     make_map_responsive= """
      <style>
-     [title~="st.iframe"] { width: 100%}
+     [title~="st.iframe"] { width: 100%;height;400px;}
      </style>
     """
     st.markdown(make_map_responsive, unsafe_allow_html=True)
