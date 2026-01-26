@@ -4521,14 +4521,56 @@ if st.session_state.ambiguity_candidates:
     st.warning(f"🤔 Plusieurs territoires trouvés pour **{st.session_state.get('pending_geo_text','ce lieu')}**. Veuillez préciser :")
 
     # Affichage amélioré avec informations contextuelles
-    num_candidates = len(st.session_state.ambiguity_candidates)
-    if num_candidates <= 3:
-        cols = st.columns(num_candidates)
-    else:
-        cols = st.columns(3)  # Maximum 3 colonnes pour la lisibilité
+    candidates = st.session_state.ambiguity_candidates[:6]
+    display_items = candidates + [{"id": "other", "nom": "Autre territoire", "is_other": True}]
+    num_items = len(display_items)
+    num_cols = min(3, num_items)
+    cols = st.columns(num_cols)
 
-    for i, cand in enumerate(st.session_state.ambiguity_candidates[:6]):  # Limité à 6 pour l'affichage
-        col_index = i % 3
+    for i, cand in enumerate(display_items):
+        col_index = i % num_cols
+
+        if cand.get("is_other"):
+            if cols[col_index].button(cand["nom"], key="amb_other_territory", width='stretch'):
+                territoires_text = load_territoires_text()
+                if not territoires_text:
+                    st.error("Impossible de charger territoires.txt pour la recherche avancée.")
+                else:
+                    conversation_text = format_conversation_context(st.session_state.messages)
+                    pending_geo_text = st.session_state.get("pending_geo_text")
+                    pending_prompt = st.session_state.get("pending_prompt")
+
+                    with st.spinner("Recherche avancée du territoire..."):
+                        ai_result = ai_select_territory_from_full_context(
+                            client,
+                            MODEL_NAME,
+                            territoires_text,
+                            conversation_text,
+                            pending_geo_text=pending_geo_text,
+                        )
+
+                    selected_id = ai_result.get("selected_id") if ai_result else None
+                    if selected_id and str(selected_id).lower() not in ["null", "none", ""]:
+                        new_context = build_geo_context_from_id(
+                            con,
+                            selected_id,
+                            "Choix IA (Autre territoire)",
+                            search_query=pending_geo_text or pending_prompt,
+                        )
+                        if new_context:
+                            st.session_state.current_geo_context = new_context
+                            st.session_state.trigger_run_prompt = pending_prompt
+                            st.session_state.force_geo_context = True
+                            st.session_state.ambiguity_candidates = None
+                            st.session_state.pending_prompt = None
+                            st.session_state.pending_geo_text = None
+                            _dbg("ui.ambiguity.other_territory", current_geo_context=new_context)
+                            st.rerun()
+                        else:
+                            st.error("Le territoire proposé n'a pas été trouvé dans la base.")
+                    else:
+                        st.error("Je n'ai pas pu identifier un territoire avec la recherche avancée.")
+            continue
 
         # Construire le label du bouton avec contexte
         button_label = f"**{cand['nom']}**"
@@ -4576,46 +4618,6 @@ if st.session_state.ambiguity_candidates:
             print("[TERRIBOT][UI] 🔁 rerun after ambiguity resolution")
 
             st.rerun()
-
-    if st.button("Autre territoire", key="amb_other_territory", width="stretch"):
-        territoires_text = load_territoires_text()
-        if not territoires_text:
-            st.error("Impossible de charger territoires.txt pour la recherche avancée.")
-        else:
-            conversation_text = format_conversation_context(st.session_state.messages)
-            pending_geo_text = st.session_state.get("pending_geo_text")
-            pending_prompt = st.session_state.get("pending_prompt")
-
-            with st.spinner("Recherche avancée du territoire..."):
-                ai_result = ai_select_territory_from_full_context(
-                    client,
-                    MODEL_NAME,
-                    territoires_text,
-                    conversation_text,
-                    pending_geo_text=pending_geo_text,
-                )
-
-            selected_id = ai_result.get("selected_id") if ai_result else None
-            if selected_id and str(selected_id).lower() not in ["null", "none", ""]:
-                new_context = build_geo_context_from_id(
-                    con,
-                    selected_id,
-                    "Choix IA (Autre territoire)",
-                    search_query=pending_geo_text or pending_prompt,
-                )
-                if new_context:
-                    st.session_state.current_geo_context = new_context
-                    st.session_state.trigger_run_prompt = pending_prompt
-                    st.session_state.force_geo_context = True
-                    st.session_state.ambiguity_candidates = None
-                    st.session_state.pending_prompt = None
-                    st.session_state.pending_geo_text = None
-                    _dbg("ui.ambiguity.other_territory", current_geo_context=new_context)
-                    st.rerun()
-                else:
-                    st.error("Le territoire proposé n'a pas été trouvé dans la base.")
-            else:
-                st.error("Je n'ai pas pu identifier un territoire avec la recherche avancée.")
 
 # -- B. INPUT PRINCIPAL --
 user_input = st.chat_input("Posez votre question...")
