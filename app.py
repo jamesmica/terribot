@@ -449,6 +449,11 @@ st.markdown("""
     .leaflet-control-attribution {
     font-size: 0.5rem !important;
     }
+    .leaflet-control-attribution,
+    .leaflet-control-attribution a {
+      font-size: 12px !important;
+    }
+
     /* Forcer la largeur correcte pour les graphiques Vega-Lite */
     .stVegaLiteChart > div {
         width: auto !important;
