@@ -758,14 +758,18 @@ def stream_response_text(response_stream):
         if getattr(event, "type", "") == "response.output_text.delta":
             yield event.delta
 
-@st.cache_data(show_spinner=False)
 def load_territoires_records(con):
+    cached = st.session_state.get("territoires_records_cache")
+    if cached is not None:
+        return cached
     try:
         df = con.execute("SELECT ID, NOM, NOM_COUV FROM territoires").df()
     except Exception as error:
         _dbg("geo.other_territory.records_error", error=str(error))
         return []
-    return df.to_dict(orient="records")
+    records = df.to_dict(orient="records")
+    st.session_state.territoires_records_cache = records
+    return records
 
 def format_conversation_context(messages):
     lines = []
