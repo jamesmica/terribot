@@ -813,49 +813,86 @@ def build_geo_context_from_id(con, territory_id, source_label, search_query=None
         "lieux_cites": [row[1]],
     }
 
-def ai_select_territory_from_full_context(client, model, territoires_text, conversation_text, pending_geo_text=None):
+def chunk_text_by_bytes(text, max_bytes):
+    encoded = text.encode("utf-8")
+    chunks = []
+    start = 0
+    while start < len(encoded):
+        end = min(start + max_bytes, len(encoded))
+        chunk = encoded[start:end].decode("utf-8", errors="ignore")
+        chunks.append(chunk)
+        start = end
+    return chunks
+
+def ai_select_territory_from_full_context(
+    client,
+    model,
+    territoires_text,
+    conversation_text,
+    pending_geo_text=None,
+    max_chunk_bytes=200000,
+):
     system_prompt = """
     Tu es un expert géographe français. Ta mission est d'identifier le territoire exact
-    en te basant sur la discussion et le fichier complet territoires.txt fourni.
+    en te basant sur la discussion et les extraits successifs du fichier territoires.txt.
 
     RÈGLES :
-    - Choisis UNIQUEMENT un ID qui existe dans la colonne ID de territoires.txt.
+    - Choisis UNIQUEMENT un ID qui existe dans la colonne ID du chunk fourni.
     - Si plusieurs correspondances, prends la plus pertinente selon le contexte.
-    - Si aucun territoire ne convient, retourne null.
+    - Si aucun territoire ne convient dans ce chunk, retourne null.
 
     FORMAT DE RÉPONSE JSON STRICT :
     {
         "selected_id": "ID_exact_ou_null",
+        "confidence": 0.0,
         "reason": "explication courte"
     }
 
     Réponds uniquement avec le JSON, sans texte additionnel.
     """
 
-    user_prompt = f"""
-    TERRITOIRE CIBLE (si mention explicite) : {pending_geo_text or "Non spécifié"}
+    chunks = chunk_text_by_bytes(territoires_text, max_chunk_bytes)
+    best_result = None
+    best_confidence = -1.0
 
-    DISCUSSION COMPLÈTE :
-    {conversation_text}
+    for idx, chunk in enumerate(chunks, start=1):
+        user_prompt = f"""
+        TERRITOIRE CIBLE (si mention explicite) : {pending_geo_text or "Non spécifié"}
 
-    FICHIER TERRITOIRES.TXT (COMPLET) :
-    {territoires_text}
-    """
+        DISCUSSION COMPLÈTE :
+        {conversation_text}
 
-    response = client.responses.create(
-        model=model,
-        input=build_messages(system_prompt, user_prompt),
-        temperature=0,
-    )
-    metrics.log_api_call()
-    raw_response = extract_response_text(response)
-    _dbg("geo.other_territory.response", raw=raw_response[:400])
+        EXTRAIT TERRITOIRES.TXT (CHUNK {idx}/{len(chunks)}) :
+        {chunk}
+        """
 
-    try:
-        return json.loads(raw_response)
-    except json.JSONDecodeError as error:
-        _dbg("geo.other_territory.parse_error", error=str(error), raw=raw_response[:400])
-        return None
+        try:
+            response = client.responses.create(
+                model=model,
+                input=build_messages(system_prompt, user_prompt),
+                temperature=0,
+            )
+            metrics.log_api_call()
+            raw_response = extract_response_text(response)
+            _dbg("geo.other_territory.response", chunk=idx, raw=raw_response[:400])
+
+            chunk_result = json.loads(raw_response)
+            selected_id = chunk_result.get("selected_id") if chunk_result else None
+            confidence = chunk_result.get("confidence", 0.0) if chunk_result else 0.0
+        except Exception as error:
+            _dbg("geo.other_territory.error", chunk=idx, error=str(error))
+            continue
+
+        if selected_id and str(selected_id).lower() not in ["null", "none", ""]:
+            try:
+                confidence_value = float(confidence)
+            except (TypeError, ValueError):
+                confidence_value = 0.0
+            if confidence_value > best_confidence:
+                best_confidence = confidence_value
+                best_result = chunk_result
+
+    return best_result
 
 # --- 4. FONCTIONS INTELLIGENTES (FORMATAGE & SÉLECTION) ---
 def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: str, client, model: str):
