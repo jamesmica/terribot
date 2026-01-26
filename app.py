@@ -440,30 +440,9 @@ st.set_page_config(
     initial_sidebar_state=440
 )
 
-# CSS custom pour corriger la largeur des graphiques Vega-Lite et la largeur max des tooltips leaflet
+# CSS custom pour corriger la largeur des graphiques Vega-Lite
 st.markdown("""
 <style>
-    .leaflet-container {
-    font-size:0.8rem !important;
-    }
-    .leaflet-control-attribution {
-    font-size: 0.5rem !important;
-    }
-    .leaflet-control-attribution,
-    .leaflet-control-attribution a {
-      font-size: 12px !important;
-    }
-    .leaflet-container .leaflet-control-attribution,
-    .leaflet-container .leaflet-control-attribution a {
-      font-size: 0.75rem !important;
-    }
-    #map_div {
-    font-size:0.7rem;
-    }
-    #map_div .leaflet-control-attribution {
-    font-size:0.5rem;
-    }
-
     /* Forcer la largeur correcte pour les graphiques Vega-Lite */
     .stVegaLiteChart > div {
         width: auto !important;
