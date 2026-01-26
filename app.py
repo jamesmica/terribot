@@ -443,10 +443,11 @@ st.set_page_config(
 # CSS custom pour corriger la largeur des graphiques Vega-Lite et la largeur max des tooltips leaflet
 st.markdown("""
 <style>
-    .leaflet-tooltip {
-      max-width: 80px;
-      white-space: normal;      /* autorise le retour à la ligne */
-      word-wrap: break-word;    /* casse les mots longs */
+    .leaflet-container {
+    font-size:0.8rem;
+    }
+    .leaflet-control-attribution {
+    font-size: 0.5rem;
     }
     /* Forcer la largeur correcte pour les graphiques Vega-Lite */
     .stVegaLiteChart > div {
@@ -3434,7 +3435,10 @@ def render_epci_choropleth(
     map_height = 320
     make_map_responsive= """
      <style>
-     iframe[title~="st_folium"] { width: 100%; height;400px;}
+     .stCustomComponentV1 {
+         width: 100%; 
+         height: 400px;
+         } 
      </style>
     """
     st.markdown(make_map_responsive, unsafe_allow_html=True)
