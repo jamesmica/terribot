@@ -670,12 +670,15 @@ with st.sidebar:
     }
     /* Remonter uniquement le titre principal (le premier h1) */ 
     div[data-testid="stSidebarUserContent"] { 
-    margin-top: -80px !important; 
+    margin-top: -26px !important; 
     }
 
     div[data-testid="stSidebarHeader"] {
-    z-index:1;
-    position:relative;
+    z-index: 1;
+    position: absolute;
+    width: 80px; 
+    right: 0;
+    margin-top:-14px;
     }
 
     /* Style pour le bouton nouvelle conversation */
@@ -692,7 +695,7 @@ with st.sidebar:
     col1, col2 = st.columns([3, 1])
     with col1:
         st.title("🤖 Terribot")
-        st.caption("v0.18.6 - 22 janvier 2026")
+        st.caption("v0.19.1 - 26 janvier 2026")
     with col2:
         # Bouton nouvelle conversation
         if st.button("🔄", help="Nouvelle conversation", type="primary", use_container_width=True):
