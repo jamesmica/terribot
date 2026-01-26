@@ -991,9 +991,35 @@ Analyse chaque colonne et retourne le formatage optimal au format JSON."""
         return initial_specs  # Fallback sur les specs initiales en cas d'erreur
 
 
-def get_column_metadata(df: pd.DataFrame, specs: dict, con):
+def extract_sql_variables_from_context(glossaire_context: str) -> dict:
+    """
+    Extrait les noms de variables SQL techniques depuis le glossaire_context.
+    Retourne un dict {nom_sql_technique: description}.
+
+    Format attendu dans le contexte :
+    ✅ TABLE: "TABLE_NAME" | VAR: "physical_column" | DESC: "description"
+    """
+    import re
+    variables = {}
+
+    if not glossaire_context:
+        return variables
+
+    # Pattern pour extraire VAR et DESC
+    pattern = r'VAR:\s*"([^"]+)"\s*\|\s*DESC:\s*"([^"]+)"'
+    matches = re.findall(pattern, glossaire_context)
+
+    for var_name, description in matches:
+        variables[var_name] = description
+
+    print(f"[TERRIBOT][METADATA] 📋 Variables SQL extraites du contexte : {list(variables.keys())}")
+    return variables
+
+
+def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: str = ""):
     """
     Extrait les métadonnées des colonnes depuis le glossaire (source, année, calcul).
+    Utilise les noms SQL techniques du glossaire_context pour matcher les colonnes.
     Retourne un dict {col_name: {source, year, definition, calculation}}.
     """
     metadata = {}
@@ -1004,6 +1030,9 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con):
         print(f"[TERRIBOT][METADATA] 📚 Glossaire chargé : {len(glossaire_df)} entrées")
         print(f"[TERRIBOT][METADATA] 📊 Colonnes du DataFrame à traiter : {list(df.columns)}")
 
+        # Extraire les variables SQL du contexte
+        sql_variables = extract_sql_variables_from_context(glossaire_context)
+
         for col in df.columns:
             # Ignorer les colonnes système
             if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV", "NOM"]:
@@ -1011,9 +1040,38 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con):
 
             print(f"[TERRIBOT][METADATA] 🔍 Recherche métadonnées pour colonne : '{col}'")
 
-            # Chercher la colonne dans le glossaire
+            # ÉTAPE 1 : Chercher d'abord dans les variables SQL du contexte
+            sql_name_to_search = None
+
+            if sql_variables:
+                # Essayer de matcher exactement avec une variable SQL du contexte
+                if col in sql_variables:
+                    sql_name_to_search = col
+                    print(f"[TERRIBOT][METADATA]   ✅ Match exact dans contexte SQL : '{sql_name_to_search}'")
+                else:
+                    # Essayer avec normalisation
+                    from difflib import get_close_matches
+                    col_normalized = col.replace("_", "-").upper()
+                    sql_vars_upper = {k.upper(): k for k in sql_variables.keys()}
+
+                    if col_normalized in sql_vars_upper:
+                        sql_name_to_search = sql_vars_upper[col_normalized]
+                        print(f"[TERRIBOT][METADATA]   ✅ Match normalisé dans contexte SQL : '{sql_name_to_search}'")
+                    else:
+                        # Fuzzy match avec les variables SQL
+                        matches = get_close_matches(col, sql_variables.keys(), n=1, cutoff=0.7)
+                        if matches:
+                            sql_name_to_search = matches[0]
+                            print(f"[TERRIBOT][METADATA]   🎯 Match fuzzy dans contexte SQL : '{col}' -> '{sql_name_to_search}'")
+
+            # Si pas trouvé dans le contexte, utiliser le nom de la colonne tel quel
+            if not sql_name_to_search:
+                sql_name_to_search = col
+                print(f"[TERRIBOT][METADATA]   ℹ️ Utilisation du nom de colonne tel quel : '{sql_name_to_search}'")
+
+            # ÉTAPE 2 : Chercher dans le glossaire avec le nom SQL identifié
             # Normaliser le nom pour la recherche
-            col_normalized = col.replace("_", "-").upper()
+            col_normalized = sql_name_to_search.replace("_", "-").upper()
             print(f"[TERRIBOT][METADATA]   Essai 1 avec : '{col_normalized}'")
 
             # Chercher dans le glossaire
@@ -1021,13 +1079,13 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con):
 
             if matches.empty:
                 # Essayer avec des tirets -> underscores
-                col_normalized = col.replace("-", "_").upper()
+                col_normalized = sql_name_to_search.replace("-", "_").upper()
                 print(f"[TERRIBOT][METADATA]   Essai 2 avec : '{col_normalized}'")
                 matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
 
             if matches.empty:
                 # Essayer sans modification
-                col_normalized = col.upper()
+                col_normalized = sql_name_to_search.upper()
                 print(f"[TERRIBOT][METADATA]   Essai 3 sans modification : '{col_normalized}'")
                 matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
 
@@ -4081,8 +4139,11 @@ for i_msg, msg in enumerate(st.session_state.messages):
                     # On utilise les formats stockés dans la config
                     formats = saved_config.get("formats", {})
 
+                    # Récupérer le glossaire_context depuis debug_info si disponible
+                    rag_context = msg.get("debug_info", {}).get("rag_context", "")
+
                     # Extraire les métadonnées des colonnes
-                    metadata = get_column_metadata(msg["data"], formats, con)
+                    metadata = get_column_metadata(msg["data"], formats, con, rag_context)
 
                     # Afficher les métadonnées au-dessus du tableau
                     if metadata:
@@ -4892,7 +4953,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             formats = chart_config.get('formats', {})
 
                             # Extraire les métadonnées des colonnes
-                            metadata = get_column_metadata(df, formats, con)
+                            metadata = get_column_metadata(df, formats, con, glossaire_context)
 
                             # Afficher les métadonnées au-dessus du tableau
                             if metadata:
@@ -4970,7 +5031,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         "chart_config": chart_config.copy(),
                         "final_ids": debug_container.get("final_ids", geo_context.get("all_ids", [])),
                         "geo_context": geo_context.copy() if geo_context else {},
-                        "sql_query": debug_container.get("sql_query")
+                        "sql_query": debug_container.get("sql_query"),
+                        "glossaire_context": debug_container.get("rag_context", "")
                     }
 
                 # C. Streaming du Texte
@@ -5062,6 +5124,7 @@ if "sidebar_viz_placeholder" in st.session_state:
             final_ids = viz_data.get("final_ids", [])
             geo_context_viz = viz_data.get("geo_context", {})
             sql_query_viz = viz_data.get("sql_query")
+            glossaire_context_viz = viz_data.get("glossaire_context", "")
 
             if df is not None and not df.empty:
                 try:
@@ -5127,7 +5190,7 @@ if "sidebar_viz_placeholder" in st.session_state:
                                 st.info("Carte seulement disponible pour commune ou EPCI.")
 
                         # Afficher les métadonnées de la variable sélectionnée
-                        metadata = get_column_metadata(df, formats, con)
+                        metadata = get_column_metadata(df, formats, con, glossaire_context_viz)
                         if selected_metric in metadata:
                             meta = metadata[selected_metric]
                             # Créer une ligne avec source et intitulé
