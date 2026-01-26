@@ -1891,7 +1891,6 @@ def get_broad_candidates(con, input_str, limit=15):
     try:
         params = [clean_for_sql, epci_boost, clean_for_sql, f'%{clean_for_sql}%', clean_for_sql, limit]
         df_candidates = con.execute(sql, params).df()
-        df_candidates.columns = [c.upper() for c in df_candidates.columns]
 
         # NOUVEAU : Recherche spécifique EPCI si peu de résultats et qu'on détecte un préfixe EPCI
         epci_keywords_lower = clean_input.lower()
@@ -1921,7 +1920,6 @@ def get_broad_candidates(con, input_str, limit=15):
             """
             try:
                 df_epci = con.execute(sql_epci, [keywords, f'%{keywords}%']).df()
-                df_epci.columns = [c.upper() for c in df_epci.columns]
                 if not df_epci.empty:
                     _dbg("geo.broad_candidates.epci_found", rows=len(df_epci))
                     # Fusionner avec les candidats existants
@@ -1943,7 +1941,6 @@ def get_broad_candidates(con, input_str, limit=15):
             """
             try:
                 df_regions = con.execute(sql_regions, [clean_input, clean_input]).df()
-                df_regions.columns = [c.upper() for c in df_regions.columns]
                 if not df_regions.empty:
                     _dbg("geo.broad_candidates.regions_fallback", rows=len(df_regions))
                     return df_regions.to_dict(orient='records')
@@ -2220,7 +2217,6 @@ def ai_fallback_territory_search(con, user_prompt):
                     # Chercher dans la base
                     verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                     verify_df = con.execute(verify_sql, [code_clean]).df()
-                    verify_df.columns = [c.upper() for c in verify_df.columns]
 
                     if not verify_df.empty:
                         territory_info = verify_df.iloc[0]
@@ -2269,7 +2265,6 @@ def ai_fallback_territory_search(con, user_prompt):
         LIMIT 500
         """
         df_sample = con.execute(sql_sample).df()
-        df_sample.columns = [c.upper() for c in df_sample.columns]
 
         if df_sample.empty:
             _dbg("geo.fallback.no_sample")
@@ -2325,7 +2320,6 @@ def ai_fallback_territory_search(con, user_prompt):
             # Vérifier que l'ID existe dans la base complète
             verify_sql = f"SELECT ID, NOM_COUV FROM territoires WHERE ID = '{selected_id}'"
             verify_df = con.execute(verify_sql).df()
-            verify_df.columns = [c.upper() for c in verify_df.columns]
 
             if not verify_df.empty:
                 territory_info = verify_df.iloc[0]
@@ -2372,7 +2366,6 @@ def ai_fallback_territory_search(con, user_prompt):
 
             try:
                 fuzzy_df = con.execute(fuzzy_sql, params).df()
-                fuzzy_df.columns = [c.upper() for c in fuzzy_df.columns]
 
                 if not fuzzy_df.empty:
                     _dbg("geo.fallback.fuzzy_results", count=len(fuzzy_df))
@@ -2426,7 +2419,6 @@ def ai_fallback_territory_search(con, user_prompt):
                         # Vérifier que l'ID existe
                         verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                         verify_df = con.execute(verify_sql, [selected_id]).df()
-                        verify_df.columns = [c.upper() for c in verify_df.columns]
 
                         if not verify_df.empty:
                             territory_info = verify_df.iloc[0]
@@ -2485,7 +2477,6 @@ def ultimate_ai_fallback(con, user_prompt):
         """
 
         df_level1 = con.execute(sql_level1).df()
-        df_level1.columns = [c.upper() for c in df_level1.columns]
 
         if not df_level1.empty:
             territories_level1 = df_level1.to_dict(orient='records')
@@ -2541,7 +2532,6 @@ def ultimate_ai_fallback(con, user_prompt):
                 # Vérification dans la base
                 verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                 verify_df = con.execute(verify_sql, [selected_id]).df()
-                verify_df.columns = [c.upper() for c in verify_df.columns]
 
                 if not verify_df.empty:
                     territory_info = verify_df.iloc[0]
@@ -2570,7 +2560,6 @@ def ultimate_ai_fallback(con, user_prompt):
         """
 
         df_communes = con.execute(sql_communes).df()
-        df_communes.columns = [c.upper() for c in df_communes.columns]
 
         if not df_communes.empty:
             # Stratégie : envoyer un échantillon représentatif (toutes les communes de A à Z)
@@ -2623,7 +2612,6 @@ def ultimate_ai_fallback(con, user_prompt):
 
                 verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                 verify_df = con.execute(verify_sql, [selected_id]).df()
-                verify_df.columns = [c.upper() for c in verify_df.columns]
 
                 if not verify_df.empty:
                     territory_info = verify_df.iloc[0]
@@ -2691,7 +2679,6 @@ def ultimate_ai_fallback(con, user_prompt):
 
                             verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                             verify_df = con.execute(verify_sql, [selected_id]).df()
-                            verify_df.columns = [c.upper() for c in verify_df.columns]
 
                             if not verify_df.empty:
                                 territory_info = verify_df.iloc[0]
@@ -2719,7 +2706,6 @@ def ultimate_ai_fallback(con, user_prompt):
         """
 
         df_epci = con.execute(sql_epci).df()
-        df_epci.columns = [c.upper() for c in df_epci.columns]
 
         if not df_epci.empty:
             epci_list = df_epci.to_dict(orient='records')
@@ -2772,7 +2758,6 @@ def ultimate_ai_fallback(con, user_prompt):
 
                 verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                 verify_df = con.execute(verify_sql, [selected_id]).df()
-                verify_df.columns = [c.upper() for c in verify_df.columns]
 
                 if not verify_df.empty:
                     territory_info = verify_df.iloc[0]
@@ -2962,7 +2947,6 @@ def analyze_territorial_scope(con, rewritten_prompt):
                                 # Chercher le nom du département
                                 try:
                                     dept_info = con.execute("SELECT NOM_COUV FROM territoires WHERE ID = ?", [str(comp2)]).fetchone()
-                                    dept_info.columns = [c.upper() for c in dept_info.columns]
                                     if dept_info:
                                         dept_name = f" ({dept_info[0]})"
                                 except:
@@ -3117,7 +3101,6 @@ def render_epci_choropleth(
             "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
             [epci_id]
         ).fetchone()
-        epci_name.columns = [c.upper() for c in epci.columns]
         epci_name = epci_name_row[0] if epci_name_row else commune_name
         _dbg("map.epci.direct", epci_id=epci_id, epci_name=epci_name)
     else:
@@ -3127,7 +3110,6 @@ def render_epci_choropleth(
                 "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
                 [commune_id_str]
             ).fetchone()
-            epci_id.columns = [c.upper() for c in epci_id.columns]
         except Exception as e:
             _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
             st.warning("Impossible de récupérer l'EPCI pour cette commune.")
@@ -3144,7 +3126,6 @@ def render_epci_choropleth(
             "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
             [epci_id]
         ).fetchone()
-        epci_name.columns = [c.upper() for c in epci_name.columns]
         epci_name = epci_name_row[0] if epci_name_row else epci_id
 
     if metric_col not in df.columns:
@@ -3174,7 +3155,6 @@ def render_epci_choropleth(
                 "SELECT COMP2, NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
                 [epci_id]
             ).fetchone()
-            dept_row.columns = [c.upper() for c in dept_row.columns]
             if dept_row and dept_row[0] and dept_row[0].startswith("D"):
                 dept_code = dept_row[0][1:]  # Enlever le "D"
                 _dbg("map.geojson.fallback_dept", epci_id=epci_id, dept_code=dept_code)
@@ -3188,7 +3168,6 @@ def render_epci_choropleth(
                         "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
                         [f"D{dept_code}"]
                     ).fetchone()
-                    dept_name.columns = [c.upper() for c in dept_name.columns]
                     if dept_name_row:
                         territory_name = dept_name_row[0]
                     _dbg("map.geojson.fallback_success", epci_id=epci_id, dept_code=dept_code, features=len(geojson.get("features", [])))
@@ -3867,42 +3846,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
         y_format = f",.{decimals}f"
         y_suffix = ""
 
-    # 6. DÉTECTION COLONNE DE CATÉGORIE (ex: tranche_age, categorie, etc.)
-    # Si le dataframe a déjà une colonne de catégorie, on l'utilise pour le groupement
-    # au lieu de faire un melt()
-    category_col = None
-    system_cols = [label_col, date_col, id_col] + [c for c in cols if c.upper() in ["ID", "NOM_COUV", "NOM", "TERRITOIRE", "LIBELLE", "AN", "ANNEE", "YEAR"]]
-    system_cols = [c for c in system_cols if c is not None]
-
-    # Chercher une colonne catégorielle (string, non-système, avec répétitions)
-    for col in cols:
-        if col in system_cols or col in selected_metrics:
-            continue
-        if df_plot[col].dtype == 'object' or df_plot[col].dtype.name == 'category':
-            # Vérifier si c'est une vraie colonne de catégorie (avec répétitions)
-            unique_ratio = len(df_plot[col].unique()) / len(df_plot)
-            if unique_ratio < 0.8:  # Si moins de 80% de valeurs uniques, c'est probablement une catégorie
-                category_col = col
-                print(f"[TERRIBOT][PLOT] 📊 Colonne de catégorie détectée : '{category_col}'")
-                break
-
-    # 7. MELT ou FORMAT DIRECT
-    if category_col and len(selected_metrics) == 1:
-        # FORMAT DÉJÀ CORRECT : on a une colonne catégorie + une métrique
-        # Pas besoin de melt(), on renomme juste la métrique
-        df_melted = df_plot.copy()
-        metric_name = new_selected_metrics[0]
-        df_melted = df_melted.rename(columns={metric_name: "Valeur"})
-        df_melted["Indicateur"] = metric_name  # Pour compatibilité avec le code existant
-        print(f"[TERRIBOT][PLOT] ✅ Format direct avec catégorie '{category_col}'")
-    else:
-        # FORMAT STANDARD : faire le melt() comme avant
-        id_vars = [label_col]
-        if date_col: id_vars.append(date_col)
-        if category_col: id_vars.append(category_col)
-        df_melted = df_plot.melt(id_vars=id_vars, value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
-        category_col = None  # Réinitialiser si on a fait un melt()
-        print(f"[TERRIBOT][PLOT] 📊 Format melt avec {len(new_selected_metrics)} métriques")
+    # 6. MELT
+    id_vars = [label_col]
+    if date_col: id_vars.append(date_col)
+    df_melted = df_plot.melt(id_vars=id_vars, value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
 
     # Conversion explicite en numérique (crucial pour Vega-Lite)
     df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
@@ -4070,29 +4017,6 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 "y": y_axis_def,
                 "color": {"field": "Indicateur", "type": "nominal", "title": None, "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}, "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}},
                 "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
-            }
-        elif category_col:
-            # CAS SPÉCIAL : Graphique groupé avec colonne de catégorie (ex: tranche_age)
-            # X = catégorie, xOffset = territoire, color = territoire
-            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
-            # 🔧 Ajouter le suffixe (%, €) si nécessaire
-            if y_suffix:
-                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
-            if y_scale: y_axis_def["scale"] = y_scale
-
-            # Obtenir les catégories uniques pour le domaine
-            categories = df_melted[category_col].unique().tolist()
-
-            # Ajouter layout à color_def pour ce cas
-            color_def_cat = color_def.copy()
-            color_def_cat["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
-
-            chart_encoding = {
-                "x": {"field": category_col, "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
-                "y": y_axis_def,
-                "color": color_def_cat,
-                "xOffset": {"field": label_col},
-                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": category_col, "title": "Catégorie"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
