@@ -763,7 +763,7 @@ def load_territoires_records(con):
     if cached is not None:
         return cached
     try:
-        df = con.execute("SELECT ID, NOM, NOM_COUV FROM territoires").df()
+        df = con.execute("SELECT ID, NOM_COUV FROM territoires").df()
     except Exception as error:
         _dbg("geo.other_territory.records_error", error=str(error))
         return []
@@ -848,7 +848,7 @@ def ai_select_territory_from_full_context(
     DISCUSSION COMPLÈTE :
     {conversation_text}
 
-    TERRITOIRES DISPONIBLES (colonnes ID, NOM, NOM_COUV) :
+    TERRITOIRES DISPONIBLES (colonnes ID, NOM_COUV) :
     {json.dumps(territoires_records, ensure_ascii=False)}
     """
 
