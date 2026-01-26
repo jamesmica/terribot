@@ -1918,7 +1918,8 @@ def clean_search_term(text):
     text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
     
     # 2. Remplacements standards
-    text = text.replace('-', ' ').replace("'", " ").replace("’", " ")
+    text = re.sub(r"[\-‐‑‒–—―]", " ", text)
+    text = text.replace("'", " ").replace("’", " ")
         
     return text.strip()
 
@@ -2069,18 +2070,18 @@ def get_broad_candidates(con, input_str, limit=15):
 
             -- BOOST DE SCORE :
             jaro_winkler_similarity(
-                lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')),
+                lower(replace(regexp_replace(NOM_COUV, '[\\-‐‑‒–—―]', ' ', 'g'), '''', ' ')),
                 ?
             )
             + (CASE WHEN ID LIKE 'R%' THEN 0.2 ELSE 0 END)
             + (CASE WHEN ID LIKE 'D%' THEN 0.15 ELSE 0 END)
             + (CASE WHEN length(ID) = 9 THEN ? ELSE 0 END)
-            + (CASE WHEN lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')) = ? THEN 0.3 ELSE 0 END)
+            + (CASE WHEN lower(replace(regexp_replace(NOM_COUV, '[\\-‐‑‒–—―]', ' ', 'g'), '''', ' ')) = ? THEN 0.3 ELSE 0 END)
             as score
         FROM territoires
-        WHERE strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))) LIKE ?
+        WHERE strip_accents(lower(replace(regexp_replace(NOM_COUV, '[\\-‐‑‒–—―]', ' ', 'g'), '''', ' '))) LIKE ?
            OR jaro_winkler_similarity(
-                lower(replace(replace(NOM_COUV, '-', ' '), '''', ' ')),
+                lower(replace(regexp_replace(NOM_COUV, '[\\-‐‑‒–—―]', ' ', 'g'), '''', ' ')),
                 ?
               ) > 0.75
     )
