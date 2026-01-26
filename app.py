@@ -677,11 +677,33 @@ with st.sidebar:
     z-index:1;
     position:relative;
     }
+
+    /* Style pour le bouton nouvelle conversation */
+    section[data-testid="stSidebar"] button[kind="primary"] {
+    height: 38px !important;
+    padding: 0.25rem 0.75rem !important;
+    font-size: 0.875rem !important;
+    margin-top: 0.5rem !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-    st.title("🤖 Terribot")
-    st.caption("v0.18.6 - 22 janvier 2026")
+    # Titre et bouton nouvelle conversation sur la même ligne
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("🤖 Terribot")
+        st.caption("v0.18.6 - 22 janvier 2026")
+    with col2:
+        # Bouton nouvelle conversation
+        if st.button("🔄", help="Nouvelle conversation", type="primary", use_container_width=True):
+            # Réinitialiser l'état de la session
+            st.session_state.messages = [{"role": "assistant", "content": "Bonjour ! Quel territoire souhaitez-vous analyser ?"}]
+            st.session_state.current_geo_context = None
+            st.session_state.force_geo_context = False
+            st.session_state.pending_prompt = None
+            st.session_state.ambiguity_candidates = None
+            st.session_state.pending_geo_text = None
+            st.rerun()
 
     api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
 
@@ -963,6 +985,68 @@ Analyse chaque colonne et retourne le formatage optimal au format JSON."""
     except Exception as e:
         _dbg("format.ai_enhance.error", error=str(e))
         return initial_specs  # Fallback sur les specs initiales en cas d'erreur
+
+
+def get_column_metadata(df: pd.DataFrame, specs: dict, con):
+    """
+    Extrait les métadonnées des colonnes depuis le glossaire (source, année, calcul).
+    Retourne un dict {col_name: {source, year, definition, calculation}}.
+    """
+    metadata = {}
+
+    try:
+        # Récupérer toutes les lignes du glossaire
+        glossaire_df = con.execute("SELECT * FROM glossaire").df()
+
+        for col in df.columns:
+            # Ignorer les colonnes système
+            if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV", "NOM"]:
+                continue
+
+            # Chercher la colonne dans le glossaire
+            # Normaliser le nom pour la recherche
+            col_normalized = col.replace("_", "-").upper()
+
+            # Chercher dans le glossaire
+            matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
+
+            if matches.empty:
+                # Essayer avec des tirets -> underscores
+                col_normalized = col.replace("-", "_").upper()
+                matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
+
+            if not matches.empty:
+                row = matches.iloc[0]
+
+                # Extraire les informations
+                source = str(row.get('Source', '')).strip()
+                year = str(row.get('Année de référence', '')).strip()
+                definition = str(row.get('Intitulé détaillé', '')).strip()
+                table = str(row.get('Onglet', '')).strip()
+
+                # Déterminer le calcul à partir du spec (si c'est un ratio, etc.)
+                spec = specs.get(col, {})
+                calculation = ""
+
+                # Si on a des infos sur le type de calcul dans le titre ou la définition
+                if "taux" in definition.lower() or "part" in definition.lower():
+                    calculation = "Ratio (en %)"
+                elif "somme" in definition.lower() or "total" in definition.lower():
+                    calculation = "Somme"
+                elif "moyenne" in definition.lower() or "médian" in definition.lower():
+                    calculation = "Moyenne"
+
+                metadata[col] = {
+                    'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
+                    'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
+                    'definition': definition,
+                    'calculation': calculation
+                }
+
+    except Exception as e:
+        _dbg("metadata.extract.error", error=str(e))
+
+    return metadata
 
 
 def style_df(df: pd.DataFrame, specs: dict):
@@ -3403,6 +3487,27 @@ def render_epci_choropleth(
         cat4_label = f"Plus de {format_legend_value(quartiles[3])}"
 
         # 🔧 Légende avec titre, en bas, 120px de hauteur
+        # Support du multiligne pour les titres longs
+        if len(metric_title) > 50:
+            words = metric_title.split()
+            lines = []
+            current_line = ""
+
+            for word in words:
+                if len(current_line) + len(word) + 1 <= 50:
+                    current_line += (" " if current_line else "") + word
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    current_line = word
+
+            if current_line:
+                lines.append(current_line)
+
+            metric_title_html = "<br>".join(lines)
+        else:
+            metric_title_html = metric_title
+
         legend_html = f'''
         <div style="position: absolute;
                     bottom: 0; left: 0; right: 0; width: 100%;
@@ -3411,7 +3516,7 @@ def render_epci_choropleth(
                     padding: 2px;
                     box-sizing: border-box;">
             <div style="font-weight: bold; font-size: 12px; margin-bottom: 8px; color: #333;">
-                {metric_title}
+                {metric_title_html}
             </div>
             <div style="display: grid; gap: 8px; grid-template-columns: 30% 30% 30%; grid-template-rows: 16px 16px;">
                 <div style="display: flex; align-items: center; gap: 4px;">
@@ -3843,12 +3948,36 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             }
         chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
-    # Ajouter le titre en haut du graphique (centré)
-    chart["title"] = {
-        "text": title_y,
-        "anchor": "middle",
-        "fontSize": 14
-    }
+    # Ajouter le titre en haut du graphique (centré) avec support du multiligne
+    # Si le titre est trop long (> 50 caractères), on le découpe sur plusieurs lignes
+    if len(title_y) > 50:
+        # Découper intelligemment en gardant les mots entiers
+        words = title_y.split()
+        lines = []
+        current_line = ""
+
+        for word in words:
+            if len(current_line) + len(word) + 1 <= 50:
+                current_line += (" " if current_line else "") + word
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        chart["title"] = {
+            "text": lines,  # Vega-Lite accepte un tableau pour le multiligne
+            "anchor": "middle",
+            "fontSize": 14
+        }
+    else:
+        chart["title"] = {
+            "text": title_y,
+            "anchor": "middle",
+            "fontSize": 14
+        }
 
     # Adapter la hauteur selon le contexte (sidebar ou main)
     chart["height"] = 247 if in_sidebar else 400
@@ -3913,6 +4042,41 @@ for i_msg, msg in enumerate(st.session_state.messages):
                 with st.expander("📝 Voir les données brutes", expanded=False):
                     # On utilise les formats stockés dans la config
                     formats = saved_config.get("formats", {})
+
+                    # Extraire les métadonnées des colonnes
+                    metadata = get_column_metadata(msg["data"], formats, con)
+
+                    # Afficher les métadonnées au-dessus du tableau
+                    if metadata:
+                        # Regrouper les métadonnées communes
+                        sources = set()
+                        years = set()
+
+                        for col, meta in metadata.items():
+                            if meta.get('source'):
+                                sources.add(meta['source'])
+                            if meta.get('year'):
+                                years.add(meta['year'])
+
+                        # Afficher source et année sur une ligne
+                        info_parts = []
+                        if sources:
+                            sources_str = ", ".join(sorted(sources))
+                            info_parts.append(f"**Source** : {sources_str}")
+                        if years:
+                            years_str = ", ".join(sorted(years))
+                            info_parts.append(f"**Année** : {years_str}")
+
+                        if info_parts:
+                            st.caption(" • ".join(info_parts))
+
+                        # Afficher les calculs de manière discrète (expander ou tooltip)
+                        calculations = [f"**{col}** : {meta['calculation']}" for col, meta in metadata.items() if meta.get('calculation')]
+                        if calculations:
+                            with st.expander("ℹ️ Détails des calculs", expanded=False):
+                                for calc in calculations:
+                                    st.caption(calc)
+
                     styled_df, col_config = style_df(msg["data"], formats)
                     st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
@@ -4089,6 +4253,73 @@ def get_waiting_message(step, territory_name=None, prompt=None):
     return messages.get(step, ["En cours..."])[variant]
 
 
+def check_new_territory_mentioned(prompt: str, current_context, client, model):
+    """
+    Vérifie si le prompt mentionne un nouveau territoire différent du contexte actuel.
+    Retourne True si un nouveau territoire est mentionné, False sinon.
+    """
+    if not current_context:
+        return False  # Pas de contexte actuel, donc pas de conflit possible
+
+    # Récupérer les territoires actuels
+    current_territories = []
+    if isinstance(current_context, list):
+        current_territories = [ctx.get('nom', '') for ctx in current_context if isinstance(ctx, dict)]
+    elif isinstance(current_context, dict):
+        current_territories = [current_context.get('nom', '')]
+
+    if not current_territories:
+        return False
+
+    current_territories_str = ", ".join(current_territories)
+
+    # Utiliser l'IA pour détecter si un nouveau territoire est mentionné
+    system_prompt = f"""Tu es un assistant qui détecte si un utilisateur mentionne un nouveau territoire dans sa question.
+
+Territoires actuels en contexte : {current_territories_str}
+
+Ta tâche est de déterminer si l'utilisateur mentionne un NOUVEAU territoire différent de ceux en contexte.
+
+Exemples de mentions de NOUVEAUX territoires (réponds "OUI") :
+- "Compare avec Lyon" (si Lyon n'est pas dans le contexte)
+- "Qu'en est-il à Marseille ?" (si Marseille n'est pas dans le contexte)
+- "Montre-moi les données pour Paris" (si Paris n'est pas dans le contexte)
+- "Comparons avec la région Île-de-France"
+
+Exemples qui NE sont PAS de nouveaux territoires (réponds "NON") :
+- "Montre-moi le taux de chômage" (question sur un indicateur)
+- "Et la population ?" (question sur un autre indicateur)
+- "Quelle est l'évolution ?" (question sur une tendance)
+- "Compare les communes" (demande de comparaison dans le contexte actuel)
+- "Montre-moi plus de détails"
+
+Réponds uniquement "OUI" ou "NON"."""
+
+    user_prompt = f"Question de l'utilisateur : {prompt}"
+
+    try:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        response = client.responses.create(
+            model=model,
+            input=messages,
+            temperature=0,
+            timeout=10,
+        )
+
+        answer = extract_response_text(response).strip().upper()
+        _dbg("new_territory_check", prompt=prompt, current_territories=current_territories_str, answer=answer)
+
+        return "OUI" in answer
+
+    except Exception as e:
+        _dbg("new_territory_check.error", error=str(e))
+        return False  # En cas d'erreur, on ne bloque pas le flow
+
+
 # --- D. EXÉCUTION DU TRAITEMENT ---
 if prompt_to_process:
     print("[TERRIBOT] ===============================")
@@ -4097,6 +4328,44 @@ if prompt_to_process:
     _dbg("session.state", has_geo=bool(st.session_state.current_geo_context),
         ambiguity=bool(st.session_state.ambiguity_candidates),
         messages=len(st.session_state.messages))
+
+    # ⚠️ VÉRIFICATION DE NOUVEAU TERRITOIRE
+    # Si on a déjà un contexte géographique (avec plusieurs territoires potentiellement),
+    # vérifier que l'utilisateur ne mentionne pas un NOUVEAU territoire
+    if st.session_state.current_geo_context and not was_trigger and not st.session_state.force_geo_context:
+        # Vérifier si c'est un contexte avec plusieurs territoires
+        has_multiple_territories = False
+
+        if isinstance(st.session_state.current_geo_context, list):
+            has_multiple_territories = len(st.session_state.current_geo_context) > 1
+        elif isinstance(st.session_state.current_geo_context, dict):
+            # Vérifier si c'est un EPCI ou un territoire avec des sous-territoires
+            if st.session_state.current_geo_context.get('type') in ['EPCI', 'departement', 'region']:
+                has_multiple_territories = True
+
+        if has_multiple_territories:
+            # Vérifier si un nouveau territoire est mentionné
+            new_territory_mentioned = check_new_territory_mentioned(
+                prompt_to_process,
+                st.session_state.current_geo_context,
+                client,
+                MODEL_NAME
+            )
+
+            if new_territory_mentioned:
+                _dbg("new_territory_detected", prompt=prompt_to_process, current_context=st.session_state.current_geo_context)
+
+                # Ne pas déclencher le flow normal, mais afficher un message à l'utilisateur
+                st.session_state.messages.append({"role": "user", "content": prompt_to_process})
+                with st.chat_message("user", avatar="👤"):
+                    st.markdown(prompt_to_process)
+
+                with st.chat_message("assistant", avatar="🤖"):
+                    warning_msg = "🤔 Il semble que vous mentionniez un nouveau territoire. Pour comparer plusieurs territoires ou changer de territoire, veuillez démarrer une nouvelle conversation avec le bouton 🔄 en haut à droite."
+                    st.warning(warning_msg)
+                    st.session_state.messages.append({"role": "assistant", "content": warning_msg})
+
+                st.stop()  # Arrêter le traitement ici
 
     # Si c'est un nouvel input utilisateur, on l'ajoute à l'historique
     # (On vérifie pour éviter les doublons lors de la reprise après ambiguïté)
@@ -4623,7 +4892,43 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     # Affichage des données brutes (seulement si df n'est pas vide)
                     with data_placeholder:
                         with st.expander("📝 Voir les données brutes", expanded=False):
-                            styled_df, col_config = style_df(df, chart_config.get('formats', {}))
+                            formats = chart_config.get('formats', {})
+
+                            # Extraire les métadonnées des colonnes
+                            metadata = get_column_metadata(df, formats, con)
+
+                            # Afficher les métadonnées au-dessus du tableau
+                            if metadata:
+                                # Regrouper les métadonnées communes
+                                sources = set()
+                                years = set()
+
+                                for col, meta in metadata.items():
+                                    if meta.get('source'):
+                                        sources.add(meta['source'])
+                                    if meta.get('year'):
+                                        years.add(meta['year'])
+
+                                # Afficher source et année sur une ligne
+                                info_parts = []
+                                if sources:
+                                    sources_str = ", ".join(sorted(sources))
+                                    info_parts.append(f"**Source** : {sources_str}")
+                                if years:
+                                    years_str = ", ".join(sorted(years))
+                                    info_parts.append(f"**Année** : {years_str}")
+
+                                if info_parts:
+                                    st.caption(" • ".join(info_parts))
+
+                                # Afficher les calculs de manière discrète (expander ou tooltip)
+                                calculations = [f"**{col}** : {meta['calculation']}" for col, meta in metadata.items() if meta.get('calculation')]
+                                if calculations:
+                                    with st.expander("ℹ️ Détails des calculs", expanded=False):
+                                        for calc in calculations:
+                                            st.caption(calc)
+
+                            styled_df, col_config = style_df(df, formats)
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
                     # 📊 Stocker les données de visualisation dans session_state pour la sidebar
