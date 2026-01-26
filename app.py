@@ -1001,15 +1001,20 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con):
     try:
         # Récupérer toutes les lignes du glossaire
         glossaire_df = con.execute("SELECT * FROM glossaire").df()
+        print(f"[TERRIBOT][METADATA] 📚 Glossaire chargé : {len(glossaire_df)} entrées")
+        print(f"[TERRIBOT][METADATA] 📊 Colonnes du DataFrame à traiter : {list(df.columns)}")
 
         for col in df.columns:
             # Ignorer les colonnes système
             if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV", "NOM"]:
                 continue
 
+            print(f"[TERRIBOT][METADATA] 🔍 Recherche métadonnées pour colonne : '{col}'")
+
             # Chercher la colonne dans le glossaire
             # Normaliser le nom pour la recherche
             col_normalized = col.replace("_", "-").upper()
+            print(f"[TERRIBOT][METADATA]   Essai 1 avec : '{col_normalized}'")
 
             # Chercher dans le glossaire
             matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
@@ -1017,10 +1022,18 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con):
             if matches.empty:
                 # Essayer avec des tirets -> underscores
                 col_normalized = col.replace("-", "_").upper()
+                print(f"[TERRIBOT][METADATA]   Essai 2 avec : '{col_normalized}'")
+                matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
+
+            if matches.empty:
+                # Essayer sans modification
+                col_normalized = col.upper()
+                print(f"[TERRIBOT][METADATA]   Essai 3 sans modification : '{col_normalized}'")
                 matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
 
             if not matches.empty:
                 row = matches.iloc[0]
+                print(f"[TERRIBOT][METADATA]   ✅ Trouvé dans le glossaire !")
 
                 # Extraire les informations
                 source = str(row.get('Source', '')).strip()
@@ -1028,26 +1041,22 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con):
                 definition = str(row.get('Intitulé détaillé', '')).strip()
                 table = str(row.get('Onglet', '')).strip()
 
-                # Déterminer le calcul à partir du spec (si c'est un ratio, etc.)
-                spec = specs.get(col, {})
-                calculation = ""
-
-                # Si on a des infos sur le type de calcul dans le titre ou la définition
-                if "taux" in definition.lower() or "part" in definition.lower():
-                    calculation = "Ratio (en %)"
-                elif "somme" in definition.lower() or "total" in definition.lower():
-                    calculation = "Somme"
-                elif "moyenne" in definition.lower() or "médian" in definition.lower():
-                    calculation = "Moyenne"
-
                 metadata[col] = {
                     'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
                     'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
                     'definition': definition,
-                    'calculation': calculation
+                    'calculation': ''
                 }
+                print(f"[TERRIBOT][METADATA]   Source: '{metadata[col]['source']}', Année: '{metadata[col]['year']}', Def: '{definition[:50]}...'")
+            else:
+                print(f"[TERRIBOT][METADATA]   ❌ Non trouvé dans le glossaire")
+
+        print(f"[TERRIBOT][METADATA] 📊 Total : {len(metadata)}/{len(df.columns)-1} colonnes avec métadonnées")
 
     except Exception as e:
+        print(f"[TERRIBOT][METADATA] ⚠️ Erreur : {str(e)}")
+        import traceback
+        traceback.print_exc()
         _dbg("metadata.extract.error", error=str(e))
 
     return metadata
