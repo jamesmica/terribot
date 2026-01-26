@@ -1891,6 +1891,7 @@ def get_broad_candidates(con, input_str, limit=15):
     try:
         params = [clean_for_sql, epci_boost, clean_for_sql, f'%{clean_for_sql}%', clean_for_sql, limit]
         df_candidates = con.execute(sql, params).df()
+        df_candidates.columns = [c.upper() for c in df_candidates.columns]
 
         # NOUVEAU : Recherche spécifique EPCI si peu de résultats et qu'on détecte un préfixe EPCI
         epci_keywords_lower = clean_input.lower()
@@ -1920,6 +1921,7 @@ def get_broad_candidates(con, input_str, limit=15):
             """
             try:
                 df_epci = con.execute(sql_epci, [keywords, f'%{keywords}%']).df()
+                df_epci.columns = [c.upper() for c in df_epci.columns]
                 if not df_epci.empty:
                     _dbg("geo.broad_candidates.epci_found", rows=len(df_epci))
                     # Fusionner avec les candidats existants
@@ -1941,6 +1943,7 @@ def get_broad_candidates(con, input_str, limit=15):
             """
             try:
                 df_regions = con.execute(sql_regions, [clean_input, clean_input]).df()
+                df_regions.columns = [c.upper() for c in df_regions.columns]
                 if not df_regions.empty:
                     _dbg("geo.broad_candidates.regions_fallback", rows=len(df_regions))
                     return df_regions.to_dict(orient='records')
@@ -2217,6 +2220,7 @@ def ai_fallback_territory_search(con, user_prompt):
                     # Chercher dans la base
                     verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                     verify_df = con.execute(verify_sql, [code_clean]).df()
+                    verify_df.columns = [c.upper() for c in verify_df.columns]
 
                     if not verify_df.empty:
                         territory_info = verify_df.iloc[0]
@@ -2265,6 +2269,7 @@ def ai_fallback_territory_search(con, user_prompt):
         LIMIT 500
         """
         df_sample = con.execute(sql_sample).df()
+        df_sample.columns = [c.upper() for c in df_sample.columns]
 
         if df_sample.empty:
             _dbg("geo.fallback.no_sample")
@@ -2320,6 +2325,7 @@ def ai_fallback_territory_search(con, user_prompt):
             # Vérifier que l'ID existe dans la base complète
             verify_sql = f"SELECT ID, NOM_COUV FROM territoires WHERE ID = '{selected_id}'"
             verify_df = con.execute(verify_sql).df()
+            verify_df.columns = [c.upper() for c in verify_df.columns]
 
             if not verify_df.empty:
                 territory_info = verify_df.iloc[0]
@@ -2366,6 +2372,7 @@ def ai_fallback_territory_search(con, user_prompt):
 
             try:
                 fuzzy_df = con.execute(fuzzy_sql, params).df()
+                fuzzy_df.columns = [c.upper() for c in fuzzy_df.columns]
 
                 if not fuzzy_df.empty:
                     _dbg("geo.fallback.fuzzy_results", count=len(fuzzy_df))
@@ -2419,6 +2426,7 @@ def ai_fallback_territory_search(con, user_prompt):
                         # Vérifier que l'ID existe
                         verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                         verify_df = con.execute(verify_sql, [selected_id]).df()
+                        verify_df.columns = [c.upper() for c in verify_df.columns]
 
                         if not verify_df.empty:
                             territory_info = verify_df.iloc[0]
@@ -2477,6 +2485,7 @@ def ultimate_ai_fallback(con, user_prompt):
         """
 
         df_level1 = con.execute(sql_level1).df()
+        df_level1.columns = [c.upper() for c in df_level1.columns]
 
         if not df_level1.empty:
             territories_level1 = df_level1.to_dict(orient='records')
@@ -2532,6 +2541,7 @@ def ultimate_ai_fallback(con, user_prompt):
                 # Vérification dans la base
                 verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                 verify_df = con.execute(verify_sql, [selected_id]).df()
+                verify_df.columns = [c.upper() for c in verify_df.columns]
 
                 if not verify_df.empty:
                     territory_info = verify_df.iloc[0]
@@ -2560,6 +2570,7 @@ def ultimate_ai_fallback(con, user_prompt):
         """
 
         df_communes = con.execute(sql_communes).df()
+        df_communes.columns = [c.upper() for c in df_communes.columns]
 
         if not df_communes.empty:
             # Stratégie : envoyer un échantillon représentatif (toutes les communes de A à Z)
@@ -2612,6 +2623,7 @@ def ultimate_ai_fallback(con, user_prompt):
 
                 verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                 verify_df = con.execute(verify_sql, [selected_id]).df()
+                verify_df.columns = [c.upper() for c in verify_df.columns]
 
                 if not verify_df.empty:
                     territory_info = verify_df.iloc[0]
@@ -2679,6 +2691,7 @@ def ultimate_ai_fallback(con, user_prompt):
 
                             verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                             verify_df = con.execute(verify_sql, [selected_id]).df()
+                            verify_df.columns = [c.upper() for c in verify_df.columns]
 
                             if not verify_df.empty:
                                 territory_info = verify_df.iloc[0]
@@ -2706,6 +2719,7 @@ def ultimate_ai_fallback(con, user_prompt):
         """
 
         df_epci = con.execute(sql_epci).df()
+        df_epci.columns = [c.upper() for c in df_epci.columns]
 
         if not df_epci.empty:
             epci_list = df_epci.to_dict(orient='records')
@@ -2758,6 +2772,7 @@ def ultimate_ai_fallback(con, user_prompt):
 
                 verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
                 verify_df = con.execute(verify_sql, [selected_id]).df()
+                verify_df.columns = [c.upper() for c in verify_df.columns]
 
                 if not verify_df.empty:
                     territory_info = verify_df.iloc[0]
@@ -2947,6 +2962,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
                                 # Chercher le nom du département
                                 try:
                                     dept_info = con.execute("SELECT NOM_COUV FROM territoires WHERE ID = ?", [str(comp2)]).fetchone()
+                                    dept_info.columns = [c.upper() for c in dept_info.columns]
                                     if dept_info:
                                         dept_name = f" ({dept_info[0]})"
                                 except:
@@ -3101,6 +3117,7 @@ def render_epci_choropleth(
             "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
             [epci_id]
         ).fetchone()
+        epci_name.columns = [c.upper() for c in epci.columns]
         epci_name = epci_name_row[0] if epci_name_row else commune_name
         _dbg("map.epci.direct", epci_id=epci_id, epci_name=epci_name)
     else:
@@ -3110,6 +3127,7 @@ def render_epci_choropleth(
                 "SELECT COMP1 FROM territoires WHERE ID = ? LIMIT 1",
                 [commune_id_str]
             ).fetchone()
+            epci_id.columns = [c.upper() for c in epci_id.columns]
         except Exception as e:
             _dbg("map.epci.query_error", commune_id=commune_id, error=str(e))
             st.warning("Impossible de récupérer l'EPCI pour cette commune.")
@@ -3126,6 +3144,7 @@ def render_epci_choropleth(
             "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
             [epci_id]
         ).fetchone()
+        epci_name.columns = [c.upper() for c in epci_name.columns]
         epci_name = epci_name_row[0] if epci_name_row else epci_id
 
     if metric_col not in df.columns:
@@ -3155,6 +3174,7 @@ def render_epci_choropleth(
                 "SELECT COMP2, NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
                 [epci_id]
             ).fetchone()
+            dept_row.columns = [c.upper() for c in dept_row.columns]
             if dept_row and dept_row[0] and dept_row[0].startswith("D"):
                 dept_code = dept_row[0][1:]  # Enlever le "D"
                 _dbg("map.geojson.fallback_dept", epci_id=epci_id, dept_code=dept_code)
@@ -3168,6 +3188,7 @@ def render_epci_choropleth(
                         "SELECT NOM_COUV FROM territoires WHERE ID = ? LIMIT 1",
                         [f"D{dept_code}"]
                     ).fetchone()
+                    dept_name.columns = [c.upper() for c in dept_name.columns]
                     if dept_name_row:
                         territory_name = dept_name_row[0]
                     _dbg("map.geojson.fallback_success", epci_id=epci_id, dept_code=dept_code, features=len(geojson.get("features", [])))
