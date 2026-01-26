@@ -2624,7 +2624,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
                 - EPCI/Intercommunalités (ex: "CC des Pays de L'Aigle", "Métropole de Lyon", "Grand Paris", "CU d'Arras", "CA Durance Luberon")
                 - Départements (ex: "Orne", "61", "Hauts-de-Seine", "dans le 94", "département 04")
                 - Régions (ex: "Normandie", "Île-de-France", "PACA")
-                - Pays (ex: "France") - SEULEMENT si explicitement mentionné
+                - Pays (ex: "France métropolitaine") - SEULEMENT si explicitement mentionné
 
                 RÈGLES CRITIQUES :
                 - Extrait UNIQUEMENT les lieux EXPLICITEMENT mentionnés dans le texte
@@ -2634,6 +2634,7 @@ def analyze_territorial_scope(con, rewritten_prompt):
                 - Ne raccourcis PAS les noms (garde "CC des Pays de L'Aigle", pas juste "L'Aigle")
                 - Si plusieurs territoires sont mentionnés, extrais-les tous
                 - Si un contexte département est précisé (ex: "dans le 94", "département 61"), extrais-le séparément
+                - Ne prends que les territoires explicitement cité, pas les précisions de lieux. (ex: Fontenay-sous-bois, D94, France, ne pas extraire France)
 
                 ATTENTION AUX PIÈGES :
                 - "Saint-Denis" → commune Saint-Denis (PAS "France")
@@ -4689,8 +4690,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             1. ⛔ NE JAMAIS mentionner "le tableau", "vos données", "la colonne", "l'extrait" ou "la ligne". Fais comme si tu connaissais ces chiffres par cœur.
                             2. ⛔ NE JAMAIS citer les noms techniques des variables (ex: "taux_chomage_15_64" ou "indicateur_voisins"). Utilise le langage courant ("Taux de chômage").
                             3. ⛔ SI une colonne contient des 0 et des 1 (booléens), NE LES CITE PAS. Interprète-les (ex: "C'est supérieur à la moyenne").
-                            4. CONTEXTUALISE : Si des villes demandées sont absentes des données, dis simplement "Je dispose seulement des données pour X et Y" sans dire "dans le fichier fourni".
-                            5. STRUCTURE : Va à l'essentiel.
+                            4. CONTEXTUALISE : Si des villes demandées ou indicateurs sont absents des données, dis simplement "Je dispose seulement des données A et B pour X et Y" sans dire "dans le fichier fourni".
+                            5. STRUCTURE : Va à l'essentiel. Parle toujours des données des échelons territoriaux les plus locaux en principal sujet, et compare les aux autres valeurs.
 
                             Unités des données : {json.dumps(chart_config.get('formats', {}))}
                             """,
