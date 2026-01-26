@@ -3403,13 +3403,6 @@ def render_epci_choropleth(
             <div style="font-weight: bold; font-size: 12px; margin-bottom: 8px; color: #333;">
                 {metric_title}
             </div>
-element.style {
-    display: grid;
-    gap: 8px;
-    /* grid-auto-rows: min-content; */
-    grid-template-columns: 30% 30% 30%;
-    grid-template-rows: 16px 16px;
-}
             <div style="display: grid; gap: 8px; grid-template-columns: 30% 30% 30%; grid-template-rows: 16px 16px;">
                 <div style="display: flex; align-items: center; gap: 4px;">
                     <div style="width: 18px; height: 18px; background-color: {colors[0]}; border: 1px solid #ccc;"></div>
