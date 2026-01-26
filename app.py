@@ -1020,6 +1020,10 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
     """
     Extrait les métadonnées des colonnes depuis le glossaire (source, année, calcul).
     Utilise les noms SQL techniques du glossaire_context pour matcher les colonnes.
+
+    NOUVELLE APPROCHE : Affiche les métadonnées de toutes les variables SQL du contexte RAG,
+    car les colonnes du dataframe sont souvent des calculs et non des variables brutes.
+
     Retourne un dict {col_name: {source, year, definition, calculation}}.
     """
     from difflib import get_close_matches
@@ -1042,83 +1046,80 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
         # Extraire les variables SQL du contexte
         sql_variables = extract_sql_variables_from_context(glossaire_context)
 
-        for col in df.columns:
-            # Ignorer les colonnes système
-            if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV", "NOM"]:
-                continue
+        # STRATÉGIE 1 : Si on a des variables SQL dans le contexte, afficher leurs métadonnées
+        # (indépendamment des noms de colonnes du dataframe qui peuvent être des calculs)
+        if sql_variables:
+            print(f"[TERRIBOT][METADATA] 🎯 Utilisation des variables SQL du contexte RAG")
+            for sql_var, description in sql_variables.items():
+                # Chercher dans le glossaire
+                col_normalized = sql_var.replace("_", "-").upper()
+                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
-            print(f"[TERRIBOT][METADATA] 🔍 Recherche métadonnées pour colonne : '{col}'")
+                if matches.empty:
+                    col_normalized = sql_var.replace("-", "_").upper()
+                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
-            # ÉTAPE 1 : Chercher d'abord dans les variables SQL du contexte
-            sql_name_to_search = None
+                if matches.empty:
+                    col_normalized = sql_var.upper()
+                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
-            if sql_variables:
-                # Essayer de matcher exactement avec une variable SQL du contexte
-                if col in sql_variables:
-                    sql_name_to_search = col
-                    print(f"[TERRIBOT][METADATA]   ✅ Match exact dans contexte SQL : '{sql_name_to_search}'")
+                if not matches.empty:
+                    row = matches.iloc[0]
+                    source = str(row.get('Source', '')).strip()
+                    year = str(row.get('Année de référence', '')).strip()
+                    definition = str(row.get('Intitulé détaillé', '')).strip()
+                    table = str(row.get('Onglet', '')).strip()
+
+                    # Utiliser le nom SQL comme clé (pas le nom de colonne du dataframe)
+                    metadata[sql_var] = {
+                        'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
+                        'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
+                        'definition': definition,
+                        'calculation': ''
+                    }
+                    print(f"[TERRIBOT][METADATA]   ✅ {sql_var}: {definition[:60]}...")
+
+        # STRATÉGIE 2 : Fallback sur le matching des colonnes du dataframe
+        # (pour compatibilité avec ancien comportement ou si pas de contexte)
+        if not metadata:
+            print(f"[TERRIBOT][METADATA] 🔄 Fallback: matching des colonnes du dataframe")
+            for col in df.columns:
+                # Ignorer les colonnes système
+                if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV", "NOM"]:
+                    continue
+
+                print(f"[TERRIBOT][METADATA] 🔍 Recherche métadonnées pour colonne : '{col}'")
+
+                # Chercher dans le glossaire avec le nom de colonne
+                col_normalized = col.replace("_", "-").upper()
+                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+
+                if matches.empty:
+                    col_normalized = col.replace("-", "_").upper()
+                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+
+                if matches.empty:
+                    col_normalized = col.upper()
+                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+
+                if not matches.empty:
+                    row = matches.iloc[0]
+                    source = str(row.get('Source', '')).strip()
+                    year = str(row.get('Année de référence', '')).strip()
+                    definition = str(row.get('Intitulé détaillé', '')).strip()
+                    table = str(row.get('Onglet', '')).strip()
+
+                    metadata[col] = {
+                        'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
+                        'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
+                        'definition': definition,
+                        'calculation': ''
+                    }
+                    print(f"[TERRIBOT][METADATA]   ✅ Trouvé: {definition[:50]}...")
                 else:
-                    # Essayer avec normalisation
-                    col_normalized = col.replace("_", "-").upper()
-                    sql_vars_upper = {k.upper(): k for k in sql_variables.keys()}
+                    print(f"[TERRIBOT][METADATA]   ❌ Non trouvé dans le glossaire")
 
-                    if col_normalized in sql_vars_upper:
-                        sql_name_to_search = sql_vars_upper[col_normalized]
-                        print(f"[TERRIBOT][METADATA]   ✅ Match normalisé dans contexte SQL : '{sql_name_to_search}'")
-                    else:
-                        # Fuzzy match avec les variables SQL (seulement si on a des variables)
-                        if len(sql_variables) > 0:
-                            matches_fuzzy = get_close_matches(col, list(sql_variables.keys()), n=1, cutoff=0.7)
-                            if matches_fuzzy:
-                                sql_name_to_search = matches_fuzzy[0]
-                                print(f"[TERRIBOT][METADATA]   🎯 Match fuzzy dans contexte SQL : '{col}' -> '{sql_name_to_search}'")
-
-            # Si pas trouvé dans le contexte, utiliser le nom de la colonne tel quel
-            if not sql_name_to_search:
-                sql_name_to_search = col
-                print(f"[TERRIBOT][METADATA]   ℹ️ Utilisation du nom de colonne tel quel : '{sql_name_to_search}'")
-
-            # ÉTAPE 2 : Chercher dans le glossaire avec le nom SQL identifié
-            # Normaliser le nom pour la recherche
-            col_normalized = sql_name_to_search.replace("_", "-").upper()
-            print(f"[TERRIBOT][METADATA]   Essai 1 avec : '{col_normalized}'")
-
-            # Chercher dans le glossaire (utiliser la colonne indexée)
-            matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
-
-            if matches.empty:
-                # Essayer avec des tirets -> underscores
-                col_normalized = sql_name_to_search.replace("-", "_").upper()
-                print(f"[TERRIBOT][METADATA]   Essai 2 avec : '{col_normalized}'")
-                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
-
-            if matches.empty:
-                # Essayer sans modification
-                col_normalized = sql_name_to_search.upper()
-                print(f"[TERRIBOT][METADATA]   Essai 3 sans modification : '{col_normalized}'")
-                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
-
-            if not matches.empty:
-                row = matches.iloc[0]
-                print(f"[TERRIBOT][METADATA]   ✅ Trouvé dans le glossaire !")
-
-                # Extraire les informations
-                source = str(row.get('Source', '')).strip()
-                year = str(row.get('Année de référence', '')).strip()
-                definition = str(row.get('Intitulé détaillé', '')).strip()
-                table = str(row.get('Onglet', '')).strip()
-
-                metadata[col] = {
-                    'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
-                    'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
-                    'definition': definition,
-                    'calculation': ''
-                }
-                print(f"[TERRIBOT][METADATA]   Source: '{metadata[col]['source']}', Année: '{metadata[col]['year']}', Def: '{definition[:50]}...'")
-            else:
-                print(f"[TERRIBOT][METADATA]   ❌ Non trouvé dans le glossaire")
-
-        print(f"[TERRIBOT][METADATA] 📊 Total : {len(metadata)}/{len(df.columns)-1} colonnes avec métadonnées")
+        print(f"[TERRIBOT][METADATA] 📊 Total : {len(metadata)} variables avec métadonnées")
 
     except Exception as e:
         print(f"[TERRIBOT][METADATA] ⚠️ Erreur : {str(e)}")
