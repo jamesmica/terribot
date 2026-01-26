@@ -1082,6 +1082,7 @@ def simplify_calculation_expression(expression: str) -> str:
     if not expression:
         return ""
     rendered = expression
+    rendered = re.sub(r"/\*.*?\*/", "", rendered, flags=re.DOTALL)
     rendered = re.sub(r"\bTRY_CAST\s*\(\s*([^)]+?)\s+AS\s+\w+\s*\)", r"\1", rendered, flags=re.IGNORECASE)
     rendered = re.sub(r"\bCAST\s*\(\s*([^)]+?)\s+AS\s+\w+\s*\)", r"\1", rendered, flags=re.IGNORECASE)
     rendered = re.sub(r"\bNULLIF\s*\(\s*([^,]+?)\s*,\s*[^)]+\)", r"\1", rendered, flags=re.IGNORECASE)
@@ -1089,6 +1090,7 @@ def simplify_calculation_expression(expression: str) -> str:
     rendered = re.sub(r"\bROUND\s*\(\s*([^)]+?)\s*\)", r"\1", rendered, flags=re.IGNORECASE)
     for _ in range(3):
         rendered = re.sub(r"\b[A-Z_]+\s*\(\s*([^)]+?)\s*\)", r"\1", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\b[A-Za-z_][A-Za-z0-9_]*\.", "", rendered)
     rendered = re.sub(r"\s+", " ", rendered).strip()
     return rendered
 
@@ -1274,10 +1276,9 @@ def build_metadata_tooltip(meta: dict) -> str:
     if not meta:
         return ""
     description = meta.get("calculation") or meta.get("definition") or ""
-    label = "Calcul" if meta.get("calculation") else "Intitulé"
     parts = []
     if description:
-        parts.append(f"{label} : {description}")
+        parts.append(description)
     source = meta.get("source") or ""
     if source:
         parts.append(f"Source : {source}")
@@ -5342,10 +5343,9 @@ if "sidebar_viz_placeholder" in st.session_state:
                         metadata = get_column_metadata(df, formats, con, glossaire_context_viz, sql_query_viz or "")
                         selected_meta = metadata.get(selected_metric) if metadata else None
                         if selected_meta:
-                            detail_label = "Calcul" if selected_meta.get("calculation") else "Intitulé"
                             detail_value = selected_meta.get("calculation") or selected_meta.get("definition") or ""
                             if detail_value:
-                                st.caption(f"**{detail_label}** : {detail_value}")
+                                st.caption(detail_value)
 
                             if selected_meta.get("source"):
                                 st.caption(f"**Source** : {selected_meta['source']}")
