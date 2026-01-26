@@ -4441,7 +4441,7 @@ if prompt_to_process:
                             3. Si aucun lieu explicite dans la question, réinjecte '{current_geo_name}'
 
                             RÈGLES CRITIQUES :
-                            - CONSERVE EXACTEMENT les noms de lieux mentionnés (ex: "Saint-Denis" reste "Saint-Denis", PAS "France")
+                            - Conserve les noms de lieux mentionnés (ex: "Saint-Denis" reste "Saint-Denis", PAS "France")
                             - NE généralise PAS un lieu spécifique vers un territoire plus large
                             - NE remplace PAS un nom de commune/ville par un pays/région
                             - Si l'utilisateur mentionne "Saint-Denis", "Paris", "Lyon", etc., GARDE le nom exact
