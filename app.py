@@ -1095,6 +1095,17 @@ def build_calculation_display(expression: str, var_definitions: dict) -> str:
     return rendered
 
 
+def normalize_glossary_key(value: str) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip().upper()
+    if text.startswith("X") and len(text) > 1 and text[1].isdigit():
+        text = text[1:]
+    text = re.sub(r"[_\-\s]", "", text)
+    text = re.sub(r"[^A-Z0-9]", "", text)
+    return text
+
+
 def get_column_metadata(
     df: pd.DataFrame,
     specs: dict,
@@ -1124,7 +1135,9 @@ def get_column_metadata(
             return metadata
 
         # Nettoyer et créer une colonne uppercase pour la recherche
-        glossaire_df['_name_upper'] = glossaire_df['Nom au sein de la base de données'].fillna('').astype(str).str.upper()
+        name_series = glossaire_df['Nom au sein de la base de données'].fillna('').astype(str)
+        glossaire_df['_name_upper'] = name_series.str.upper()
+        glossaire_df['_name_norm'] = name_series.apply(normalize_glossary_key)
 
         sql_expressions = parse_sql_select_expressions(sql_query)
 
@@ -1148,8 +1161,23 @@ def get_column_metadata(
 
                 var_definitions = {}
                 for var_name in var_candidates:
-                    var_upper = var_name.upper()
-                    matches = glossaire_df[glossaire_df['_name_upper'] == var_upper]
+                    candidate_names = {var_name}
+                    candidate_names.add(var_name.replace("-", "_"))
+                    candidate_names.add(var_name.replace("_", "-"))
+                    if var_name.lower().startswith("x") and len(var_name) > 1 and var_name[1].isdigit():
+                        candidate_names.add(var_name[1:])
+
+                    matches = pd.DataFrame()
+                    for candidate in candidate_names:
+                        candidate_upper = candidate.upper()
+                        matches = glossaire_df[glossaire_df['_name_upper'] == candidate_upper]
+                        if not matches.empty:
+                            break
+                        candidate_norm = normalize_glossary_key(candidate)
+                        if candidate_norm:
+                            matches = glossaire_df[glossaire_df['_name_norm'] == candidate_norm]
+                            if not matches.empty:
+                                break
                     if matches.empty:
                         continue
                     row = matches.iloc[0]
@@ -1193,6 +1221,11 @@ def get_column_metadata(
                 col_normalized = col.upper()
                 matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
+            if matches.empty:
+                col_norm_key = normalize_glossary_key(col)
+                if col_norm_key:
+                    matches = glossaire_df[glossaire_df['_name_norm'] == col_norm_key]
+
             if not matches.empty:
                 row = matches.iloc[0]
                 source = str(row.get('Source', '')).strip()
@@ -1222,10 +1255,28 @@ def get_column_metadata(
     return metadata
 
 
-def style_df(df: pd.DataFrame, specs: dict):
+def build_metadata_tooltip(meta: dict) -> str:
+    if not meta:
+        return ""
+    description = meta.get("calculation") or meta.get("definition") or ""
+    label = "Calcul" if meta.get("calculation") else "Intitulé"
+    parts = []
+    if description:
+        parts.append(f"{label} : {description}")
+    source = meta.get("source") or ""
+    year = meta.get("year") or ""
+    if source:
+        parts.append(f"Source : {source}")
+    if year:
+        parts.append(f"Année : {year}")
+    return "\n".join(parts).strip()
+
+
+def style_df(df: pd.DataFrame, specs: dict, metadata=None):
     """Applique le formatage pour l'affichage (DataFrame avec formatage français)."""
     # On travaille sur une copie pour ne pas casser le DF original
     df_display = df.copy()
+    metadata = metadata or {}
 
     # Renommer NOM_COUV en Nom si la colonne existe
     if "NOM_COUV" in df_display.columns:
@@ -1264,12 +1315,18 @@ def style_df(df: pd.DataFrame, specs: dict):
             column_config[col] = st.column_config.TextColumn(
                 col,
                 width="medium",
-                pinned="left"
+                pinned="left",
+                help=build_metadata_tooltip(metadata.get(col))
             )
             continue
 
         # On ignore les colonnes non numériques
         if not pd.api.types.is_numeric_dtype(df_display[col]):
+            if col in metadata:
+                column_config[col] = st.column_config.Column(
+                    col,
+                    help=build_metadata_tooltip(metadata.get(col))
+                )
             continue
 
         # 🎨 Récupérer les specs fournies par l'IA (ou valeurs par défaut)
@@ -1286,6 +1343,12 @@ def style_df(df: pd.DataFrame, specs: dict):
             df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "%", factor=percent_factor) if pd.notna(x) else "-")
         else:
             df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "") if pd.notna(x) else "-")
+
+        if col in metadata:
+            column_config[col] = st.column_config.Column(
+                col,
+                help=build_metadata_tooltip(metadata.get(col))
+            )
 
     return df_display, column_config
 
@@ -4305,9 +4368,7 @@ for i_msg, msg in enumerate(st.session_state.messages):
                         if info_parts:
                             st.caption(" • ".join(info_parts))
 
-                        render_metadata_details(metadata)
-
-                    styled_df, col_config = style_df(msg["data"], formats)
+                    styled_df, col_config = style_df(msg["data"], formats, metadata)
                     st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
             except Exception as e: 
@@ -5110,9 +5171,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 if info_parts:
                                     st.caption(" • ".join(info_parts))
 
-                                render_metadata_details(metadata)
-
-                            styled_df, col_config = style_df(df, formats)
+                            styled_df, col_config = style_df(df, formats, metadata)
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
                     # 📊 Stocker les données de visualisation dans session_state pour la sidebar
@@ -5315,32 +5374,22 @@ if "sidebar_viz_placeholder" in st.session_state:
                             else:
                                 st.info("Carte seulement disponible pour commune ou EPCI.")
 
-                        # Afficher les métadonnées des variables utilisées
+                        # Afficher la source et l'intitulé détaillé/calcul pour la variable affichée
                         metadata = get_column_metadata(df, formats, con, glossaire_context_viz, sql_query_viz or "")
-                        if metadata:
-                            # Regrouper les métadonnées communes
-                            sources = set()
-                            years = set()
+                        selected_meta = metadata.get(selected_metric) if metadata else None
+                        if selected_meta:
+                            detail_label = "Calcul" if selected_meta.get("calculation") else "Intitulé"
+                            detail_value = selected_meta.get("calculation") or selected_meta.get("definition") or ""
+                            if detail_value:
+                                st.caption(f"**{detail_label}** : {detail_value}")
 
-                            for var, meta in metadata.items():
-                                if meta.get('source'):
-                                    sources.add(meta['source'])
-                                if meta.get('year'):
-                                    years.add(meta['year'])
-
-                            # Afficher source et année sur une ligne
                             info_parts = []
-                            if sources:
-                                sources_str = ", ".join(sorted(sources))
-                                info_parts.append(f"**Source** : {sources_str}")
-                            if years:
-                                years_str = ", ".join(sorted(years))
-                                info_parts.append(f"**Année** : {years_str}")
-
+                            if selected_meta.get("source"):
+                                info_parts.append(f"**Source** : {selected_meta['source']}")
+                            if selected_meta.get("year"):
+                                info_parts.append(f"**Année** : {selected_meta['year']}")
                             if info_parts:
                                 st.caption(" • ".join(info_parts))
-
-                            render_metadata_details(metadata)
                     else:
                         st.caption("Aucune variable numérique disponible.")
                 except Exception as e:
