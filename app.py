@@ -4070,12 +4070,12 @@ for i_msg, msg in enumerate(st.session_state.messages):
                         if info_parts:
                             st.caption(" • ".join(info_parts))
 
-                        # Afficher les calculs de manière discrète (expander ou tooltip)
-                        calculations = [f"**{col}** : {meta['calculation']}" for col, meta in metadata.items() if meta.get('calculation')]
-                        if calculations:
-                            with st.expander("ℹ️ Détails des calculs", expanded=False):
-                                for calc in calculations:
-                                    st.caption(calc)
+                        # Afficher les intitulés détaillés de manière discrète
+                        definitions = [(col, meta['definition']) for col, meta in metadata.items() if meta.get('definition')]
+                        if definitions:
+                            with st.expander("ℹ️ Détails des indicateurs", expanded=False):
+                                for col, definition in definitions:
+                                    st.caption(f"**{col}** : {definition}")
 
                     styled_df, col_config = style_df(msg["data"], formats)
                     st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
@@ -4253,45 +4253,34 @@ def get_waiting_message(step, territory_name=None, prompt=None):
     return messages.get(step, ["En cours..."])[variant]
 
 
-def check_new_territory_mentioned(prompt: str, current_context, client, model):
+def check_territory_mentioned(prompt: str, client, model):
     """
-    Vérifie si le prompt mentionne un nouveau territoire différent du contexte actuel.
-    Retourne True si un nouveau territoire est mentionné, False sinon.
+    Vérifie si le prompt mentionne un territoire (ville, commune, département, région, etc.).
+    Retourne True si un territoire est mentionné, False sinon.
     """
-    if not current_context:
-        return False  # Pas de contexte actuel, donc pas de conflit possible
+    system_prompt = """Tu es un assistant qui détecte si un utilisateur mentionne un lieu géographique (territoire) dans sa question.
 
-    # Récupérer les territoires actuels
-    current_territories = []
-    if isinstance(current_context, list):
-        current_territories = [ctx.get('nom', '') for ctx in current_context if isinstance(ctx, dict)]
-    elif isinstance(current_context, dict):
-        current_territories = [current_context.get('nom', '')]
+Ta tâche est de déterminer si l'utilisateur mentionne un territoire (ville, commune, département, région, pays, intercommunalité, EPCI, etc.).
 
-    if not current_territories:
-        return False
+Exemples qui MENTIONNENT un territoire (réponds "OUI") :
+- "Analyse la ville de Lyon"
+- "Quel est le taux de chômage à Marseille ?"
+- "Compare Paris et Lyon"
+- "Montre-moi les données pour l'Île-de-France"
+- "Qu'en est-il à Champigny-sur-Marne ?"
+- "Compare avec le département du Val-de-Marne"
+- "Analyse l'intercommunalité Grand Paris Sud Est Avenir"
 
-    current_territories_str = ", ".join(current_territories)
-
-    # Utiliser l'IA pour détecter si un nouveau territoire est mentionné
-    system_prompt = f"""Tu es un assistant qui détecte si un utilisateur mentionne un nouveau territoire dans sa question.
-
-Territoires actuels en contexte : {current_territories_str}
-
-Ta tâche est de déterminer si l'utilisateur mentionne un NOUVEAU territoire différent de ceux en contexte.
-
-Exemples de mentions de NOUVEAUX territoires (réponds "OUI") :
-- "Compare avec Lyon" (si Lyon n'est pas dans le contexte)
-- "Qu'en est-il à Marseille ?" (si Marseille n'est pas dans le contexte)
-- "Montre-moi les données pour Paris" (si Paris n'est pas dans le contexte)
-- "Comparons avec la région Île-de-France"
-
-Exemples qui NE sont PAS de nouveaux territoires (réponds "NON") :
-- "Montre-moi le taux de chômage" (question sur un indicateur)
-- "Et la population ?" (question sur un autre indicateur)
-- "Quelle est l'évolution ?" (question sur une tendance)
-- "Compare les communes" (demande de comparaison dans le contexte actuel)
-- "Montre-moi plus de détails"
+Exemples qui NE mentionnent PAS de territoire (réponds "NON") :
+- "Oui"
+- "Non"
+- "D'accord"
+- "Montre-moi le taux de chômage" (sans lieu mentionné)
+- "Et la population ?" (sans lieu mentionné)
+- "Quelle est l'évolution ?"
+- "Montre-moi un graphique"
+- "Peux-tu détailler ?"
+- "Compare les communes" (sans nommer de communes spécifiques)
 
 Réponds uniquement "OUI" ou "NON"."""
 
@@ -4311,13 +4300,13 @@ Réponds uniquement "OUI" ou "NON"."""
         )
 
         answer = extract_response_text(response).strip().upper()
-        _dbg("new_territory_check", prompt=prompt, current_territories=current_territories_str, answer=answer)
+        _dbg("territory_mentioned_check", prompt=prompt, answer=answer)
 
         return "OUI" in answer
 
     except Exception as e:
-        _dbg("new_territory_check.error", error=str(e))
-        return False  # En cas d'erreur, on ne bloque pas le flow
+        _dbg("territory_mentioned_check.error", error=str(e))
+        return True  # En cas d'erreur, on suppose qu'un territoire est mentionné (comportement par défaut)
 
 
 # --- D. EXÉCUTION DU TRAITEMENT ---
@@ -4329,43 +4318,32 @@ if prompt_to_process:
         ambiguity=bool(st.session_state.ambiguity_candidates),
         messages=len(st.session_state.messages))
 
-    # ⚠️ VÉRIFICATION DE NOUVEAU TERRITOIRE
-    # Si on a déjà un contexte géographique (avec plusieurs territoires potentiellement),
-    # vérifier que l'utilisateur ne mentionne pas un NOUVEAU territoire
+    # ⚠️ VÉRIFICATION DE MENTION DE TERRITOIRE
+    # Si on a déjà un contexte géographique, vérifier si l'utilisateur mentionne un territoire
+    # Si NON → utiliser le contexte actuel sans recherche géographique
+    # Si OUI → continuer le flux normal avec recherche géographique
+    skip_geo_search = False
+
     if st.session_state.current_geo_context and not was_trigger and not st.session_state.force_geo_context:
-        # Vérifier si c'est un contexte avec plusieurs territoires
-        has_multiple_territories = False
+        # Vérifier si un territoire est mentionné dans le prompt
+        territory_mentioned = check_territory_mentioned(
+            prompt_to_process,
+            client,
+            MODEL_NAME
+        )
 
-        if isinstance(st.session_state.current_geo_context, list):
-            has_multiple_territories = len(st.session_state.current_geo_context) > 1
-        elif isinstance(st.session_state.current_geo_context, dict):
-            # Vérifier si c'est un EPCI ou un territoire avec des sous-territoires
-            if st.session_state.current_geo_context.get('type') in ['EPCI', 'departement', 'region']:
-                has_multiple_territories = True
+        if not territory_mentioned:
+            _dbg("no_territory_mentioned", prompt=prompt_to_process)
+            # Pas de territoire mentionné → on va utiliser le contexte actuel sans recherche
+            skip_geo_search = True
+            # Forcer l'utilisation du contexte actuel
+            st.session_state.force_geo_context = True
+        else:
+            _dbg("territory_mentioned", prompt=prompt_to_process)
+            # Un territoire est mentionné → flux normal
 
-        if has_multiple_territories:
-            # Vérifier si un nouveau territoire est mentionné
-            new_territory_mentioned = check_new_territory_mentioned(
-                prompt_to_process,
-                st.session_state.current_geo_context,
-                client,
-                MODEL_NAME
-            )
-
-            if new_territory_mentioned:
-                _dbg("new_territory_detected", prompt=prompt_to_process, current_context=st.session_state.current_geo_context)
-
-                # Ne pas déclencher le flow normal, mais afficher un message à l'utilisateur
-                st.session_state.messages.append({"role": "user", "content": prompt_to_process})
-                with st.chat_message("user", avatar="👤"):
-                    st.markdown(prompt_to_process)
-
-                with st.chat_message("assistant", avatar="🤖"):
-                    warning_msg = "🤔 Il semble que vous mentionniez un nouveau territoire. Pour comparer plusieurs territoires ou changer de territoire, veuillez démarrer une nouvelle conversation avec le bouton 🔄 en haut à droite."
-                    st.warning(warning_msg)
-                    st.session_state.messages.append({"role": "assistant", "content": warning_msg})
-
-                st.stop()  # Arrêter le traitement ici
+    # Stocker skip_geo_search dans session_state pour l'utiliser plus tard
+    st.session_state.skip_geo_search = skip_geo_search
 
     # Si c'est un nouvel input utilisateur, on l'ajoute à l'historique
     # (On vérifie pour éviter les doublons lors de la reprise après ambiguïté)
@@ -4461,64 +4439,34 @@ if prompt_to_process:
                     _dbg("pipeline.geo.before", force_geo_context=bool(st.session_state.get("force_geo_context")),
                         current_geo=current_territory)
 
-                    # --- MODIFICATION ICI : Gestion du Verrou ---
-                    if st.session_state.get("force_geo_context"):
-                        st.session_state.force_geo_context = False # On consomme le verrou
-                        print("[TERRIBOT][PIPE] 🔒 force_geo_context consumed -> keep existing context")
+                    # --- MODIFICATION ICI : Gestion du Verrou et Skip Geo Search ---
+                    if st.session_state.get("force_geo_context") or st.session_state.get("skip_geo_search"):
+                        # Consommer les flags
+                        if st.session_state.get("force_geo_context"):
+                            st.session_state.force_geo_context = False
+                            print("[TERRIBOT][PIPE] 🔒 force_geo_context consumed -> keep existing context")
+                        if st.session_state.get("skip_geo_search"):
+                            st.session_state.skip_geo_search = False
+                            print("[TERRIBOT][PIPE] ⏭️ skip_geo_search consumed -> keep existing context (no territory in prompt)")
+
                         _dbg("pipeline.geo.locked_context", geo=st.session_state.current_geo_context)
 
                         # On ne lance PAS analyze_territorial_scope, on garde l'existant
                         if st.session_state.current_geo_context:
                             geo_context = st.session_state.current_geo_context
                             # On force new_context à None pour sauter les blocs suivants
-                            new_context = None 
-                    else:
-                        # Vérifier d'abord si un nouveau territoire est mentionné
-                        print("[TERRIBOT][PIPE] 🔍 Checking if new territory is mentioned")
-
-                        try:
-                            territory_check = client.responses.create(
-                                model=MODEL_NAME,
-                                input=build_messages(
-                                    """Tu es un expert en détection de lieux géographiques.
-
-                                    TA MISSION :
-                                    Détermine si le texte mentionne un territoire géographique spécifique (ville, département, région, EPCI).
-
-                                    RÈGLES :
-                                    - Réponds "true" si un lieu spécifique est mentionné (ex: "Paris", "Orne", "Lyon", "Normandie")
-                                    - Réponds "false" si aucun lieu n'est mentionné (ex: "quelle est la population ?", "et le taux de chômage ?")
-                                    - Réponds "false" pour les pronoms ou références vagues (ex: "là-bas", "cette région")
-
-                                    FORMAT DE RÉPONSE JSON :
-                                    {"has_territory": true/false}
-                                    """,
-                                    f'Texte : "{rewritten_prompt}"'
-                                ),
-                                temperature=0,
-                            )
-                            metrics.log_api_call()
-                            check_response = extract_response_text(territory_check)
-                            has_territory = json.loads(check_response).get("has_territory", True)
-                        except:
-                            has_territory = True  # En cas d'erreur, on lance la recherche par sécurité
-
-                        if has_territory:
-                            # Analyse normale
-                            print("[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running")
-                            _dbg("pipeline.geo.before_analysis", rewritten_prompt=rewritten_prompt[:200])
-                            new_context = analyze_territorial_scope(con, rewritten_prompt)
-                            _dbg("pipeline.geo.after",
-                                 success=new_context is not None,
-                                 target_id=new_context.get('target_id') if new_context else None,
-                                 target_name=new_context.get('target_name') if new_context else None,
-                                 all_ids_count=len(new_context.get('all_ids', [])) if new_context else 0,
-                                 display_context=new_context.get('display_context') if new_context else None)
-                        else:
-                            # Aucun nouveau territoire mentionné
-                            print("[TERRIBOT][PIPE] ⏭️ No new territory mentioned, skipping search")
                             new_context = None
-                            _dbg("pipeline.geo.skipped", reason="No territory mentioned")
+                    else:
+                        # Pas de skip_geo_search, donc on fait la recherche normale
+                        print("[TERRIBOT][PIPE] 🌍 analyze_territorial_scope() running")
+                        _dbg("pipeline.geo.before_analysis", rewritten_prompt=rewritten_prompt[:200])
+                        new_context = analyze_territorial_scope(con, rewritten_prompt)
+                        _dbg("pipeline.geo.after",
+                             success=new_context is not None,
+                             target_id=new_context.get('target_id') if new_context else None,
+                             target_name=new_context.get('target_name') if new_context else None,
+                             all_ids_count=len(new_context.get('all_ids', [])) if new_context else 0,
+                             display_context=new_context.get('display_context') if new_context else None)
 
                         
                     # --- GESTION DE L'AMBIGUÏTÉ DÉTECTÉE ---
@@ -4921,12 +4869,12 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 if info_parts:
                                     st.caption(" • ".join(info_parts))
 
-                                # Afficher les calculs de manière discrète (expander ou tooltip)
-                                calculations = [f"**{col}** : {meta['calculation']}" for col, meta in metadata.items() if meta.get('calculation')]
-                                if calculations:
-                                    with st.expander("ℹ️ Détails des calculs", expanded=False):
-                                        for calc in calculations:
-                                            st.caption(calc)
+                                # Afficher les intitulés détaillés de manière discrète
+                                definitions = [(col, meta['definition']) for col, meta in metadata.items() if meta.get('definition')]
+                                if definitions:
+                                    with st.expander("ℹ️ Détails des indicateurs", expanded=False):
+                                        for col, definition in definitions:
+                                            st.caption(f"**{col}** : {definition}")
 
                             styled_df, col_config = style_df(df, formats)
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
@@ -5128,6 +5076,20 @@ if "sidebar_viz_placeholder" in st.session_state:
                                 )
                             else:
                                 st.info("Carte disponible pour commune (4-5 chiffres) ou EPCI (9 chiffres).")
+
+                        # Afficher les métadonnées de la variable sélectionnée
+                        metadata = get_column_metadata(df, formats, con)
+                        if selected_metric in metadata:
+                            meta = metadata[selected_metric]
+                            # Créer une ligne avec source et intitulé
+                            info_parts = []
+                            if meta.get('source'):
+                                info_parts.append(f"**Source** : {meta['source']}")
+                            if meta.get('definition'):
+                                info_parts.append(f"{meta['definition']}")
+
+                            if info_parts:
+                                st.caption(" • ".join(info_parts))
                     else:
                         st.caption("Aucune variable numérique disponible.")
                 except Exception as e:
