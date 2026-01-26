@@ -1022,6 +1022,7 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
     Utilise les noms SQL techniques du glossaire_context pour matcher les colonnes.
     Retourne un dict {col_name: {source, year, definition, calculation}}.
     """
+    from difflib import get_close_matches
     metadata = {}
 
     try:
@@ -1029,6 +1030,14 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
         glossaire_df = con.execute("SELECT * FROM glossaire").df()
         print(f"[TERRIBOT][METADATA] 📚 Glossaire chargé : {len(glossaire_df)} entrées")
         print(f"[TERRIBOT][METADATA] 📊 Colonnes du DataFrame à traiter : {list(df.columns)}")
+
+        # Créer un index uppercase une seule fois pour optimiser les recherches
+        if 'Nom au sein de la base de données' not in glossaire_df.columns:
+            print("[TERRIBOT][METADATA] ⚠️ Colonne 'Nom au sein de la base de données' non trouvée")
+            return metadata
+
+        # Nettoyer et créer une colonne uppercase pour la recherche
+        glossaire_df['_name_upper'] = glossaire_df['Nom au sein de la base de données'].fillna('').astype(str).str.upper()
 
         # Extraire les variables SQL du contexte
         sql_variables = extract_sql_variables_from_context(glossaire_context)
@@ -1050,7 +1059,6 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
                     print(f"[TERRIBOT][METADATA]   ✅ Match exact dans contexte SQL : '{sql_name_to_search}'")
                 else:
                     # Essayer avec normalisation
-                    from difflib import get_close_matches
                     col_normalized = col.replace("_", "-").upper()
                     sql_vars_upper = {k.upper(): k for k in sql_variables.keys()}
 
@@ -1058,11 +1066,12 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
                         sql_name_to_search = sql_vars_upper[col_normalized]
                         print(f"[TERRIBOT][METADATA]   ✅ Match normalisé dans contexte SQL : '{sql_name_to_search}'")
                     else:
-                        # Fuzzy match avec les variables SQL
-                        matches = get_close_matches(col, sql_variables.keys(), n=1, cutoff=0.7)
-                        if matches:
-                            sql_name_to_search = matches[0]
-                            print(f"[TERRIBOT][METADATA]   🎯 Match fuzzy dans contexte SQL : '{col}' -> '{sql_name_to_search}'")
+                        # Fuzzy match avec les variables SQL (seulement si on a des variables)
+                        if len(sql_variables) > 0:
+                            matches_fuzzy = get_close_matches(col, list(sql_variables.keys()), n=1, cutoff=0.7)
+                            if matches_fuzzy:
+                                sql_name_to_search = matches_fuzzy[0]
+                                print(f"[TERRIBOT][METADATA]   🎯 Match fuzzy dans contexte SQL : '{col}' -> '{sql_name_to_search}'")
 
             # Si pas trouvé dans le contexte, utiliser le nom de la colonne tel quel
             if not sql_name_to_search:
@@ -1074,20 +1083,20 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
             col_normalized = sql_name_to_search.replace("_", "-").upper()
             print(f"[TERRIBOT][METADATA]   Essai 1 avec : '{col_normalized}'")
 
-            # Chercher dans le glossaire
-            matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
+            # Chercher dans le glossaire (utiliser la colonne indexée)
+            matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
             if matches.empty:
                 # Essayer avec des tirets -> underscores
                 col_normalized = sql_name_to_search.replace("-", "_").upper()
                 print(f"[TERRIBOT][METADATA]   Essai 2 avec : '{col_normalized}'")
-                matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
+                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
             if matches.empty:
                 # Essayer sans modification
                 col_normalized = sql_name_to_search.upper()
                 print(f"[TERRIBOT][METADATA]   Essai 3 sans modification : '{col_normalized}'")
-                matches = glossaire_df[glossaire_df['Nom au sein de la base de données'].str.upper() == col_normalized]
+                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
             if not matches.empty:
                 row = matches.iloc[0]
