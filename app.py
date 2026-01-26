@@ -689,6 +689,12 @@ with st.sidebar:
     margin-top: 0.5rem !important;
     width: auto;
     }
+    /* H1 Terribot sans espace en dessous */
+    section[data-testid="stSidebar"] h1 {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1042,9 +1048,7 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con):
 
                 metadata[col] = {
                     'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
-                    'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
-                    'definition': definition,
-                    'calculation': calculation
+                    'definition': definition
                 }
 
     except Exception as e:
