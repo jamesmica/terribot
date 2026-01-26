@@ -3246,6 +3246,7 @@ def render_epci_choropleth(
       .leaflet-popup-content { font-size: 12px !important; }
       .leaflet-control-attribution,
       .leaflet-control-attribution a { font-size: 10px !important; }
+      .leaflet-bottom { top:0 !important; }
     </style>
     """
     m.get_root().header.add_child(Element(css))
