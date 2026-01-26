@@ -451,6 +451,21 @@ st.markdown("""
             width: 100% !important;
         }
     }
+
+    /* Boutons d'ambiguïté : hauteur uniforme et texte centré */
+    div[data-testid="stButton"] > button {
+        min-height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        white-space: normal;
+    }
+
+    /* Ne pas affecter les boutons de la sidebar */
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button {
+        min-height: unset;
+    }
 </style>
 """, unsafe_allow_html=True)
 
