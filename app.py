@@ -3368,7 +3368,7 @@ def render_epci_choropleth(
             folium.GeoJson(
                 feature,
                 style_function=lambda x: {"fillOpacity": 0, "weight": 0},
-                tooltip=folium.Tooltip(tooltip_text, style="width:300px; white-space:normal;")
+                tooltip=folium.Tooltip(tooltip_text, style="width:64px; white-space:normal;")
             ).add_to(m)
 
     # ---------- LÉGENDE ----------
