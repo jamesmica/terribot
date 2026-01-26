@@ -337,18 +337,7 @@ def log_code_changes():
 
         # 4. Écrire dans les logs SI changement
         if added or removed:
-            print("\n" + "="*40)
             print("🛠️ CODE MODIFIÉ DPUIS LA DERNIÈRE EXÉCUTION")
-            
-            if removed:
-                print("🔴 CODE SUPPRIMÉ :")
-                for line in removed: print(f"   - {line}")
-            
-            if added:
-                print("🟢 CODE AJOUTÉ :")
-                for line in added: print(f"   + {line}")
-            
-            print("="*40 + "\n")
     else:
         # Première exécution : on ne log rien de spécial, ou on peut logger "Version Initiale"
         pass
@@ -670,12 +659,15 @@ with st.sidebar:
     }
     /* Remonter uniquement le titre principal (le premier h1) */ 
     div[data-testid="stSidebarUserContent"] { 
-    margin-top: -80px !important; 
+    margin-top: -26px !important; 
     }
 
     div[data-testid="stSidebarHeader"] {
-    z-index:1;
-    position:relative;
+    z-index: 1;
+    position: absolute;
+    width: 40px; 
+    right: 0;
+    margin-top:-14px;
     }
 
     /* Style pour le bouton nouvelle conversation */
@@ -684,6 +676,14 @@ with st.sidebar:
     padding: 0.25rem 0.75rem !important;
     font-size: 0.875rem !important;
     margin-top: 0.5rem !important;
+    width: auto;
+    margin-right: 80px;
+    }
+    /* H1 Terribot sans espace en dessous */
+    section[data-testid="stSidebar"] h1 {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -692,7 +692,7 @@ with st.sidebar:
     col1, col2 = st.columns([3, 1])
     with col1:
         st.title("🤖 Terribot")
-        st.caption("v0.18.6 - 22 janvier 2026")
+        st.caption("v0.19.1 - 26 janvier 2026")
     with col2:
         # Bouton nouvelle conversation
         if st.button("🔄", help="Nouvelle conversation", type="primary", use_container_width=True):
@@ -3120,10 +3120,6 @@ def render_epci_choropleth(
         is_dept_fallback=is_dept_fallback
     )
 
-    # Informer l'utilisateur si on affiche le département en fallback
-    if is_dept_fallback:
-        st.info(f"Carte au niveau du département : {territory_name}")
-
     # Récupérer les IDs des communes selon le mode (EPCI ou département)
     if is_dept_fallback:
         # Mode département : récupérer toutes les communes du département
@@ -3553,7 +3549,7 @@ def render_epci_choropleth(
         legend_html = f'''
         <div style="position: absolute;
                     bottom: 0; left: 0; right: 0; width: 100%;
-                    height: 80px;
+                    height: 100px;
                     background-color: white; z-index:9999;
                     padding: 2px;
                     box-sizing: border-box;">
@@ -3588,7 +3584,7 @@ def render_epci_choropleth(
 
     # ---------- AFFICHAGE STREAMLIT (IMPORTANT) ----------
     # 🔧 Adapter la taille selon le contexte (sidebar ou main)
-    map_height = 320
+    map_height = 300
     make_map_responsive= """
      <style>
      .stCustomComponentV1 {
@@ -5128,7 +5124,7 @@ if "sidebar_viz_placeholder" in st.session_state:
                                     in_sidebar=True
                                 )
                             else:
-                                st.info("Carte disponible pour commune (4-5 chiffres) ou EPCI (9 chiffres).")
+                                st.info("Carte seulement disponible pour commune ou EPCI.")
 
                         # Afficher les métadonnées de la variable sélectionnée
                         metadata = get_column_metadata(df, formats, con)
