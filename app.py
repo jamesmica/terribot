@@ -722,6 +722,10 @@ with st.sidebar:
     # Stocker le placeholder dans session_state pour y accéder plus tard
     st.session_state.sidebar_viz_placeholder = sidebar_viz_placeholder
 
+    # 🐛 Panneau de debug dans la sidebar
+    sidebar_debug_placeholder = st.empty()
+    st.session_state.sidebar_debug_placeholder = sidebar_debug_placeholder
+
 client = openai.OpenAI(api_key=api_key)
 MODEL_NAME = "gpt-5.2"  # Mis à jour vers un modèle standard valide, ajustez si nécessaire
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -1359,12 +1363,22 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
          valid_indices_count=len(valid_indices) if valid_indices is not None else 0,
          top_k=top_k)
 
+    print(f"\n[TERRIBOT][RAG] 🔍 Recherche de variables pour : '{query}'")
+    print(f"[TERRIBOT][RAG] 📚 Glossaire : {len(df_glossaire)} entrées")
+
     candidates = {}
 
     # 1. RECHERCHE VECTORIELLE
     _dbg("rag.hybrid.semantic_search_start", query=query[:100])
     df_sem = semantic_search(query, df_glossaire, glossary_embeddings, valid_indices, top_k=top_k, threshold=0.35)
     _dbg("rag.hybrid.semantic_search_done", results_count=len(df_sem))
+
+    print(f"[TERRIBOT][RAG] 🔎 Recherche sémantique : {len(df_sem)} résultats")
+    if len(df_sem) > 0:
+        for i, (_, row) in enumerate(df_sem.head(5).iterrows()):
+            var = row['Nom au sein de la base de données']
+            sim = row.get('similarity', 0)
+            print(f"[TERRIBOT][RAG]   {i+1}. {var} (similarité: {sim:.3f})")
 
     for _, row in df_sem.iterrows():
         var = row['Nom au sein de la base de données']
@@ -1386,10 +1400,17 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
             df_fts = con.execute(sql_fts).df()
             _dbg("rag.hybrid.fts", fts_rows=len(df_fts), keywords=keywords)
 
+            print(f"[TERRIBOT][RAG] 🔎 Recherche FTS (mots-clés: {keywords}) : {len(df_fts)} résultats")
+            if len(df_fts) > 0:
+                for i, (_, row) in enumerate(df_fts.head(5).iterrows()):
+                    var = row['Nom au sein de la base de données']
+                    print(f"[TERRIBOT][RAG]   {i+1}. {var}")
+
             for _, row in df_fts.iterrows():
                 var = row['Nom au sein de la base de données']
-                candidates[var] = (0.9, row) 
-    except: pass
+                candidates[var] = (0.9, row)
+    except Exception as e:
+        print(f"[TERRIBOT][RAG] ⚠️ Erreur FTS : {str(e)[:100]}")
 
     # 3. CONSTRUCTION DU CONTEXTE (CORRIGÉ)
     sorted_vars = sorted(candidates.items(), key=lambda x: x[1][0], reverse=True)[:top_k]
@@ -1521,6 +1542,18 @@ def hybrid_variable_search(query, con, df_glossaire, glossary_embeddings, valid_
          candidates_count=len(sorted_vars),
          result_length=len(result_context),
          result_preview=result_context[:400])
+
+    # Compter le nombre de variables effectivement trouvées
+    num_variables_found = result_context.count("✅ TABLE:")
+    print(f"[TERRIBOT][RAG] ✅ {num_variables_found} variables trouvées et validées")
+    if num_variables_found > 0:
+        # Afficher les 3 premières variables pour debug
+        lines = [line for line in result_context.split("\n") if line.startswith("✅")]
+        print(f"[TERRIBOT][RAG] 📊 Premières variables : ")
+        for line in lines[:5]:
+            print(f"[TERRIBOT][RAG]    {line}")
+    else:
+        print(f"[TERRIBOT][RAG] ⚠️ Aucune variable trouvée pour cette recherche !")
 
     return result_context
 
@@ -4638,6 +4671,12 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         # Fallback si rien n'est trouvé
                         glossaire_context = "Aucune variable spécifique trouvée. Essaie d'utiliser des connaissances générales ou signale l'absence de données."
 
+                    # Stocker dans session_state pour le debug
+                    if "debug_data" not in st.session_state:
+                        st.session_state.debug_data = {}
+                    st.session_state.debug_data["search_query"] = rewritten_prompt
+                    st.session_state.debug_data["rag_results"] = glossaire_context
+
                     # 4. SQL GENERATION
                     ids_sql = ", ".join([f"'{str(i)}'" for i in geo_context['all_ids']])
                     parent_clause = geo_context.get('parent_clause', '')
@@ -4721,6 +4760,11 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                     _dbg("pipeline.sql.gen.raw", sql_query=sql_query[:500])
 
                     debug_container["sql_query"] = sql_query
+
+                    # Stocker le SQL dans session_state pour le debug
+                    if "debug_data" not in st.session_state:
+                        st.session_state.debug_data = {}
+                    st.session_state.debug_data["sql_query"] = sql_query
 
                     with st.expander("💻 Trace : Génération SQL (IA)", expanded=False):
                         st.code(sql_query, language="sql")
@@ -5099,3 +5143,32 @@ if "sidebar_viz_placeholder" in st.session_state:
                 st.caption("Aucune donnée disponible pour visualisation.")
         else:
             st.caption("Les visualisations apparaîtront ici après une question.")
+
+# --- PANNEAU DE DEBUG (SIDEBAR) ---
+if "sidebar_debug_placeholder" in st.session_state:
+    sidebar_debug_placeholder = st.session_state.sidebar_debug_placeholder
+
+    with sidebar_debug_placeholder.container():
+        if "debug_data" in st.session_state and st.session_state.debug_data:
+            with st.expander("🐛 Debug", expanded=False):
+                debug_data = st.session_state.debug_data
+
+                # SQL Query
+                if "sql_query" in debug_data and debug_data["sql_query"]:
+                    st.markdown("**SQL Produit par GPT :**")
+                    st.code(debug_data["sql_query"], language="sql")
+
+                # RAG Results
+                if "rag_results" in debug_data and debug_data["rag_results"]:
+                    st.markdown("**Variables trouvées (RAG) :**")
+                    rag_text = debug_data["rag_results"]
+                    # Limiter l'affichage si trop long
+                    if len(rag_text) > 2000:
+                        st.text_area("RAG Context", rag_text[:2000] + "...", height=150)
+                    else:
+                        st.text_area("RAG Context", rag_text, height=150)
+
+                # Search Query
+                if "search_query" in debug_data and debug_data["search_query"]:
+                    st.markdown("**Question reformulée pour RAG :**")
+                    st.caption(debug_data["search_query"])
