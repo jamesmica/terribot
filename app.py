@@ -337,18 +337,7 @@ def log_code_changes():
 
         # 4. Écrire dans les logs SI changement
         if added or removed:
-            print("\n" + "="*40)
             print("🛠️ CODE MODIFIÉ DPUIS LA DERNIÈRE EXÉCUTION")
-            
-            if removed:
-                print("🔴 CODE SUPPRIMÉ :")
-                for line in removed: print(f"   - {line}")
-            
-            if added:
-                print("🟢 CODE AJOUTÉ :")
-                for line in added: print(f"   + {line}")
-            
-            print("="*40 + "\n")
     else:
         # Première exécution : on ne log rien de spécial, ou on peut logger "Version Initiale"
         pass
