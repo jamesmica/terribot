@@ -3398,31 +3398,38 @@ def render_epci_choropleth(
                     bottom: 0; left: 0; right: 0; width: 100%;
                     height: 80px;
                     background-color: white; z-index:9999;
-                    padding: 16px 16px;
+                    padding: 2px;
                     box-sizing: border-box;">
-            <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #333;">
+            <div style="font-weight: bold; font-size: 12px; margin-bottom: 8px; color: #333;">
                 {metric_title}
             </div>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 5px;">
+element.style {
+    display: grid;
+    gap: 8px;
+    /* grid-auto-rows: min-content; */
+    grid-template-columns: 30% 30% 30%;
+    grid-template-rows: 16px 16px;
+}
+            <div style="display: grid; gap: 8px; grid-template-columns: 30% 30% 30%; grid-template-rows: 16px 16px;">
+                <div style="display: flex; align-items: center; gap: 4px;">
                     <div style="width: 18px; height: 18px; background-color: {colors[0]}; border: 1px solid #ccc;"></div>
                     <span style="font-size: 10px; color: #555;">{cat1_label}</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
-                    <div style="width: 18px; height: 18px; background-color: {colors[1]}; border: 1px solid #ccc;"></div>
-                    <span style="font-size: 10px; color: #555;">{cat2_label}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="display: flex; align-items: center; gap: 4px;">
                     <div style="width: 18px; height: 18px; background-color: {colors[2]}; border: 1px solid #ccc;"></div>
                     <span style="font-size: 10px; color: #555;">{cat3_label}</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
-                    <div style="width: 18px; height: 18px; background-color: {colors[3]}; border: 1px solid #ccc;"></div>
-                    <span style="font-size: 10px; color: #555;">{cat4_label}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="display: flex; align-items: center; gap: 4px;">
                     <div style="width: 18px; height: 18px; background-color: #e0e0e0; border: 1px solid #ccc;"></div>
                     <span style="font-size: 10px; color: #555;">Données non disponibles</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <div style="width: 18px; height: 18px; background-color: {colors[1]}; border: 1px solid #ccc;"></div>
+                    <span style="font-size: 10px; color: #555;">{cat2_label}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <div style="width: 18px; height: 18px; background-color: {colors[3]}; border: 1px solid #ccc;"></div>
+                    <span style="font-size: 10px; color: #555;">{cat4_label}</span>
                 </div>
             </div>
         </div>
