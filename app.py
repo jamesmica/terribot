@@ -3846,10 +3846,42 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
         y_format = f",.{decimals}f"
         y_suffix = ""
 
-    # 6. MELT
-    id_vars = [label_col]
-    if date_col: id_vars.append(date_col)
-    df_melted = df_plot.melt(id_vars=id_vars, value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
+    # 6. DÉTECTION COLONNE DE CATÉGORIE (ex: tranche_age, categorie, etc.)
+    # Si le dataframe a déjà une colonne de catégorie, on l'utilise pour le groupement
+    # au lieu de faire un melt()
+    category_col = None
+    system_cols = [label_col, date_col, id_col] + [c for c in cols if c.upper() in ["ID", "NOM_COUV", "NOM", "TERRITOIRE", "LIBELLE", "AN", "ANNEE", "YEAR"]]
+    system_cols = [c for c in system_cols if c is not None]
+
+    # Chercher une colonne catégorielle (string, non-système, avec répétitions)
+    for col in cols:
+        if col in system_cols or col in selected_metrics:
+            continue
+        if df_plot[col].dtype == 'object' or df_plot[col].dtype.name == 'category':
+            # Vérifier si c'est une vraie colonne de catégorie (avec répétitions)
+            unique_ratio = len(df_plot[col].unique()) / len(df_plot)
+            if unique_ratio < 0.8:  # Si moins de 80% de valeurs uniques, c'est probablement une catégorie
+                category_col = col
+                print(f"[TERRIBOT][PLOT] 📊 Colonne de catégorie détectée : '{category_col}'")
+                break
+
+    # 7. MELT ou FORMAT DIRECT
+    if category_col and len(selected_metrics) == 1:
+        # FORMAT DÉJÀ CORRECT : on a une colonne catégorie + une métrique
+        # Pas besoin de melt(), on renomme juste la métrique
+        df_melted = df_plot.copy()
+        metric_name = new_selected_metrics[0]
+        df_melted = df_melted.rename(columns={metric_name: "Valeur"})
+        df_melted["Indicateur"] = metric_name  # Pour compatibilité avec le code existant
+        print(f"[TERRIBOT][PLOT] ✅ Format direct avec catégorie '{category_col}'")
+    else:
+        # FORMAT STANDARD : faire le melt() comme avant
+        id_vars = [label_col]
+        if date_col: id_vars.append(date_col)
+        if category_col: id_vars.append(category_col)
+        df_melted = df_plot.melt(id_vars=id_vars, value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
+        category_col = None  # Réinitialiser si on a fait un melt()
+        print(f"[TERRIBOT][PLOT] 📊 Format melt avec {len(new_selected_metrics)} métriques")
 
     # Conversion explicite en numérique (crucial pour Vega-Lite)
     df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
@@ -4017,6 +4049,29 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 "y": y_axis_def,
                 "color": {"field": "Indicateur", "type": "nominal", "title": None, "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}, "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}},
                 "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
+            }
+        elif category_col:
+            # CAS SPÉCIAL : Graphique groupé avec colonne de catégorie (ex: tranche_age)
+            # X = catégorie, xOffset = territoire, color = territoire
+            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+            # 🔧 Ajouter le suffixe (%, €) si nécessaire
+            if y_suffix:
+                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
+            if y_scale: y_axis_def["scale"] = y_scale
+
+            # Obtenir les catégories uniques pour le domaine
+            categories = df_melted[category_col].unique().tolist()
+
+            # Ajouter layout à color_def pour ce cas
+            color_def_cat = color_def.copy()
+            color_def_cat["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
+
+            chart_encoding = {
+                "x": {"field": category_col, "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
+                "y": y_axis_def,
+                "color": color_def_cat,
+                "xOffset": {"field": label_col},
+                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": category_col, "title": "Catégorie"}, {"field": "Valeur", "format": y_format}]
             }
         elif is_multi_metric:
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
