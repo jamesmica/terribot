@@ -3076,10 +3076,6 @@ def render_epci_choropleth(
         is_dept_fallback=is_dept_fallback
     )
 
-    # Informer l'utilisateur si on affiche le département en fallback
-    if is_dept_fallback:
-        st.info(f"Carte au niveau du département : {territory_name}")
-
     # Récupérer les IDs des communes selon le mode (EPCI ou département)
     if is_dept_fallback:
         # Mode département : récupérer toutes les communes du département
@@ -3509,7 +3505,7 @@ def render_epci_choropleth(
         legend_html = f'''
         <div style="position: absolute;
                     bottom: 0; left: 0; right: 0; width: 100%;
-                    height: 80px;
+                    height: 100px;
                     background-color: white; z-index:9999;
                     padding: 2px;
                     box-sizing: border-box;">
@@ -3544,7 +3540,7 @@ def render_epci_choropleth(
 
     # ---------- AFFICHAGE STREAMLIT (IMPORTANT) ----------
     # 🔧 Adapter la taille selon le contexte (sidebar ou main)
-    map_height = 320
+    map_height = 300
     make_map_responsive= """
      <style>
      .stCustomComponentV1 {
@@ -5073,7 +5069,7 @@ if "sidebar_viz_placeholder" in st.session_state:
                                     in_sidebar=True
                                 )
                             else:
-                                st.info("Carte disponible pour commune (4-5 chiffres) ou EPCI (9 chiffres).")
+                                st.info("Carte seulement disponible pour commune ou EPCI.")
 
                         # Afficher les métadonnées de la variable sélectionnée
                         metadata = get_column_metadata(df, formats, con)
