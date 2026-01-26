@@ -677,6 +677,7 @@ with st.sidebar:
     font-size: 0.875rem !important;
     margin-top: 0.5rem !important;
     width: auto;
+    margin-right: 80px;
     }
     /* H1 Terribot sans espace en dessous */
     section[data-testid="stSidebar"] h1 {
