@@ -676,7 +676,7 @@ with st.sidebar:
     div[data-testid="stSidebarHeader"] {
     z-index: 1;
     position: absolute;
-    width: 80px; 
+    width: 40px; 
     right: 0;
     margin-top:-14px;
     }
@@ -687,6 +687,7 @@ with st.sidebar:
     padding: 0.25rem 0.75rem !important;
     font-size: 0.875rem !important;
     margin-top: 0.5rem !important;
+    width: auto;
     }
     </style>
     """, unsafe_allow_html=True)
