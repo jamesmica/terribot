@@ -4366,7 +4366,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
             if y_scale: y_axis_def["scale"] = y_scale
             chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0, "labelLimit": 120, "labelLineHeight": 14}, "title": None},
                 "y": y_axis_def,
                 "color": {"field": "Indicateur", "type": "nominal", "title": None, "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}, "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}},
                 "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
@@ -4381,7 +4381,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             color_def_multi = color_def.copy()
             color_def_multi["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
             chart_encoding = {
-                "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "title": None}},
+                "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "labelLimit": 120, "labelLineHeight": 14, "title": None}},
                 "y": y_axis_def,
                 "color": color_def_multi,
                 "xOffset": {"field": label_col},
@@ -4395,7 +4395,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             if y_scale: y_axis_def["scale"] = y_scale
             bar_colors = palette[:len(sorted_labels)] if sorted_labels else palette[:1]
             chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0}, "title": None},
+                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0, "labelLimit": 120, "labelLineHeight": 14}, "title": None},
                 "y": y_axis_def,
                 "color": {
                     "field": label_col,
