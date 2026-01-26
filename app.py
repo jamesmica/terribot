@@ -3396,11 +3396,11 @@ def render_epci_choropleth(
         legend_html = f'''
         <div style="position: absolute;
                     bottom: 0; left: 0; right: 0; width: 100%;
-                    height: 120px;
-                    background-color: white; border-top: 1px solid #ccc; z-index:9999;
-                    padding: 15px 20px;
+                    height: 80px;
+                    background-color: white; z-index:9999;
+                    padding: 16px 16px;
                     box-sizing: border-box;">
-            <div style="font-weight: bold; font-size: 13px; margin-bottom: 10px; color: #333;">
+            <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #333;">
                 {metric_title}
             </div>
             <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
@@ -3438,7 +3438,7 @@ def render_epci_choropleth(
      </style>
     """
     st.markdown(make_map_responsive, unsafe_allow_html=True)
-    st_folium(m, height=map_height, returned_objects=[])
+    st_folium(m, height=map_height, returned_objects=[], width='stretch')
 
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
