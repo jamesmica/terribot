@@ -3258,6 +3258,19 @@ def render_epci_choropleth(
         tiles="CartoDB positron"  # Fond plus neutre et moins coloré
     )
 
+    from branca.element import Element
+
+    css = """
+    <style>
+      .leaflet-container { font-size: 12px !important; }
+      .leaflet-tooltip { font-size: 12px !important; }
+      .leaflet-popup-content { font-size: 12px !important; }
+      .leaflet-control-attribution,
+      .leaflet-control-attribution a { font-size: 10px !important; }
+    </style>
+    """
+    m.get_root().header.add_child(Element(css))
+
     # 🔧 Ajouter le contour de l'EPCI (sans remplissage) - seulement si pas en mode département
     if not is_dept_fallback:
         try:
