@@ -3431,9 +3431,14 @@ def render_epci_choropleth(
 
     # ---------- AFFICHAGE STREAMLIT (IMPORTANT) ----------
     # 🔧 Adapter la taille selon le contexte (sidebar ou main)
-    map_width = 400 if in_sidebar else 400
-    map_height = 400 if in_sidebar else 400
-    st_folium(m, width=map_width, height=map_height, returned_objects=[])
+    map_height = 320
+    make_map_responsive= """
+     <style>
+     [title~="st.iframe"] { width: 100%}
+     </style>
+    """
+    st.markdown(make_map_responsive, unsafe_allow_html=True)
+    st_folium(m, height=map_height, returned_objects=[])
 
 
 # --- 8. VISUALISATION AUTO (HEURISTIQUE %) ---
