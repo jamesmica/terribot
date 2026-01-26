@@ -5199,19 +5199,37 @@ if "sidebar_viz_placeholder" in st.session_state:
                             else:
                                 st.info("Carte seulement disponible pour commune ou EPCI.")
 
-                        # Afficher les métadonnées de la variable sélectionnée
+                        # Afficher les métadonnées des variables utilisées
                         metadata = get_column_metadata(df, formats, con, glossaire_context_viz)
-                        if selected_metric in metadata:
-                            meta = metadata[selected_metric]
-                            # Créer une ligne avec source et intitulé
+                        if metadata:
+                            # Regrouper les métadonnées communes
+                            sources = set()
+                            years = set()
+
+                            for var, meta in metadata.items():
+                                if meta.get('source'):
+                                    sources.add(meta['source'])
+                                if meta.get('year'):
+                                    years.add(meta['year'])
+
+                            # Afficher source et année sur une ligne
                             info_parts = []
-                            if meta.get('source'):
-                                info_parts.append(f"**Source** : {meta['source']}")
-                            if meta.get('definition'):
-                                info_parts.append(f"{meta['definition']}")
+                            if sources:
+                                sources_str = ", ".join(sorted(sources))
+                                info_parts.append(f"**Source** : {sources_str}")
+                            if years:
+                                years_str = ", ".join(sorted(years))
+                                info_parts.append(f"**Année** : {years_str}")
 
                             if info_parts:
                                 st.caption(" • ".join(info_parts))
+
+                            # Afficher les intitulés détaillés
+                            definitions = [(var, meta['definition']) for var, meta in metadata.items() if meta.get('definition')]
+                            if definitions:
+                                with st.expander("ℹ️ Détails des indicateurs", expanded=False):
+                                    for var, definition in definitions:
+                                        st.caption(f"**{var}** : {definition}")
                     else:
                         st.caption("Aucune variable numérique disponible.")
                 except Exception as e:
