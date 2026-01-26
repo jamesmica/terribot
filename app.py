@@ -1016,17 +1016,100 @@ def extract_sql_variables_from_context(glossaire_context: str) -> dict:
     return variables
 
 
-def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: str = ""):
+def split_sql_select_fields(select_clause: str) -> list:
+    fields = []
+    buffer = []
+    depth = 0
+    in_single_quote = False
+    in_double_quote = False
+
+    for char in select_clause:
+        if char == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+        elif char == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+        elif char == "(" and not in_single_quote and not in_double_quote:
+            depth += 1
+        elif char == ")" and not in_single_quote and not in_double_quote and depth > 0:
+            depth -= 1
+        elif char == "," and not in_single_quote and not in_double_quote and depth == 0:
+            field = "".join(buffer).strip()
+            if field:
+                fields.append(field)
+            buffer = []
+            continue
+        buffer.append(char)
+
+    trailing = "".join(buffer).strip()
+    if trailing:
+        fields.append(trailing)
+    return fields
+
+
+def parse_sql_select_expressions(sql_query: str) -> dict:
+    if not sql_query:
+        return {}
+
+    match = re.search(r"select\s+(.*?)\s+from\s", sql_query, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return {}
+
+    select_clause = match.group(1)
+    fields = split_sql_select_fields(select_clause)
+    expressions = {}
+
+    for field in fields:
+        alias_match = re.search(r"\s+AS\s+([\"\w\-]+)\s*$", field, re.IGNORECASE)
+        if alias_match:
+            alias = alias_match.group(1).strip('"')
+            expression = re.sub(r"\s+AS\s+[\"\w\-]+\s*$", "", field, flags=re.IGNORECASE).strip()
+        else:
+            tokens = field.strip().split()
+            if len(tokens) > 1:
+                alias = tokens[-1].strip('"')
+                expression = " ".join(tokens[:-1]).strip()
+            else:
+                alias = field.split(".")[-1].strip().strip('"')
+                expression = field.strip()
+
+        if alias:
+            expressions[alias] = expression
+
+    return expressions
+
+
+def build_calculation_display(expression: str, var_definitions: dict) -> str:
+    if not expression:
+        return ""
+
+    rendered = expression
+    for var_name, definition in var_definitions.items():
+        if not definition:
+            continue
+        quoted_pattern = rf"\"{re.escape(var_name)}\""
+        dotted_pattern = rf"\b\w+\.{re.escape(var_name)}\b"
+        rendered = re.sub(quoted_pattern, definition, rendered)
+        rendered = re.sub(dotted_pattern, definition, rendered)
+
+    rendered = re.sub(r"\s+", " ", rendered).strip()
+    return rendered
+
+
+def get_column_metadata(
+    df: pd.DataFrame,
+    specs: dict,
+    con,
+    glossaire_context: str = "",
+    sql_query: str = "",
+):
     """
     Extrait les métadonnées des colonnes depuis le glossaire (source, année, calcul).
-    Utilise les noms SQL techniques du glossaire_context pour matcher les colonnes.
-
-    NOUVELLE APPROCHE : Affiche les métadonnées de toutes les variables SQL du contexte RAG,
-    car les colonnes du dataframe sont souvent des calculs et non des variables brutes.
+    Les sources et intitulés détaillés listés correspondent aux colonnes réellement
+    affichées dans le tableau df, en explicitant les variables du glossaire qui
+    composent chaque colonne calculée quand c'est possible.
 
     Retourne un dict {col_name: {source, year, definition, calculation}}.
     """
-    from difflib import get_close_matches
     metadata = {}
 
     try:
@@ -1043,81 +1126,90 @@ def get_column_metadata(df: pd.DataFrame, specs: dict, con, glossaire_context: s
         # Nettoyer et créer une colonne uppercase pour la recherche
         glossaire_df['_name_upper'] = glossaire_df['Nom au sein de la base de données'].fillna('').astype(str).str.upper()
 
-        # Extraire les variables SQL du contexte
-        sql_variables = extract_sql_variables_from_context(glossaire_context)
+        sql_expressions = parse_sql_select_expressions(sql_query)
 
-        # STRATÉGIE 1 : Si on a des variables SQL dans le contexte, afficher leurs métadonnées
-        # (indépendamment des noms de colonnes du dataframe qui peuvent être des calculs)
-        if sql_variables:
-            print(f"[TERRIBOT][METADATA] 🎯 Utilisation des variables SQL du contexte RAG")
-            for sql_var, description in sql_variables.items():
-                # Chercher dans le glossaire
-                col_normalized = sql_var.replace("_", "-").upper()
-                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+        print(f"[TERRIBOT][METADATA] 🔄 Matching des colonnes du dataframe")
+        for col in df.columns:
+            # Ignorer les colonnes système
+            if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV", "NOM"]:
+                continue
 
-                if matches.empty:
-                    col_normalized = sql_var.replace("-", "_").upper()
-                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+            print(f"[TERRIBOT][METADATA] 🔍 Recherche métadonnées pour colonne : '{col}'")
 
-                if matches.empty:
-                    col_normalized = sql_var.upper()
-                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+            components = []
+            component_sources = set()
+            component_years = set()
 
-                if not matches.empty:
+            if col in sql_expressions:
+                expression = sql_expressions[col]
+                var_candidates = set()
+                var_candidates.update(re.findall(r'"([^"]+)"', expression))
+                var_candidates.update(re.findall(r"\b\w+\.([A-Za-z0-9_\-]+)\b", expression))
+
+                var_definitions = {}
+                for var_name in var_candidates:
+                    var_upper = var_name.upper()
+                    matches = glossaire_df[glossaire_df['_name_upper'] == var_upper]
+                    if matches.empty:
+                        continue
                     row = matches.iloc[0]
+                    definition = str(row.get('Intitulé détaillé', '')).strip()
                     source = str(row.get('Source', '')).strip()
                     year = str(row.get('Année de référence', '')).strip()
-                    definition = str(row.get('Intitulé détaillé', '')).strip()
                     table = str(row.get('Onglet', '')).strip()
-
-                    # Utiliser le nom SQL comme clé (pas le nom de colonne du dataframe)
-                    metadata[sql_var] = {
-                        'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
-                        'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
+                    components.append({
+                        'name': var_name,
                         'definition': definition,
-                        'calculation': ''
-                    }
-                    print(f"[TERRIBOT][METADATA]   ✅ {sql_var}: {definition[:60]}...")
+                    })
+                    var_definitions[var_name] = definition
+                    if source and source.upper() not in ['', 'NAN', 'NONE']:
+                        component_sources.add(source)
+                    elif table:
+                        component_sources.add(table)
+                    if year and year.upper() not in ['', 'NAN', 'NONE']:
+                        component_years.add(year)
 
-        # STRATÉGIE 2 : Fallback sur le matching des colonnes du dataframe
-        # (pour compatibilité avec ancien comportement ou si pas de contexte)
-        if not metadata:
-            print(f"[TERRIBOT][METADATA] 🔄 Fallback: matching des colonnes du dataframe")
-            for col in df.columns:
-                # Ignorer les colonnes système
-                if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV", "NOM"]:
+                if components:
+                    calculation = build_calculation_display(expression, var_definitions)
+                    metadata[col] = {
+                        'source': ", ".join(sorted(component_sources)),
+                        'year': ", ".join(sorted(component_years)),
+                        'definition': "",
+                        'calculation': calculation,
+                        'components': components,
+                    }
+                    print(f"[TERRIBOT][METADATA]   ✅ Calcul détecté pour {col}")
                     continue
 
-                print(f"[TERRIBOT][METADATA] 🔍 Recherche métadonnées pour colonne : '{col}'")
+            # Chercher dans le glossaire avec le nom de colonne
+            col_normalized = col.replace("_", "-").upper()
+            matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
-                # Chercher dans le glossaire avec le nom de colonne
-                col_normalized = col.replace("_", "-").upper()
+            if matches.empty:
+                col_normalized = col.replace("-", "_").upper()
                 matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
-                if matches.empty:
-                    col_normalized = col.replace("-", "_").upper()
-                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+            if matches.empty:
+                col_normalized = col.upper()
+                matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
 
-                if matches.empty:
-                    col_normalized = col.upper()
-                    matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+            if not matches.empty:
+                row = matches.iloc[0]
+                source = str(row.get('Source', '')).strip()
+                year = str(row.get('Année de référence', '')).strip()
+                definition = str(row.get('Intitulé détaillé', '')).strip()
+                table = str(row.get('Onglet', '')).strip()
 
-                if not matches.empty:
-                    row = matches.iloc[0]
-                    source = str(row.get('Source', '')).strip()
-                    year = str(row.get('Année de référence', '')).strip()
-                    definition = str(row.get('Intitulé détaillé', '')).strip()
-                    table = str(row.get('Onglet', '')).strip()
-
-                    metadata[col] = {
-                        'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
-                        'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
-                        'definition': definition,
-                        'calculation': ''
-                    }
-                    print(f"[TERRIBOT][METADATA]   ✅ Trouvé: {definition[:50]}...")
-                else:
-                    print(f"[TERRIBOT][METADATA]   ❌ Non trouvé dans le glossaire")
+                metadata[col] = {
+                    'source': source if source and source.upper() not in ['', 'NAN', 'NONE'] else table,
+                    'year': year if year and year.upper() not in ['', 'NAN', 'NONE'] else '',
+                    'definition': definition,
+                    'calculation': '',
+                    'components': []
+                }
+                print(f"[TERRIBOT][METADATA]   ✅ Trouvé: {definition[:50]}...")
+            else:
+                print(f"[TERRIBOT][METADATA]   ❌ Non trouvé dans le glossaire")
 
         print(f"[TERRIBOT][METADATA] 📊 Total : {len(metadata)} variables avec métadonnées")
 
@@ -1196,6 +1288,39 @@ def style_df(df: pd.DataFrame, specs: dict):
             df_display[col] = df_display[col].apply(lambda x: fr_num(x, dec, "") if pd.notna(x) else "-")
 
     return df_display, column_config
+
+
+def render_metadata_details(metadata: dict):
+    if not metadata:
+        return
+
+    details = []
+    for col, meta in metadata.items():
+        calculation = meta.get('calculation', '').strip()
+        definition = meta.get('definition', '').strip()
+        components = meta.get('components') or []
+        if calculation:
+            details.append(("calc", col, calculation, components))
+        elif definition:
+            details.append(("def", col, definition, components))
+
+    if not details:
+        return
+
+    with st.expander("ℹ️ Détails des indicateurs", expanded=False):
+        for mode, col, desc, components in details:
+            if mode == "calc":
+                st.caption(f"**{col}** = {desc}")
+            else:
+                st.caption(f"**{col}** : {desc}")
+            if components:
+                lines = [
+                    f"- `{comp['name']}` : {comp['definition']}"
+                    for comp in components
+                    if comp.get('definition')
+                ]
+                if lines:
+                    st.markdown("\n".join(lines))
 
 
     # --- FONCTION DE RÉPARATION SQL ---
@@ -4151,9 +4276,10 @@ for i_msg, msg in enumerate(st.session_state.messages):
 
                     # Récupérer le glossaire_context depuis debug_info si disponible
                     rag_context = msg.get("debug_info", {}).get("rag_context", "")
+                    sql_query = msg.get("debug_info", {}).get("sql_query", "")
 
                     # Extraire les métadonnées des colonnes
-                    metadata = get_column_metadata(msg["data"], formats, con, rag_context)
+                    metadata = get_column_metadata(msg["data"], formats, con, rag_context, sql_query)
 
                     # Afficher les métadonnées au-dessus du tableau
                     if metadata:
@@ -4179,12 +4305,7 @@ for i_msg, msg in enumerate(st.session_state.messages):
                         if info_parts:
                             st.caption(" • ".join(info_parts))
 
-                        # Afficher les intitulés détaillés de manière discrète
-                        definitions = [(col, meta['definition']) for col, meta in metadata.items() if meta.get('definition')]
-                        if definitions:
-                            with st.expander("ℹ️ Détails des indicateurs", expanded=False):
-                                for col, definition in definitions:
-                                    st.caption(f"**{col}** : {definition}")
+                        render_metadata_details(metadata)
 
                     styled_df, col_config = style_df(msg["data"], formats)
                     st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
@@ -4963,7 +5084,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             formats = chart_config.get('formats', {})
 
                             # Extraire les métadonnées des colonnes
-                            metadata = get_column_metadata(df, formats, con, glossaire_context)
+                            metadata = get_column_metadata(df, formats, con, glossaire_context, debug_container.get("sql_query", ""))
 
                             # Afficher les métadonnées au-dessus du tableau
                             if metadata:
@@ -4989,12 +5110,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                                 if info_parts:
                                     st.caption(" • ".join(info_parts))
 
-                                # Afficher les intitulés détaillés de manière discrète
-                                definitions = [(col, meta['definition']) for col, meta in metadata.items() if meta.get('definition')]
-                                if definitions:
-                                    with st.expander("ℹ️ Détails des indicateurs", expanded=False):
-                                        for col, definition in definitions:
-                                            st.caption(f"**{col}** : {definition}")
+                                render_metadata_details(metadata)
 
                             styled_df, col_config = style_df(df, formats)
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
@@ -5200,7 +5316,7 @@ if "sidebar_viz_placeholder" in st.session_state:
                                 st.info("Carte seulement disponible pour commune ou EPCI.")
 
                         # Afficher les métadonnées des variables utilisées
-                        metadata = get_column_metadata(df, formats, con, glossaire_context_viz)
+                        metadata = get_column_metadata(df, formats, con, glossaire_context_viz, sql_query_viz or "")
                         if metadata:
                             # Regrouper les métadonnées communes
                             sources = set()
@@ -5224,12 +5340,7 @@ if "sidebar_viz_placeholder" in st.session_state:
                             if info_parts:
                                 st.caption(" • ".join(info_parts))
 
-                            # Afficher les intitulés détaillés
-                            definitions = [(var, meta['definition']) for var, meta in metadata.items() if meta.get('definition')]
-                            if definitions:
-                                with st.expander("ℹ️ Détails des indicateurs", expanded=False):
-                                    for var, definition in definitions:
-                                        st.caption(f"**{var}** : {definition}")
+                            render_metadata_details(metadata)
                     else:
                         st.caption("Aucune variable numérique disponible.")
                 except Exception as e:
