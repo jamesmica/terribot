@@ -1095,6 +1095,17 @@ def build_calculation_display(expression: str, var_definitions: dict) -> str:
     return rendered
 
 
+def normalize_glossary_key(value: str) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip().upper()
+    if text.startswith("X") and len(text) > 1 and text[1].isdigit():
+        text = text[1:]
+    text = re.sub(r"[_\-\s]", "", text)
+    text = re.sub(r"[^A-Z0-9]", "", text)
+    return text
+
+
 def get_column_metadata(
     df: pd.DataFrame,
     specs: dict,
@@ -1124,7 +1135,9 @@ def get_column_metadata(
             return metadata
 
         # Nettoyer et créer une colonne uppercase pour la recherche
-        glossaire_df['_name_upper'] = glossaire_df['Nom au sein de la base de données'].fillna('').astype(str).str.upper()
+        name_series = glossaire_df['Nom au sein de la base de données'].fillna('').astype(str)
+        glossaire_df['_name_upper'] = name_series.str.upper()
+        glossaire_df['_name_norm'] = name_series.apply(normalize_glossary_key)
 
         sql_expressions = parse_sql_select_expressions(sql_query)
 
@@ -1148,8 +1161,23 @@ def get_column_metadata(
 
                 var_definitions = {}
                 for var_name in var_candidates:
-                    var_upper = var_name.upper()
-                    matches = glossaire_df[glossaire_df['_name_upper'] == var_upper]
+                    candidate_names = {var_name}
+                    candidate_names.add(var_name.replace("-", "_"))
+                    candidate_names.add(var_name.replace("_", "-"))
+                    if var_name.lower().startswith("x") and len(var_name) > 1 and var_name[1].isdigit():
+                        candidate_names.add(var_name[1:])
+
+                    matches = pd.DataFrame()
+                    for candidate in candidate_names:
+                        candidate_upper = candidate.upper()
+                        matches = glossaire_df[glossaire_df['_name_upper'] == candidate_upper]
+                        if not matches.empty:
+                            break
+                        candidate_norm = normalize_glossary_key(candidate)
+                        if candidate_norm:
+                            matches = glossaire_df[glossaire_df['_name_norm'] == candidate_norm]
+                            if not matches.empty:
+                                break
                     if matches.empty:
                         continue
                     row = matches.iloc[0]
@@ -1192,6 +1220,11 @@ def get_column_metadata(
             if matches.empty:
                 col_normalized = col.upper()
                 matches = glossaire_df[glossaire_df['_name_upper'] == col_normalized]
+
+            if matches.empty:
+                col_norm_key = normalize_glossary_key(col)
+                if col_norm_key:
+                    matches = glossaire_df[glossaire_df['_name_norm'] == col_norm_key]
 
             if not matches.empty:
                 row = matches.iloc[0]
