@@ -317,8 +317,8 @@ def get_db_connection():
             without_accents = ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
             return without_accents
 
-        # Enregistrer la fonction Python dans DuckDB
-        con.create_function("strip_accents", python_strip_accents)
+        # Enregistrer la fonction Python dans DuckDB avec type de retour explicite
+        con.create_function("strip_accents", python_strip_accents, return_type="VARCHAR")
         print("[TERRIBOT][DB] ✅ strip_accents function registered")
     except Exception as e:
         print(f"[TERRIBOT][DB] ⚠️ strip_accents creation failed: {e}")
