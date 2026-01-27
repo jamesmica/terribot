@@ -638,9 +638,9 @@ def ai_select_territory_from_full_context(
     best_result = None
     best_confidence = -1.0
 
-    # 🆕 Utiliser GPT-4o-mini pour réduire les coûts (20x moins cher que GPT-5.2)
-    # GPT-4o-mini est parfait pour les tâches simples de scanning
-    scan_model = "gpt-4o-mini"
+    # 🆕 Utiliser GPT-5-mini pour réduire les coûts (20x moins cher que GPT-5.2)
+    # GPT-5-mini est parfait pour les tâches simples de scanning
+    scan_model = "gpt-5-mini"
 
     for idx, chunk in enumerate(chunks, start=1):
         user_prompt = f"""
