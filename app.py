@@ -300,6 +300,29 @@ def get_db_connection():
         print("[TERRIBOT][DB] ✅ FTS index created on glossaire")
     except Exception as e:
         print(f"[TERRIBOT][DB] ⚠️ FTS init failed: {e}")
+
+    # D. CRÉATION DE LA FONCTION strip_accents
+    try:
+        print("[TERRIBOT][DB] 🔧 Creating strip_accents function...")
+        import unicodedata
+
+        def python_strip_accents(text):
+            """Supprime les accents d'une chaîne de caractères."""
+            if text is None:
+                return None
+            if not isinstance(text, str):
+                text = str(text)
+            # Normalisation NFD + suppression des accents
+            normalized = unicodedata.normalize('NFD', text)
+            without_accents = ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+            return without_accents
+
+        # Enregistrer la fonction Python dans DuckDB
+        con.create_function("strip_accents", python_strip_accents)
+        print("[TERRIBOT][DB] ✅ strip_accents function registered")
+    except Exception as e:
+        print(f"[TERRIBOT][DB] ⚠️ strip_accents creation failed: {e}")
+
     print("[TERRIBOT][DB] ✅ get_db_connection() EXIT")
     return con
 
@@ -1797,15 +1820,29 @@ if not df_glossaire.empty:
 def clean_search_term(text):
     """Nettoie le terme de recherche pour ne garder que le nom géographique."""
     if not isinstance(text, str): return ""
-    
+
     # 1. Normalisation unicode
     text = text.lower()
     text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
-    
-    # 2. Remplacements standards
+
+    # 2. Expansion des synonymes EPCI (AVANT tokenisation)
+    # Remplacer les abréviations par les termes complets pour améliorer la recherche
+    epci_replacements = {
+        r'\bcc\b': 'communaute de communes',
+        r'\bc\.c\b': 'communaute de communes',
+        r'\bca\b': 'communaute d agglomeration',
+        r'\bc\.a\b': 'communaute d agglomeration',
+        r'\bcu\b': 'communaute urbaine',
+        r'\bc\.u\b': 'communaute urbaine',
+    }
+
+    for pattern, replacement in epci_replacements.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    # 3. Remplacements standards
     text = re.sub(r"[\-‐‑‒–—―]", " ", text)
-    text = text.replace("'", " ").replace("’", " ")
-        
+    text = text.replace("'", " ").replace("'", " ")
+
     return text.strip()
 
 def search_territory_smart(con, input_str):
@@ -1834,6 +1871,22 @@ def search_territory_smart(con, input_str):
             res = con.execute("SELECT ID, NOM_COUV, COMP1, COMP2, COMP3 FROM territoires WHERE ID = ? LIMIT 1", [input_str.strip()]).fetchone()
             if res: return res
         except: pass
+
+    # 2b. Recherche EXACTE sur le nom normalisé (nouvelle étape pour améliorer la précision)
+    try:
+        sql_exact_name = """
+        SELECT ID, NOM_COUV, COMP1, COMP2, COMP3
+        FROM territoires
+        WHERE strip_accents(lower(replace(replace(NOM_COUV, '-', ' '), '''', ' '))) = ?
+        LIMIT 5
+        """
+        results = con.execute(sql_exact_name, [clean_input.replace('-', ' ')]).fetchall()
+        if len(results) == 1:
+            return results[0]
+        if len(results) > 1:
+            return results
+    except Exception as e:
+        _dbg("geo.search_smart.exact_name_error", error=str(e))
 
     # 3. Token Search (Mots clés) avec Filtre Département optionnel
     words = [w.replace("'", "''") for w in clean_input.split() if len(w) > 1]  # Escape single quotes
@@ -2251,14 +2304,143 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
 def ai_fallback_territory_search(con, user_prompt):
     """
     Fallback IA : cherche le territoire dans territoires.txt quand la recherche classique échoue.
-    Étape 1 : Recherche web pour trouver le code INSEE ou SIREN
-    Étape 2 : Recherche dans territoires.txt avec ce code
-    Étape 3 : Si échec, recherche sémantique dans un échantillon stratégique
+    OPTIMISÉ: Recherche locale d'abord, puis web search seulement si nécessaire.
+    Étape 1 : Recherche sémantique dans un échantillon stratégique (RAPIDE)
+    Étape 2 : Si échec, recherche web pour trouver le code INSEE ou SIREN (LENT)
+    Étape 3 : Recherche dans territoires.txt avec ce code
     """
     _dbg("geo.fallback.enter", user_prompt=user_prompt)
 
     try:
-        # ÉTAPE 1 : Recherche web pour trouver les codes officiels
+        # =================================================================
+        # ÉTAPE 0 : RECHERCHE LOCALE PAR SIMILARITÉ TEXTUELLE EN PREMIER (TRÈS RAPIDE)
+        # =================================================================
+        _dbg("geo.fallback.fast_local_search")
+
+        # Extraire les mots-clés du prompt (au moins 3 caractères)
+        keywords = [word.strip() for word in user_prompt.split() if len(word.strip()) >= 3]
+
+        if keywords:
+            # Construire une requête avec LIKE pour chaque mot-clé (limiter à 3)
+            keywords_limited = keywords[:3]
+            like_clauses = " OR ".join(["strip_accents(LOWER(NOM_COUV)) LIKE strip_accents(LOWER(?))" for _ in keywords_limited])
+            params = [f'%{kw}%' for kw in keywords_limited]
+
+            fast_sql = f"""
+            SELECT ID, NOM_COUV,
+                CASE
+                    WHEN length(ID) IN (4,5) THEN 'Commune'
+                    WHEN length(ID) = 9 THEN 'EPCI/Interco'
+                    WHEN ID = 'FR' THEN 'Pays'
+                    WHEN ID LIKE 'D%' THEN 'Département'
+                    WHEN ID LIKE 'R%' THEN 'Région'
+                    ELSE 'Autre'
+                END as TYPE_TERRITOIRE
+            FROM territoires
+            WHERE {like_clauses}
+            ORDER BY
+                CASE
+                    WHEN strip_accents(LOWER(NOM_COUV)) = strip_accents(LOWER(?)) THEN 1
+                    ELSE 2
+                END,
+                TYPE_TERRITOIRE, NOM_COUV
+            LIMIT 100
+            """
+
+            try:
+                # Ajouter le prompt complet pour le tri par correspondance exacte
+                fast_params = params + [user_prompt]
+                fast_df = con.execute(fast_sql, fast_params).df()
+
+                if not fast_df.empty:
+                    _dbg("geo.fallback.fast_local_results", count=len(fast_df))
+
+                    # Si on a une correspondance exacte en premier résultat, la retourner immédiatement
+                    if len(fast_df) > 0:
+                        first_result = fast_df.iloc[0]
+                        first_name_clean = unicodedata.normalize('NFD', str(first_result['NOM_COUV']).lower()).encode('ascii', 'ignore').decode("utf-8")
+                        prompt_clean = unicodedata.normalize('NFD', user_prompt.lower()).encode('ascii', 'ignore').decode("utf-8")
+
+                        if first_name_clean == prompt_clean:
+                            # Correspondance exacte trouvée !
+                            _dbg("geo.fallback.exact_match", id=first_result['ID'], name=first_result['NOM_COUV'])
+                            return {
+                                'target_id': first_result['ID'],
+                                'target_name': first_result['NOM_COUV'],
+                                'all_ids': [first_result['ID']],
+                                'display_context': f"{first_result['NOM_COUV']} ({first_result['ID']})",
+                                'lieux_cites': [user_prompt],
+                                'debug_search': [{"Recherche": user_prompt, "Trouvé": first_result['NOM_COUV'], "ID": first_result['ID'], "Source": "Recherche locale exacte"}],
+                                'parent_clause': ''
+                            }
+
+                    # Sinon, envoyer les résultats à l'IA pour sélection
+                    fast_territories = fast_df.head(50).to_dict(orient='records')
+
+                    fast_system_prompt = """
+                    Tu es un expert géographe français. Voici les résultats d'une recherche locale par similarité.
+
+                    TA MISSION :
+                    Trouver le territoire le PLUS PERTINENT basé sur la requête utilisateur.
+
+                    RÈGLES :
+                    1. Privilégie les correspondances exactes ou très proches du nom
+                    2. Comprends les abréviations : CC = Communauté de Communes, CA = Communauté d'Agglomération, CU = Communauté Urbaine
+                    3. Sois tolérant aux fautes de frappe et variations orthographiques
+                    4. Si plusieurs résultats similaires, privilégie selon le contexte
+                    5. Si aucun résultat ne semble vraiment correspondre, retourne null
+
+                    FORMAT DE RÉPONSE JSON ATTENDU :
+                    {
+                        "selected_id": "code_exact_du_territoire" OU null,
+                        "reason": "explication courte de ton choix",
+                        "confidence": "high/medium/low"
+                    }
+                    """
+
+                    fast_user_message = f"""
+                    REQUÊTE UTILISATEUR : "{user_prompt}"
+
+                    RÉSULTATS DE RECHERCHE LOCALE :
+                    {json.dumps(fast_territories, ensure_ascii=False, indent=2)}
+
+                    Trouve le territoire le plus pertinent.
+                    """
+
+                    fast_result = ai_select_territory(
+                        client,
+                        MODEL_NAME,
+                        fast_system_prompt,
+                        fast_user_message,
+                        "geo.fallback.fast_response",
+                    )
+
+                    if fast_result and fast_result.get("selected_id") and fast_result.get("confidence") in ["high", "medium"]:
+                        selected_id = fast_result["selected_id"]
+
+                        # Vérifier que l'ID existe
+                        verify_sql = "SELECT ID, NOM_COUV FROM territoires WHERE ID = ?"
+                        verify_df = con.execute(verify_sql, [selected_id]).df()
+
+                        if not verify_df.empty:
+                            territory_info = verify_df.iloc[0]
+                            _dbg("geo.fallback.fast_success", id=selected_id, name=territory_info['NOM_COUV'])
+
+                            return {
+                                'target_id': selected_id,
+                                'target_name': territory_info['NOM_COUV'],
+                                'all_ids': [selected_id],
+                                'display_context': f"{territory_info['NOM_COUV']} ({selected_id})",
+                                'lieux_cites': [user_prompt],
+                                'debug_search': [{"Recherche": user_prompt, "Trouvé": territory_info['NOM_COUV'], "ID": selected_id, "Source": "Recherche locale rapide"}],
+                                'parent_clause': ''
+                            }
+            except Exception as fast_error:
+                _dbg("geo.fallback.fast_error", error=str(fast_error))
+
+        # =================================================================
+        # ÉTAPE 1 : RECHERCHE WEB SI RECHERCHE LOCALE A ÉCHOUÉ (LENT)
+        # =================================================================
         _dbg("geo.fallback.web_search", query=user_prompt)
 
         web_search_result = client.responses.create(
@@ -2435,7 +2617,7 @@ def ai_fallback_territory_search(con, user_prompt):
         if keywords:
             # Construire une requête avec LIKE pour chaque mot-clé (limiter à 3)
             keywords_limited = keywords[:3]
-            like_clauses = " OR ".join(["LOWER(NOM_COUV) LIKE LOWER(?)" for _ in keywords_limited])
+            like_clauses = " OR ".join(["strip_accents(LOWER(NOM_COUV)) LIKE strip_accents(LOWER(?))" for _ in keywords_limited])
             params = [f'%{kw}%' for kw in keywords_limited]
 
             fuzzy_sql = f"""
