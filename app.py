@@ -638,8 +638,9 @@ def ai_select_territory_from_full_context(
     best_result = None
     best_confidence = -1.0
 
-    # 🆕 Utiliser Haiku pour réduire les coûts (20x moins cher que Sonnet)
-    haiku_model = "claude-haiku-4-5-20250929"
+    # 🆕 Utiliser GPT-4o-mini pour réduire les coûts (20x moins cher que GPT-5.2)
+    # GPT-4o-mini est parfait pour les tâches simples de scanning
+    scan_model = "gpt-4o-mini"
 
     for idx, chunk in enumerate(chunks, start=1):
         user_prompt = f"""
@@ -653,9 +654,9 @@ def ai_select_territory_from_full_context(
         """
 
         try:
-            # 🆕 Utiliser Haiku au lieu de Sonnet (économie de ~95% de coûts)
+            # 🆕 Utiliser GPT-4o-mini au lieu de GPT-5.2 (économie de ~95% de coûts)
             response = client.responses.create(
-                model=haiku_model,
+                model=scan_model,
                 input=build_messages(system_prompt, user_prompt),
                 temperature=0,
             )
