@@ -17,6 +17,8 @@ print("[TERRIBOT] ✅ Script importé / démarrage du fichier")
 # --- 0. OUTILS UTILITAIRES (A METTRE TOUT EN HAUT APRES LES IMPORTS) ---
 import datetime
 import subprocess
+import urllib.request
+import urllib.error
 
 # --- DATA SETUP: Download parquet files if needed (bypasses Git LFS issues) ---
 def check_and_download_data():
