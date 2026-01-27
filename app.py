@@ -699,11 +699,43 @@ def ai_select_territory_from_full_context(
 def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: str, client, model: str):
     """
     Fusionne la sélection des variables et la détection des formats et labels courts.
+    FORMAT WIDE : Pour les évolutions temporelles, sélectionner TOUTES les colonnes d'années (ex: POP90, POP06, POP11, POP16, POP22).
     """
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
     numeric_cols = [c for c in numeric_cols if c.upper() not in ["AN", "ANNEE", "YEAR", "ID", "CODGEO"]]
 
     if not numeric_cols: return {"selected_columns": [], "formats": {}}
+
+    # ✅ Détecter si c'est un graphique temporel en format WIDE
+    # On cherche des patterns de colonnes avec suffixes d'années (ex: POP90, POP06, POP11)
+    import re
+    temporal_groups = {}  # {"POP": ["POP90", "POP06", "POP11"], "CHOMAGE": ["CHOMAGE15", "CHOMAGE20"]}
+    year_pattern = re.compile(r'(\d{2,4})$')  # Finit par 2 à 4 chiffres (année)
+
+    for col in numeric_cols:
+        match = year_pattern.search(col)
+        if match:
+            year_suffix = match.group(1)
+            # Vérifier que c'est probablement une année (90-99 pour 1990-1999, ou 00-30 pour 2000-2030, ou année complète)
+            if len(year_suffix) == 2:
+                year_int = int(year_suffix)
+                if not (0 <= year_int <= 30 or 90 <= year_int <= 99):
+                    continue
+            elif len(year_suffix) == 4:
+                year_int = int(year_suffix)
+                if not (1900 <= year_int <= 2100):
+                    continue
+
+            # Extraire le préfixe (la métrique sans l'année)
+            prefix = col[:match.start()]
+            if prefix:
+                if prefix not in temporal_groups:
+                    temporal_groups[prefix] = []
+                temporal_groups[prefix].append(col)
+
+    # Trier les groupes par nombre de colonnes (descendant)
+    temporal_groups = {k: sorted(v) for k, v in sorted(temporal_groups.items(), key=lambda x: len(x[1]), reverse=True)}
+    is_temporal_wide = len(temporal_groups) > 0
 
     stats = {}
     for c in numeric_cols[:20]:
@@ -715,29 +747,45 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
         "available_columns": numeric_cols,
         "data_stats": stats,
         "glossaire_sample": (glossaire_context or "")[-2000:],
+        "is_temporal_wide": is_temporal_wide,
+        "temporal_groups": temporal_groups,
     }
 
-    system_prompt = """
+    # ✅ Adapter le prompt selon le type de graphique
+    if is_temporal_wide:
+        temporal_info = "\n".join([f"   - {prefix}: {cols}" for prefix, cols in list(temporal_groups.items())[:3]])
+        multi_metric_rule = f"""
+       - IMPORTANT : Pour les courbes temporelles (évolution dans le temps), les données sont en FORMAT WIDE.
+       - Si la question porte sur une évolution temporelle, choisis TOUTES les colonnes d'années pour une même métrique.
+       - Exemple : pour "évolution de la population", choisis ["POP90", "POP06", "POP11", "POP16", "POP22"] (toutes les colonnes POP*).
+       - Groupes temporels détectés :
+{temporal_info}
+       - Le graphique affichera cette métrique pour différents territoires avec évolution dans le temps."""
+    else:
+        multi_metric_rule = """
+       - Choisis toujours une seule variable pour répondre à la question. Priorité à la qualité du graph par rapport à la question.
+       Le seul cas où tu peux choisir plusieurs variables : si tu veux faire un histogramme groupé de plusieurs variables, ou un histogramme empilé avec plusieurs variables qui ont le même dénominateur et dont le total fait 100%."""
+
+    system_prompt = f"""
     Tu es un expert Dataviz. Configure le graphique.
-    
+
     TA MISSION :
     1. Choisis la ou les colonnes ('selected_columns') pour répondre à la question.
-       - Choisis toujours une seule variable pour répondre à la question. Priorité à la qualité du graph par rapport à la question.
-       Le seul cas où tu peux choisir plusieurs variables : si tu veux faire une courbe, un histogramme groupé de plusieurs variables, ou un histogramme empilé avec plusieurs variables qui ont le même dénominateur et dont le total fait 100%.
+{multi_metric_rule}
        - Les valeurs absolues ne sont pas comparables entre deux territoires de tailles différentes (il faut des taux, des parts, des moyennes, des médianes).
     2. Définis le format ET un label court ('formats') pour chaque colonne.
        - 'label': Un nom très court pour l'axe du graphique (ex: "15-24 ans" au lieu de "part_pop_15_24").
        - 'title': Le titre complet pour l'infobulle (ex: "Part des 15-24 ans au sein de la population").
     3. Définis un TITRE GLOBAL pour le graphique ('chart_title').
        - Exemple : "Répartition des logements selon le DPE en 2025" ou "Évolution du chômage".
-    
+
     JSON ATTENDU :
-    {
+    {{
       "selected_columns": ["col1", "col2"],
-      "formats": {
-        "col1": { "kind": "percent|currency|number", "decimals": 1, "label": "Titre Court Axe", "title": "Titre Long Tooltip" }
-      }
-    }
+      "formats": {{
+        "col1": {{ "kind": "percent|currency|number", "decimals": 1, "label": "Titre Court Axe", "title": "Titre Long Tooltip" }}
+      }}
+    }}
     """
 
     try:
@@ -750,8 +798,13 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
 
         if not data.get("selected_columns"): data["selected_columns"] = [numeric_cols[0]]
         data["selected_columns"] = [c for c in data["selected_columns"] if c in df.columns]
+
+        # ✅ Stocker l'info temporelle pour auto_plot_data
+        data["is_temporal_wide"] = is_temporal_wide
+        data["temporal_groups"] = temporal_groups
+
         return data
-    except: return {"selected_columns": [numeric_cols[0]], "formats": {}}
+    except: return {"selected_columns": [numeric_cols[0]], "formats": {}, "is_temporal_wide": False}
 
 def ai_enhance_formats(df: pd.DataFrame, initial_specs: dict, client, model):
     """
@@ -4168,28 +4221,24 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
         y_format = f",.{decimals}f"
         y_suffix = ""
 
-    # 6. MELT
-    id_vars = [label_col]
-    if date_col: id_vars.append(date_col)
-    df_melted = df_plot.melt(id_vars=id_vars, value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
+    # 6. PRÉPARATION DES DONNÉES (FORMAT WIDE - PAS DE MELT)
+    # ✅ On garde le DataFrame en format wide et on utilisera fold dans Vega
+    is_temporal_wide = config.get("is_temporal_wide", False)
 
-    # Conversion explicite en numérique (crucial pour Vega-Lite)
-    df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
-
-    # Pour les graphiques temporels, ne garder que le territoire cible + France
-    if date_col and id_col:
+    # Pour les graphiques temporels en format WIDE, ne garder que le territoire cible + France
+    if is_temporal_wide and id_col:
         target_id = candidates[0] if candidates else None
         # Trouver l'ID de la France (FR ou France métropolitaine)
         france_ids = [uid for uid in available_ids if str(uid) in ['FR', 'FRMETRO', 'FXX']]
         keep_ids = [target_id] if target_id else []
         if france_ids:
             keep_ids.extend(france_ids[:1])  # Ajouter seulement la première France trouvée
-        df_melted = df_melted[df_melted[label_col].isin(
-            df_plot[df_plot[id_col].isin(keep_ids)][label_col].unique()
-        )]
+
+        # Filtrer df_plot pour ne garder que les territoires sélectionnés
+        df_plot = df_plot[df_plot[id_col].isin(keep_ids)]
 
         # Normaliser la courbe France pour comparaison avec le territoire cible
-        territories_in_data = df_melted[label_col].unique()
+        territories_in_data = df_plot[label_col].unique()
         if len(territories_in_data) == 2:
             # Identifier le territoire cible et la France
             france_label = [lbl for lbl in territories_in_data if "France" in lbl or "FR" in lbl]
@@ -4199,17 +4248,24 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 france_label = france_label[0]
                 target_label = target_label[0]
 
-                # Calculer le ratio moyen pour normaliser
-                target_mean = df_melted[df_melted[label_col] == target_label]["Valeur"].mean()
-                france_mean = df_melted[df_melted[label_col] == france_label]["Valeur"].mean()
+                # Calculer le ratio moyen pour normaliser (moyenne sur toutes les colonnes de métriques)
+                target_values = df_plot[df_plot[label_col] == target_label][new_selected_metrics].values.flatten()
+                france_values = df_plot[df_plot[label_col] == france_label][new_selected_metrics].values.flatten()
+
+                target_values = pd.to_numeric(target_values, errors='coerce')
+                france_values = pd.to_numeric(france_values, errors='coerce')
+
+                target_mean = target_values[~pd.isna(target_values)].mean() if len(target_values[~pd.isna(target_values)]) > 0 else 1
+                france_mean = france_values[~pd.isna(france_values)].mean() if len(france_values[~pd.isna(france_values)]) > 0 else 1
 
                 if france_mean > 0:
                     ratio = target_mean / france_mean
                     # Appliquer le ratio aux valeurs de France pour mise à l'échelle
-                    df_melted.loc[df_melted[label_col] == france_label, "Valeur"] *= ratio
+                    for col in new_selected_metrics:
+                        df_plot.loc[df_plot[label_col] == france_label, col] *= ratio
 
                 # Renommer "France" en "Tendance France" dans la légende
-                df_melted.loc[df_melted[label_col] == france_label, label_col] = f"Tendance {france_label}"
+                df_plot.loc[df_plot[label_col] == france_label, label_col] = f"Tendance {france_label}"
 
     # 8. VEGA
     is_multi_metric = len(new_selected_metrics) > 1
@@ -4258,19 +4314,42 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     }
     chart = None
 
-    if date_col:
+    # ✅ GRAPHIQUES TEMPORELS EN FORMAT WIDE (avec transformation fold Vega)
+    if is_temporal_wide:
+        # Extraire les années des noms de colonnes (ex: POP90 -> 1990, POP06 -> 2006, POP22 -> 2022)
+        import re
+        year_mapping = {}
+        for col in new_selected_metrics:
+            match = re.search(r'(\d{2,4})$', col)
+            if match:
+                year_str = match.group(1)
+                if len(year_str) == 2:
+                    year_int = int(year_str)
+                    # Convertir 90-99 en 1990-1999, 00-30 en 2000-2030
+                    if year_int >= 90:
+                        year_full = 1900 + year_int
+                    else:
+                        year_full = 2000 + year_int
+                else:
+                    year_full = int(year_str)
+                year_mapping[col] = str(year_full)
+
         # Calculer le domaine dynamique pour l'axe Y
-        values = df_melted["Valeur"].dropna()
-        if not values.empty:
-            y_min = values.min()
-            y_max = values.max()
+        all_values = []
+        for col in new_selected_metrics:
+            values = pd.to_numeric(df_plot[col], errors='coerce').dropna()
+            all_values.extend(values.tolist())
+
+        if all_values:
+            y_min = min(all_values)
+            y_max = max(all_values)
             # Ajouter une marge de 20% en haut et en bas
-            margin = (y_max - y_min) * 0.2
+            margin = (y_max - y_min) * 0.2 if y_max != y_min else y_max * 0.2
             y_domain = [y_min - margin, y_max + margin]
         else:
             y_domain = None
 
-        y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+        y_axis_def = {"field": "value", "type": "quantitative", "title": None, "axis": {"format": y_format}}
         # 🔧 Ajouter le suffixe (%, €) si nécessaire
         if y_suffix:
             y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
@@ -4280,7 +4359,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             y_axis_def["scale"] = y_scale
 
         # Couleurs spécifiques pour les courbes : bleu turquoise (cible) et orange (France)
-        labels_in_data = df_melted[label_col].unique().tolist()
+        labels_in_data = df_plot[label_col].unique().tolist()
         color_map_line = []
         for lbl in labels_in_data:
             if "Tendance" in lbl or "France" in lbl or "FR" in lbl:
@@ -4288,19 +4367,17 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             else:
                 color_map_line.append("#1DB5C5")  # Bleu turquoise pour cible
 
-        # Créer deux layers: un pour cible (avec points) et un pour France (sans points)
-        base_encoding = {
-            "x": {"field": date_col, "type": "ordinal", "title": "Année"},
-            "y": y_axis_def,
-            "color": {
-                "field": label_col,
-                "type": "nominal",
-                "scale": {"domain": labels_in_data, "range": color_map_line},
-                "title": None,
-                "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
-            }
+        # Créer la transformation fold pour convertir les colonnes en lignes
+        fold_transform = {
+            "fold": new_selected_metrics,
+            "as": ["column_name", "value"]
         }
-        if is_multi_metric: base_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
+
+        # Ajouter une transformation pour extraire l'année du nom de colonne
+        calculate_year = {
+            "calculate": f"{{" + ", ".join([f"'{col}': '{year_mapping.get(col, col)}'" for col in new_selected_metrics]) + f"}}[datum.column_name]",
+            "as": "year"
+        }
 
         # Layer pour le territoire cible (avec points et tooltip)
         target_label = [lbl for lbl in labels_in_data if "Tendance" not in lbl and "France" not in lbl and "FR" not in lbl]
@@ -4308,25 +4385,62 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
 
         layers = []
         if target_label:
-            target_encoding = base_encoding.copy()
-            target_encoding["tooltip"] = [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col}, {"field": "Valeur", "format": y_format}]
+            target_encoding = {
+                "x": {"field": "year", "type": "ordinal", "title": "Année"},
+                "y": y_axis_def,
+                "color": {
+                    "field": label_col,
+                    "type": "nominal",
+                    "scale": {"domain": labels_in_data, "range": color_map_line},
+                    "title": None,
+                    "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
+                },
+                "tooltip": [
+                    {"field": label_col, "title": "Nom"},
+                    {"field": "year", "title": "Année"},
+                    {"field": "value", "title": "Valeur", "format": y_format}
+                ]
+            }
             layers.append({
-                "transform": [{"filter": f"datum['{label_col}'] == '{target_label[0]}'"}],
+                "transform": [
+                    fold_transform,
+                    calculate_year,
+                    {"filter": f"datum['{label_col}'] == '{target_label[0]}'"}
+                ],
                 "mark": {"type": "line", "point": True, "tooltip": True},
                 "encoding": target_encoding
             })
 
         if france_label:
             # Pour Tendance France : pas de tooltip
-            france_encoding = base_encoding.copy()
+            france_encoding = {
+                "x": {"field": "year", "type": "ordinal", "title": "Année"},
+                "y": y_axis_def,
+                "color": {
+                    "field": label_col,
+                    "type": "nominal",
+                    "scale": {"domain": labels_in_data, "range": color_map_line},
+                    "title": None,
+                    "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
+                }
+            }
             layers.append({
-                "transform": [{"filter": f"datum['{label_col}'] == '{france_label[0]}'"}],
+                "transform": [
+                    fold_transform,
+                    calculate_year,
+                    {"filter": f"datum['{label_col}'] == '{france_label[0]}'"}
+                ],
                 "mark": {"type": "line", "point": False, "tooltip": False},
                 "encoding": france_encoding
             })
 
-        chart = {"config": vega_config, "layer": layers}
+        chart = {"data": {"values": df_plot.to_dict("records")}, "config": vega_config, "layer": layers}
     else:
+        # ✅ Pour les graphiques NON temporels, on utilise encore le format melted
+        # (barres simples, barres groupées, etc.)
+        df_melted = df_plot.melt(id_vars=[label_col], value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
+        df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
+
         if is_multi_metric and is_stacked:
             y_stack = "normalize" if is_percent else True
             y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}, "stack": y_stack}
@@ -4374,7 +4488,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 },
                 "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Valeur", "format": y_format}]
             }
-        chart = {"config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
+        chart = {"data": {"values": df_melted.to_dict("records")}, "config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
     # Ajouter le titre en haut du graphique (centré) avec support du multiligne
     # Si le titre est trop long (> 50 caractères), on le découpe sur plusieurs lignes
@@ -4414,7 +4528,13 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     if in_sidebar:
         chart["width"] = 400
 
-    st.vega_lite_chart(df_melted, chart, width='content' if in_sidebar else 'stretch')
+    # ✅ Affichage selon le format :
+    # - Format wide temporel : les données sont déjà dans la spec chart, on passe None
+    # - Format melted (non-temporel) : on passe df_melted
+    if is_temporal_wide:
+        st.vega_lite_chart(chart, use_container_width=not in_sidebar)
+    else:
+        st.vega_lite_chart(df_melted, chart, width='content' if in_sidebar else 'stretch')
 
 
 # --- 9. UI PRINCIPALE ---
