@@ -4221,12 +4221,16 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
         y_format = f",.{decimals}f"
         y_suffix = ""
 
-    # 6. PRÉPARATION DES DONNÉES (FORMAT WIDE - PAS DE MELT)
-    # ✅ On garde le DataFrame en format wide et on utilisera fold dans Vega
-    is_temporal_wide = config.get("is_temporal_wide", False)
+    # 6. PRÉPARATION DES DONNÉES
+    # ✅ Déterminer le type de graphique basé sur la présence d'une colonne temporelle
+    # - Si colonne "annee/AN/YEAR/DATE" existe → Courbe temporelle (format long avec melt)
+    # - Si multi-métrique sans colonne temporelle → Colonnes groupées (format wide avec fold Vega)
+    # - Sinon → Barres simples (format direct)
 
-    # Pour les graphiques temporels en format WIDE, ne garder que le territoire cible + France
-    if is_temporal_wide and id_col:
+    is_temporal_chart = date_col is not None  # Détecte si c'est une courbe temporelle
+
+    # Pour les graphiques temporels (COURBES avec colonne annee), on filtre pour ne garder que cible + France
+    if is_temporal_chart and id_col:
         target_id = candidates[0] if candidates else None
         # Trouver l'ID de la France (FR ou France métropolitaine)
         france_ids = [uid for uid in available_ids if str(uid) in ['FR', 'FRMETRO', 'FXX']]
@@ -4237,8 +4241,16 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
         # Filtrer df_plot pour ne garder que les territoires sélectionnés
         df_plot = df_plot[df_plot[id_col].isin(keep_ids)]
 
+    # ✅ MELT pour les courbes temporelles (format long avec colonne annee)
+    if is_temporal_chart:
+        id_vars = [label_col]
+        if date_col: id_vars.append(date_col)
+        df_melted = df_plot.melt(id_vars=id_vars, value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
+        df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
+        df_melted = df_melted.sort_values([label_col, "Indicateur", date_col] if date_col else [label_col, "Indicateur"])
+
         # Normaliser la courbe France pour comparaison avec le territoire cible
-        territories_in_data = df_plot[label_col].unique()
+        territories_in_data = df_melted[label_col].unique()
         if len(territories_in_data) == 2:
             # Identifier le territoire cible et la France
             france_label = [lbl for lbl in territories_in_data if "France" in lbl or "FR" in lbl]
@@ -4248,24 +4260,17 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 france_label = france_label[0]
                 target_label = target_label[0]
 
-                # Calculer le ratio moyen pour normaliser (moyenne sur toutes les colonnes de métriques)
-                target_values = df_plot[df_plot[label_col] == target_label][new_selected_metrics].values.flatten()
-                france_values = df_plot[df_plot[label_col] == france_label][new_selected_metrics].values.flatten()
-
-                target_values = pd.to_numeric(target_values, errors='coerce')
-                france_values = pd.to_numeric(france_values, errors='coerce')
-
-                target_mean = target_values[~pd.isna(target_values)].mean() if len(target_values[~pd.isna(target_values)]) > 0 else 1
-                france_mean = france_values[~pd.isna(france_values)].mean() if len(france_values[~pd.isna(france_values)]) > 0 else 1
+                # Calculer le ratio moyen pour normaliser
+                target_mean = df_melted[df_melted[label_col] == target_label]["Valeur"].mean()
+                france_mean = df_melted[df_melted[label_col] == france_label]["Valeur"].mean()
 
                 if france_mean > 0:
                     ratio = target_mean / france_mean
                     # Appliquer le ratio aux valeurs de France pour mise à l'échelle
-                    for col in new_selected_metrics:
-                        df_plot.loc[df_plot[label_col] == france_label, col] *= ratio
+                    df_melted.loc[df_melted[label_col] == france_label, "Valeur"] *= ratio
 
                 # Renommer "France" en "Tendance France" dans la légende
-                df_plot.loc[df_plot[label_col] == france_label, label_col] = f"Tendance {france_label}"
+                df_melted.loc[df_melted[label_col] == france_label, label_col] = f"Tendance {france_label}"
 
     # 8. VEGA
     is_multi_metric = len(new_selected_metrics) > 1
@@ -4314,42 +4319,20 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     }
     chart = None
 
-    # ✅ GRAPHIQUES TEMPORELS EN FORMAT WIDE (avec transformation fold Vega)
-    if is_temporal_wide:
-        # Extraire les années des noms de colonnes (ex: POP90 -> 1990, POP06 -> 2006, POP22 -> 2022)
-        import re
-        year_mapping = {}
-        for col in new_selected_metrics:
-            match = re.search(r'(\d{2,4})$', col)
-            if match:
-                year_str = match.group(1)
-                if len(year_str) == 2:
-                    year_int = int(year_str)
-                    # Convertir 90-99 en 1990-1999, 00-30 en 2000-2030
-                    if year_int >= 90:
-                        year_full = 1900 + year_int
-                    else:
-                        year_full = 2000 + year_int
-                else:
-                    year_full = int(year_str)
-                year_mapping[col] = str(year_full)
-
+    # ✅ GRAPHIQUES TEMPORELS (COURBES) - Format long avec colonne annee
+    if is_temporal_chart:
         # Calculer le domaine dynamique pour l'axe Y
-        all_values = []
-        for col in new_selected_metrics:
-            values = pd.to_numeric(df_plot[col], errors='coerce').dropna()
-            all_values.extend(values.tolist())
-
-        if all_values:
-            y_min = min(all_values)
-            y_max = max(all_values)
+        values = df_melted["Valeur"].dropna()
+        if not values.empty:
+            y_min = values.min()
+            y_max = values.max()
             # Ajouter une marge de 20% en haut et en bas
             margin = (y_max - y_min) * 0.2 if y_max != y_min else y_max * 0.2
             y_domain = [y_min - margin, y_max + margin]
         else:
             y_domain = None
 
-        y_axis_def = {"field": "value", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+        y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
         # 🔧 Ajouter le suffixe (%, €) si nécessaire
         if y_suffix:
             y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
@@ -4359,7 +4342,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             y_axis_def["scale"] = y_scale
 
         # Couleurs spécifiques pour les courbes : bleu turquoise (cible) et orange (France)
-        labels_in_data = df_plot[label_col].unique().tolist()
+        labels_in_data = df_melted[label_col].unique().tolist()
         color_map_line = []
         for lbl in labels_in_data:
             if "Tendance" in lbl or "France" in lbl or "FR" in lbl:
@@ -4367,17 +4350,21 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
             else:
                 color_map_line.append("#1DB5C5")  # Bleu turquoise pour cible
 
-        # Créer la transformation fold pour convertir les colonnes en lignes
-        fold_transform = {
-            "fold": new_selected_metrics,
-            "as": ["column_name", "value"]
+        # Créer deux layers: un pour cible (avec points) et un pour France (sans points)
+        base_encoding = {
+            "x": {"field": date_col, "type": "ordinal", "title": "Année"},
+            "y": y_axis_def,
+            "color": {
+                "field": label_col,
+                "type": "nominal",
+                "scale": {"domain": labels_in_data, "range": color_map_line},
+                "title": None,
+                "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
+            }
         }
-
-        # Ajouter une transformation pour extraire l'année du nom de colonne
-        calculate_year = {
-            "calculate": f"{{" + ", ".join([f"'{col}': '{year_mapping.get(col, col)}'" for col in new_selected_metrics]) + f"}}[datum.column_name]",
-            "as": "year"
-        }
+        if is_multi_metric:
+            base_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
+            base_encoding["detail"] = {"field": "Indicateur", "type": "nominal"}
 
         # Layer pour le territoire cible (avec points et tooltip)
         target_label = [lbl for lbl in labels_in_data if "Tendance" not in lbl and "France" not in lbl and "FR" not in lbl]
@@ -4385,109 +4372,94 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
 
         layers = []
         if target_label:
-            target_encoding = {
-                "x": {"field": "year", "type": "ordinal", "title": "Année"},
-                "y": y_axis_def,
-                "color": {
-                    "field": label_col,
-                    "type": "nominal",
-                    "scale": {"domain": labels_in_data, "range": color_map_line},
-                    "title": None,
-                    "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
-                },
-                "tooltip": [
-                    {"field": label_col, "title": "Nom"},
-                    {"field": "year", "title": "Année"},
-                    {"field": "value", "title": "Valeur", "format": y_format}
-                ]
-            }
+            target_encoding = base_encoding.copy()
+            target_encoding["tooltip"] = [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": date_col, "title": "Année"}, {"field": "Valeur", "format": y_format}]
             layers.append({
-                "transform": [
-                    fold_transform,
-                    calculate_year,
-                    {"filter": f"datum['{label_col}'] == '{target_label[0]}'"}
-                ],
+                "transform": [{"filter": f"datum['{label_col}'] == '{target_label[0]}'"}],
                 "mark": {"type": "line", "point": True, "tooltip": True},
                 "encoding": target_encoding
             })
 
         if france_label:
             # Pour Tendance France : pas de tooltip
-            france_encoding = {
-                "x": {"field": "year", "type": "ordinal", "title": "Année"},
-                "y": y_axis_def,
-                "color": {
-                    "field": label_col,
-                    "type": "nominal",
-                    "scale": {"domain": labels_in_data, "range": color_map_line},
-                    "title": None,
-                    "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
-                }
-            }
+            france_encoding = base_encoding.copy()
             layers.append({
-                "transform": [
-                    fold_transform,
-                    calculate_year,
-                    {"filter": f"datum['{label_col}'] == '{france_label[0]}'"}
-                ],
+                "transform": [{"filter": f"datum['{label_col}'] == '{france_label[0]}'"}],
                 "mark": {"type": "line", "point": False, "tooltip": False},
                 "encoding": france_encoding
             })
 
-        chart = {"data": {"values": df_plot.to_dict("records")}, "config": vega_config, "layer": layers}
+        chart = {"config": vega_config, "layer": layers}
+
+    # ✅ GRAPHIQUES EN COLONNES GROUPÉES - Format wide avec fold Vega
+    # Axe X = variables, Légende = territoires
+    elif is_multi_metric:
+        y_axis_def = {"field": "value", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+        if y_suffix:
+            y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
+        if y_scale:
+            y_axis_def["scale"] = y_scale
+
+        # Couleurs par territoire
+        labels_in_data = df_plot[label_col].unique().tolist()
+        bar_colors = palette[:len(labels_in_data)]
+
+        # Transformation fold pour convertir colonnes en lignes
+        fold_transform = {
+            "fold": new_selected_metrics,
+            "as": ["variable", "value"]
+        }
+
+        chart_encoding = {
+            "x": {"field": "variable", "type": "nominal", "axis": {"labelAngle": 0, "labelLimit": 100, "labelLineHeight": 12, "labelAlign": "center"}, "title": None},
+            "y": y_axis_def,
+            "color": {
+                "field": label_col,
+                "type": "nominal",
+                "scale": {"domain": labels_in_data, "range": bar_colors},
+                "title": None,
+                "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
+            },
+            "xOffset": {"field": label_col},
+            "tooltip": [
+                {"field": label_col, "title": "Nom"},
+                {"field": "variable", "title": "Variable"},
+                {"field": "value", "title": "Valeur", "format": y_format}
+            ]
+        }
+
+        chart = {
+            "data": {"values": df_plot.to_dict("records")},
+            "config": vega_config,
+            "transform": [fold_transform],
+            "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True},
+            "encoding": chart_encoding
+        }
+
+    # ✅ GRAPHIQUES EN BARRES SIMPLES (une seule métrique)
     else:
-        # ✅ Pour les graphiques NON temporels, on utilise encore le format melted
-        # (barres simples, barres groupées, etc.)
+        # Melter pour format compatible avec Vega-Lite
         df_melted = df_plot.melt(id_vars=[label_col], value_vars=new_selected_metrics, var_name="Indicateur", value_name="Valeur")
         df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
 
-        if is_multi_metric and is_stacked:
-            y_stack = "normalize" if is_percent else True
-            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}, "stack": y_stack}
-            # 🔧 Ajouter le suffixe (%, €) si nécessaire
-            if y_suffix:
-                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
-            if y_scale: y_axis_def["scale"] = y_scale
-            chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0, "labelLimit": 80, "labelLineHeight": 12, "labelAlign": "center"}, "title": None},
-                "y": y_axis_def,
-                "color": {"field": "Indicateur", "type": "nominal", "title": None, "scale": {"domain": new_selected_metrics, "range": palette[:len(new_selected_metrics)]}, "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}},
-                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
-            }
-        elif is_multi_metric:
-            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
-            # 🔧 Ajouter le suffixe (%, €) si nécessaire
-            if y_suffix:
-                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
-            if y_scale: y_axis_def["scale"] = y_scale
-            # Ajouter layout à color_def pour ce cas
-            color_def_multi = color_def.copy()
-            color_def_multi["legend"] = {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
-            chart_encoding = {
-                "x": {"field": "Indicateur", "type": "nominal", "axis": {"labelAngle": 0, "labelLimit": 80, "labelLineHeight": 12, "labelAlign": "center", "title": None}},
-                "y": y_axis_def,
-                "color": color_def_multi,
-                "xOffset": {"field": label_col},
-                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Indicateur", "title": "Variable"}, {"field": "Valeur", "format": y_format}]
-            }
-        else:
-            y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
-            # 🔧 Ajouter le suffixe (%, €) si nécessaire
-            if y_suffix:
-                y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
-            if y_scale: y_axis_def["scale"] = y_scale
-            bar_colors = palette[:len(sorted_labels)] if sorted_labels else palette[:1]
-            chart_encoding = {
-                "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0, "labelLimit": 80, "labelLineHeight": 12, "labelAlign": "center"}, "title": None},
-                "y": y_axis_def,
-                "color": {
-                    "field": label_col,
-                    "type": "nominal",
-                    "scale": {"domain": sorted_labels, "range": bar_colors},
-                    "legend": None
-                },
-                "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Valeur", "format": y_format}]
-            }
+        y_axis_def = {"field": "Valeur", "type": "quantitative", "title": None, "axis": {"format": y_format}}
+        if y_suffix:
+            y_axis_def["axis"]["labelExpr"] = f"format(datum.value, '{y_format}') + '{y_suffix}'"
+        if y_scale:
+            y_axis_def["scale"] = y_scale
+
+        bar_colors = palette[:len(sorted_labels)] if sorted_labels else palette[:1]
+        chart_encoding = {
+            "x": {"field": label_col, "type": "nominal", "sort": sorted_labels, "axis": {"labelAngle": 0, "labelLimit": 80, "labelLineHeight": 12, "labelAlign": "center"}, "title": None},
+            "y": y_axis_def,
+            "color": {
+                "field": label_col,
+                "type": "nominal",
+                "scale": {"domain": sorted_labels, "range": bar_colors},
+                "legend": None
+            },
+            "tooltip": [{"field": label_col, "title": "Nom"}, {"field": "Valeur", "format": y_format}]
+        }
         chart = {"data": {"values": df_melted.to_dict("records")}, "config": vega_config, "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True}, "encoding": chart_encoding}
 
     # Ajouter le titre en haut du graphique (centré) avec support du multiligne
@@ -4529,12 +4501,15 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
         chart["width"] = 400
 
     # ✅ Affichage selon le format :
-    # - Format wide temporel : les données sont déjà dans la spec chart, on passe None
-    # - Format melted (non-temporel) : on passe df_melted
-    if is_temporal_wide:
-        st.vega_lite_chart(chart, use_container_width=not in_sidebar)
-    else:
+    # - Courbes temporelles : données passées séparément (df_melted)
+    # - Colonnes groupées : données intégrées dans chart (format wide avec fold)
+    # - Barres simples : données intégrées dans chart (format melted)
+    if is_temporal_chart:
+        # Courbes : données en format long externe
         st.vega_lite_chart(df_melted, chart, width='content' if in_sidebar else 'stretch')
+    else:
+        # Colonnes groupées et barres simples : données intégrées dans la spec
+        st.vega_lite_chart(chart, use_container_width=not in_sidebar)
 
 
 # --- 9. UI PRINCIPALE ---
