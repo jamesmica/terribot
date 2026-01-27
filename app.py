@@ -606,6 +606,15 @@ def ai_select_territory_from_full_context(
     pending_geo_text=None,
     max_chunk_bytes=200000,
 ):
+    # 🆕 CACHE : Vérifier si on a déjà cherché ce territoire récemment
+    if "territory_search_cache" not in st.session_state:
+        st.session_state.territory_search_cache = {}
+
+    cache_key = f"{pending_geo_text}_{conversation_text[:100]}"
+    if cache_key in st.session_state.territory_search_cache:
+        _dbg("geo.other_territory.cache_hit", key=cache_key[:50])
+        return st.session_state.territory_search_cache[cache_key]
+
     system_prompt = """
     Tu es un expert géographe français. Ta mission est d'identifier le territoire exact
     en te basant sur la discussion et les extraits successifs du fichier territoires.txt.
@@ -629,6 +638,9 @@ def ai_select_territory_from_full_context(
     best_result = None
     best_confidence = -1.0
 
+    # 🆕 Utiliser Haiku pour réduire les coûts (20x moins cher que Sonnet)
+    haiku_model = "claude-haiku-4-5-20250929"
+
     for idx, chunk in enumerate(chunks, start=1):
         user_prompt = f"""
         TERRITOIRE CIBLE (si mention explicite) : {pending_geo_text or "Non spécifié"}
@@ -641,8 +653,9 @@ def ai_select_territory_from_full_context(
         """
 
         try:
+            # 🆕 Utiliser Haiku au lieu de Sonnet (économie de ~95% de coûts)
             response = client.responses.create(
-                model=model,
+                model=haiku_model,
                 input=build_messages(system_prompt, user_prompt),
                 temperature=0,
             )
@@ -664,6 +677,20 @@ def ai_select_territory_from_full_context(
             if confidence_value > best_confidence:
                 best_confidence = confidence_value
                 best_result = chunk_result
+
+                # 🆕 EARLY STOPPING : Si on trouve un résultat avec haute confiance (>0.9), on arrête
+                if confidence_value > 0.9:
+                    _dbg("geo.other_territory.early_stop", confidence=confidence_value, chunk=idx, total_chunks=len(chunks))
+                    break
+
+    # 🆕 MISE EN CACHE du résultat avant de le retourner
+    if best_result:
+        st.session_state.territory_search_cache[cache_key] = best_result
+        # Limiter la taille du cache à 50 entrées
+        if len(st.session_state.territory_search_cache) > 50:
+            # Supprimer l'entrée la plus ancienne
+            oldest_key = next(iter(st.session_state.territory_search_cache))
+            del st.session_state.territory_search_cache[oldest_key]
 
     return best_result
 
@@ -2021,7 +2048,7 @@ def get_broad_candidates(con, input_str, limit=15):
            OR jaro_winkler_similarity(
                 lower(replace(regexp_replace(NOM_COUV, '[\\-‐‑‒–—―]', ' ', 'g'), '''', ' ')),
                 ?
-              ) > 0.75
+              ) > 0.85
     )
     SELECT * FROM candidates
     ORDER BY score DESC
@@ -3134,8 +3161,45 @@ def analyze_territorial_scope(con, rewritten_prompt):
 
     for lieu in lieux_cites:
         try:
-            # Recherche large pour CE lieu
-            candidates = get_broad_candidates(con, lieu)
+            # 🆕 ÉTAPE 1 : Recherche intelligente rapide (SQL uniquement)
+            smart_result = search_territory_smart(con, lieu)
+
+            # Fonction helper pour déterminer le type de territoire
+            def get_territory_type(territory_id):
+                if len(territory_id) in (4, 5) and territory_id.isdigit():
+                    return 'Commune'
+                elif len(territory_id) == 9 and territory_id.isdigit():
+                    return 'EPCI/Interco'
+                elif territory_id == 'FR':
+                    return 'Pays'
+                elif territory_id.startswith('D'):
+                    return 'Département'
+                elif territory_id.startswith('R'):
+                    return 'Région'
+                return 'Autre'
+
+            # Si un résultat unique et clair est trouvé, on l'utilise directement
+            if smart_result and not isinstance(smart_result, list):
+                # Résultat unique trouvé
+                _dbg("geo.analyze.smart_single_result", lieu=lieu, id=smart_result[0])
+                candidate = dict(zip(['ID', 'NOM_COUV', 'COMP1', 'COMP2', 'COMP3'], smart_result))
+                # Ajouter TYPE_TERRITOIRE basé sur l'ID
+                candidate['TYPE_TERRITOIRE'] = get_territory_type(str(candidate['ID']))
+                candidate['score'] = 1.0  # Score maximal pour résultat exact
+                candidates = [candidate]
+            elif smart_result and isinstance(smart_result, list):
+                # Plusieurs résultats trouvés par search_territory_smart
+                _dbg("geo.analyze.smart_multiple_results", lieu=lieu, count=len(smart_result))
+                candidates = []
+                for r in smart_result:
+                    candidate = dict(zip(['ID', 'NOM_COUV', 'COMP1', 'COMP2', 'COMP3'], r))
+                    candidate['TYPE_TERRITOIRE'] = get_territory_type(str(candidate['ID']))
+                    candidate['score'] = 0.95  # Score élevé pour résultats search_territory_smart
+                    candidates.append(candidate)
+            else:
+                # 🆕 ÉTAPE 2 : Si search_territory_smart ne trouve rien, on passe à la recherche large
+                _dbg("geo.analyze.fallback_to_broad", lieu=lieu)
+                candidates = get_broad_candidates(con, lieu)
 
             # FILTRAGE PAR DÉPARTEMENT si contexte présent
             if departement_context and candidates:
