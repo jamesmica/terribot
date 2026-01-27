@@ -4176,6 +4176,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     # Conversion explicite en numérique (crucial pour Vega-Lite)
     df_melted["Valeur"] = pd.to_numeric(df_melted["Valeur"], errors='coerce')
 
+    # ✅ FIX: Trier par année pour éviter les zigzags dans les courbes temporelles
+    if date_col:
+        df_melted = df_melted.sort_values([label_col, "Indicateur", date_col])
+
     # Pour les graphiques temporels, ne garder que le territoire cible + France
     if date_col and id_col:
         target_id = candidates[0] if candidates else None
@@ -4300,7 +4304,10 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
                 "legend": {"orient": "bottom", "layout": {"bottom": {"anchor": "middle"}}}
             }
         }
-        if is_multi_metric: base_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
+        if is_multi_metric:
+            base_encoding["strokeDash"] = {"field": "Indicateur", "title": "Variable"}
+            # ✅ FIX: Ajouter "detail" pour séparer les lignes par indicateur (évite les zigzags)
+            base_encoding["detail"] = {"field": "Indicateur", "type": "nominal"}
 
         # Layer pour le territoire cible (avec points et tooltip)
         target_label = [lbl for lbl in labels_in_data if "Tendance" not in lbl and "France" not in lbl and "FR" not in lbl]
