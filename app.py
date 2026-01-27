@@ -5333,7 +5333,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             2. ⛔ NE JAMAIS citer les noms techniques des variables (ex: "taux_chomage_15_64" ou "indicateur_voisins"). Utilise le langage courant ("Taux de chômage").
                             3. ⛔ SI une colonne ne contient que des 0 et des 1 (booléens), NE LES CITE PAS.
                             4. CONTEXTUALISE : Si des villes demandées ou indicateurs sont absents des données, dis simplement "Je dispose seulement des données A et B pour X et Y" sans dire "dans le fichier fourni".
-                            5. STRUCTURE : Va à l'essentiel. Le principal sujet est {} , compare le aux autres territoires de manière synthétique avec quelques chiffres mais pas trop.
+                            5. STRUCTURE : Va à l'essentiel. Le principal sujet est {geo_context.get('target_name', '')} , compare le aux autres territoires de manière synthétique avec quelques chiffres mais pas trop.
 
                             Unités des données : {json.dumps(chart_config.get('formats', {}))}
                             """,
