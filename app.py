@@ -14,17 +14,9 @@ import branca.colormap as cm
 
 print("[TERRIBOT] ✅ Script importé / démarrage du fichier")
 
-# --- 0. SYSTÈME DE LOGS (A METTRE TOUT EN HAUT APRES LES IMPORTS) ---
-import sys
+# --- 0. OUTILS UTILITAIRES (A METTRE TOUT EN HAUT APRES LES IMPORTS) ---
 import datetime
-import os
-import difflib
 import subprocess
-import time
-import atexit
-import base64
-import urllib.request
-import urllib.error
 
 # --- DATA SETUP: Download parquet files if needed (bypasses Git LFS issues) ---
 def check_and_download_data():
@@ -94,264 +86,6 @@ try:
     check_and_download_data()
 except Exception as e:
     print(f"[TERRIBOT][SETUP] ⚠️  Data setup check failed: {e}")
-
-# Création du dossier de logs si inexistant
-if not os.path.exists("logs"):
-    os.makedirs("logs")
-
-def get_git_metadata():
-    """Récupère les métadonnées git pour le suivi de version"""
-    metadata = {}
-    try:
-        # Commit hash
-        metadata['commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'],
-                                                      stderr=subprocess.DEVNULL).decode('utf-8').strip()
-        metadata['commit_short'] = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
-                                                            stderr=subprocess.DEVNULL).decode('utf-8').strip()
-        # Branche
-        metadata['branch'] = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-                                                      stderr=subprocess.DEVNULL).decode('utf-8').strip()
-        # Auteur et date du dernier commit
-        metadata['commit_author'] = subprocess.check_output(['git', 'log', '-1', '--format=%an'],
-                                                             stderr=subprocess.DEVNULL).decode('utf-8').strip()
-        metadata['commit_date'] = subprocess.check_output(['git', 'log', '-1', '--format=%ai'],
-                                                           stderr=subprocess.DEVNULL).decode('utf-8').strip()
-        # Message du commit
-        metadata['commit_message'] = subprocess.check_output(['git', 'log', '-1', '--format=%s'],
-                                                              stderr=subprocess.DEVNULL).decode('utf-8').strip()
-        # Statut (modifié ou non)
-        status = subprocess.check_output(['git', 'status', '--porcelain'],
-                                         stderr=subprocess.DEVNULL).decode('utf-8').strip()
-        metadata['has_local_changes'] = len(status) > 0
-    except Exception as e:
-        metadata['error'] = str(e)
-    return metadata
-
-# Classe pour tracker les métriques de performance
-class PerformanceMetrics:
-    def __init__(self):
-        self.start_time = time.time()
-        self.sql_queries = 0
-        self.sql_success = 0
-        self.sql_errors = 0
-        self.api_calls = 0
-        self.responses_generated = 0
-
-    def log_sql_query(self, success=True):
-        self.sql_queries += 1
-        if success:
-            self.sql_success += 1
-        else:
-            self.sql_errors += 1
-
-    def log_api_call(self):
-        self.api_calls += 1
-
-    def log_response(self):
-        self.responses_generated += 1
-
-    def get_summary(self):
-        elapsed = time.time() - self.start_time
-        return {
-            'session_duration_seconds': round(elapsed, 2),
-            'sql_queries_total': self.sql_queries,
-            'sql_success': self.sql_success,
-            'sql_errors': self.sql_errors,
-            'api_calls': self.api_calls,
-            'responses_generated': self.responses_generated
-        }
-
-# Instance globale des métriques
-metrics = PerformanceMetrics()
-
-# Classe qui dédouble la sortie (Terminal + Fichier)
-def get_github_log_config():
-    """Récupère la configuration de push des logs vers GitHub."""
-    return {
-        "token": os.getenv("GITHUB_TOKEN"),
-        "repo": os.getenv("GITHUB_REPO"),
-        "branch": os.getenv("GITHUB_BRANCH", "main"),
-        "enabled": os.getenv("GITHUB_LOGS_ENABLED", "true").lower() == "true",
-    }
-
-def upload_log_to_github(file_path):
-    """Upload le fichier de log dans le dossier logs/ du repo GitHub via l'API."""
-    config = get_github_log_config()
-    token = config["token"]
-    repo = config["repo"]
-    branch = config["branch"]
-
-    if not config["enabled"] or not token or not repo:
-        return False, "GitHub logs sync disabled or missing config"
-
-    if not os.path.exists(file_path):
-        return False, f"Log file not found: {file_path}"
-
-    file_name = os.path.basename(file_path)
-    remote_path = f"logs/{file_name}"
-    url = f"https://api.github.com/repos/{repo}/contents/{remote_path}"
-
-    with open(file_path, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode("utf-8")
-
-    payload = {
-        "message": f"Add session log {file_name}",
-        "content": encoded,
-        "branch": branch,
-    }
-
-    data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "terribot-log-uploader",
-        },
-        method="PUT",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            _ = response.read()
-        return True, "Log uploaded to GitHub"
-    except urllib.error.HTTPError as e:
-        return False, f"GitHub upload failed: {e.code} {e.reason}"
-    except urllib.error.URLError as e:
-        return False, f"GitHub upload failed: {e.reason}"
-
-class DualLogger(object):
-    def __init__(self):
-        self.terminal = sys.stdout
-        # Nom de fichier unique basé sur l'heure de lancement
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.log_path = f"logs/session_{timestamp}.txt"
-        self.log = open(self.log_path, "a", encoding="utf-8")
-
-        # Écrire les métadonnées git au début du log
-        self._write_header()
-
-    def _write_header(self):
-        """Écrit l'en-tête du log avec les métadonnées"""
-        git_info = get_git_metadata()
-
-        header = "=" * 80 + "\n"
-        header += "SESSION LOG - TERRIBOT\n"
-        header += "=" * 80 + "\n"
-        header += f"Session started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        header += "\n--- GIT METADATA ---\n"
-
-        if 'error' in git_info:
-            header += f"⚠️ Git info unavailable: {git_info['error']}\n"
-        else:
-            header += f"Commit:        {git_info['commit_short']} ({git_info['commit']})\n"
-            header += f"Branch:        {git_info['branch']}\n"
-            header += f"Commit Author: {git_info['commit_author']}\n"
-            header += f"Commit Date:   {git_info['commit_date']}\n"
-            header += f"Commit Msg:    {git_info['commit_message']}\n"
-            header += f"Local Changes: {'Yes ⚠️' if git_info['has_local_changes'] else 'No'}\n"
-
-        header += "=" * 80 + "\n\n"
-
-        # Écrire dans le fichier uniquement (pas dans le terminal)
-        self.log.write(header)
-        self.log.flush()
-
-    def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-        self.log.flush()  # Force l'écriture immédiate
-
-    def flush(self):
-        # Nécessaire pour la compatibilité système
-        self.terminal.flush()
-        self.log.flush()
-
-    def write_footer(self):
-        """Écrit les métriques de performance à la fin du log"""
-        metrics_summary = metrics.get_summary()
-
-        footer = "\n" + "=" * 80 + "\n"
-        footer += "SESSION METRICS\n"
-        footer += "=" * 80 + "\n"
-        footer += f"Session Duration:     {metrics_summary['session_duration_seconds']}s\n"
-        footer += f"SQL Queries:          {metrics_summary['sql_queries_total']} "
-        footer += f"(✅ {metrics_summary['sql_success']} / ❌ {metrics_summary['sql_errors']})\n"
-        footer += f"API Calls:            {metrics_summary['api_calls']}\n"
-        footer += f"Responses Generated:  {metrics_summary['responses_generated']}\n"
-        footer += "=" * 80 + "\n"
-
-        self.log.write(footer)
-        self.log.flush()
-
-        success, detail = upload_log_to_github(self.log_path)
-        if success:
-            self.terminal.write(f"[TERRIBOT][LOGS] ✅ {detail}\n")
-        else:
-            self.terminal.write(f"[TERRIBOT][LOGS] ⚠️ {detail}\n")
-
-# On redirige tout print() vers notre Logger
-dual_logger = DualLogger()
-sys.stdout = dual_logger
-
-# Enregistrer l'écriture du footer à la fin
-atexit.register(dual_logger.write_footer)
-
-print(f"[TERRIBOT] 📝 Démarrage de l'enregistrement des logs")
-
-def log_code_changes():
-    """
-    Compare le code actuel avec la dernière version exécutée.
-    Log les différences (Ajouts/Suppressions) et met à jour le snapshot.
-    """
-    snapshot_path = "logs/.app_last_run.py.bak" # Fichier caché pour stocker l'état précédent
-    current_file = __file__ # Le fichier app.py actuel
-    
-    # 1. Lire le code actuel
-    try:
-        with open(current_file, "r", encoding="utf-8") as f:
-            current_code = f.readlines()
-    except Exception:
-        return # Si on ne peut pas lire le fichier, on abandonne
-
-    # 2. Lire l'ancienne version (si elle existe)
-    if os.path.exists(snapshot_path):
-        with open(snapshot_path, "r", encoding="utf-8") as f:
-            old_code = f.readlines()
-        
-        # 3. Calculer les différences
-        diff = list(difflib.unified_diff(old_code, current_code, n=0))
-        
-        added = []
-        removed = []
-        
-        for line in diff:
-            # On ignore les en-têtes de diff (---, +++, @@)
-            if line.startswith('---') or line.startswith('+++') or line.startswith('@@'):
-                continue
-            if line.startswith('+'):
-                added.append(line[1:].strip()) # On enlève le "+"
-            elif line.startswith('-'):
-                removed.append(line[1:].strip()) # On enlève le "-"
-
-        # 4. Écrire dans les logs SI changement
-        if added or removed:
-            print("🛠️ CODE MODIFIÉ DPUIS LA DERNIÈRE EXÉCUTION")
-    else:
-        # Première exécution : on ne log rien de spécial, ou on peut logger "Version Initiale"
-        pass
-
-    # 5. Mettre à jour le snapshot pour la prochaine fois
-    try:
-        with open(snapshot_path, "w", encoding="utf-8") as f:
-            f.writelines(current_code)
-    except Exception as e:
-        print(f"⚠️ Impossible de sauvegarder le snapshot du code : {e}")
-
-# --- 0. SYSTÈME DE LOGS/CODE ---
-log_code_changes() 
-# -----------------
 
 def _dbg(label, **kw):
     try:
@@ -887,7 +621,6 @@ def ai_select_territory_from_full_context(
                 input=build_messages(system_prompt, user_prompt),
                 temperature=0,
             )
-            metrics.log_api_call()
             raw_response = extract_response_text(response)
             _dbg("geo.other_territory.response", chunk=idx, raw=raw_response[:400])
 
@@ -1123,7 +856,6 @@ Analyse chaque colonne et retourne le formatage optimal au format JSON."""
             input=build_messages(system_prompt, user_message),
             temperature=0,
         )
-        metrics.log_api_call()
         ai_response = extract_response_text(response)
 
         # Parser la réponse
@@ -2394,6 +2126,20 @@ def normalize_geo_id(raw_id, candidates):
     _dbg("geo.normalize.fallback", raw_id=raw_id, candidates_sample=candidate_ids[:5])
     return None
 
+def ai_select_territory(client, model, system_prompt, user_message, debug_label):
+    try:
+        response = client.responses.create(
+            model=model,
+            input=build_messages(system_prompt, user_message),
+            temperature=0,
+        )
+        raw_response = extract_response_text(response)
+        _dbg(debug_label, raw=raw_response[:400])
+        return json.loads(raw_response)
+    except Exception as error:
+        _dbg(f"{debug_label}.error", error=str(error))
+        return None
+
 
 def ai_validate_territory(client, model, user_query, candidates, full_sentence_context=""):
     """
@@ -2476,36 +2222,29 @@ def ai_validate_territory(client, model, user_query, candidates, full_sentence_c
     {json.dumps(candidates, ensure_ascii=False, indent=2)}
     """
 
-    try:
-        response = client.responses.create(
-            model=model,
-            input=build_messages(system_prompt, user_message),
-            temperature=0,
-        )
-        metrics.log_api_call()
-        raw_response = extract_response_text(response)
-        _dbg("geo.ai_validate.exit", raw=raw_response[:400])
+    result = ai_select_territory(
+        client,
+        model,
+        system_prompt,
+        user_message,
+        "geo.ai_validate.exit",
+    )
 
-        result = json.loads(raw_response)
+    # NORMALISATION CRITIQUE : L'IA peut retourner "04112" mais la base a "4112"
+    if result and result.get("selected_id"):
+        original_id = result["selected_id"]
+        normalized_id = normalize_geo_id(original_id, candidates)
 
-        # NORMALISATION CRITIQUE : L'IA peut retourner "04112" mais la base a "4112"
-        if result and result.get("selected_id"):
-            original_id = result["selected_id"]
-            normalized_id = normalize_geo_id(original_id, candidates)
+        if normalized_id and normalized_id != original_id:
+            _dbg("geo.ai_validate.normalized", original=original_id, normalized=normalized_id)
+            result["selected_id"] = normalized_id
+        elif not normalized_id and candidates:
+            # Fallback : prendre le premier candidat si l'ID IA ne matche rien
+            fallback_id = str(candidates[0].get('ID', ''))
+            _dbg("geo.ai_validate.fallback", original=original_id, fallback=fallback_id)
+            result["selected_id"] = fallback_id
 
-            if normalized_id and normalized_id != original_id:
-                _dbg("geo.ai_validate.normalized", original=original_id, normalized=normalized_id)
-                result["selected_id"] = normalized_id
-            elif not normalized_id and candidates:
-                # Fallback : prendre le premier candidat si l'ID IA ne matche rien
-                fallback_id = str(candidates[0].get('ID', ''))
-                _dbg("geo.ai_validate.fallback", original=original_id, fallback=fallback_id)
-                result["selected_id"] = fallback_id
-
-        return result
-    except Exception as e:
-        _dbg("geo.ai_validate.error", error=str(e))
-        return None
+    return result
 
 def ai_fallback_territory_search(con, user_prompt):
     """
@@ -2553,7 +2292,6 @@ def ai_fallback_territory_search(con, user_prompt):
             temperature=0,
             tools=[{"type": "web_search", "enabled": True}]
         )
-        metrics.log_api_call()
         web_response = extract_response_text(web_search_result)
         _dbg("geo.fallback.web_response", response=web_response[:500])
 
@@ -2656,16 +2394,13 @@ def ai_fallback_territory_search(con, user_prompt):
         Trouve le territoire le plus pertinent.
         """
 
-        response = client.responses.create(
-            model=MODEL_NAME,
-            input=build_messages(system_prompt, user_message),
-            temperature=0,
+        result = ai_select_territory(
+            client,
+            MODEL_NAME,
+            system_prompt,
+            user_message,
+            "geo.fallback.response",
         )
-        metrics.log_api_call()
-        raw_response = extract_response_text(response)
-        _dbg("geo.fallback.response", raw=raw_response[:400])
-
-        result = json.loads(raw_response)
 
         if result and result.get("selected_id") and result.get("confidence") in ["high", "medium"]:
             selected_id = result["selected_id"]
@@ -2755,16 +2490,13 @@ def ai_fallback_territory_search(con, user_prompt):
                     Trouve le territoire le plus pertinent.
                     """
 
-                    fuzzy_response = client.responses.create(
-                        model=MODEL_NAME,
-                        input=build_messages(fuzzy_system_prompt, fuzzy_user_message),
-                        temperature=0,
+                    fuzzy_result = ai_select_territory(
+                        client,
+                        MODEL_NAME,
+                        fuzzy_system_prompt,
+                        fuzzy_user_message,
+                        "geo.fallback.fuzzy_response",
                     )
-                    metrics.log_api_call()
-                    fuzzy_raw_response = extract_response_text(fuzzy_response)
-                    _dbg("geo.fallback.fuzzy_response", raw=fuzzy_raw_response[:400])
-
-                    fuzzy_result = json.loads(fuzzy_raw_response)
 
                     if fuzzy_result and fuzzy_result.get("selected_id") and fuzzy_result.get("confidence") in ["high", "medium"]:
                         selected_id = fuzzy_result["selected_id"]
@@ -2868,16 +2600,13 @@ def ultimate_ai_fallback(con, user_prompt):
             Quel est le territoire le plus pertinent ?
             """
 
-            response_level1 = client.responses.create(
-                model=MODEL_NAME,
-                input=build_messages(system_prompt_level1, user_message_level1),
-                temperature=0,
+            result_level1 = ai_select_territory(
+                client,
+                MODEL_NAME,
+                system_prompt_level1,
+                user_message_level1,
+                "geo.ultimate_fallback.level1_response",
             )
-            metrics.log_api_call()
-            raw_response_level1 = extract_response_text(response_level1)
-            _dbg("geo.ultimate_fallback.level1_response", raw=raw_response_level1[:400])
-
-            result_level1 = json.loads(raw_response_level1)
 
             if result_level1 and result_level1.get("selected_id") and result_level1.get("confidence") in ["high", "medium"]:
                 selected_id = result_level1["selected_id"]
@@ -2949,16 +2678,13 @@ def ultimate_ai_fallback(con, user_prompt):
             Quelle est la commune la plus pertinente ?
             """
 
-            response_level2 = client.responses.create(
-                model=MODEL_NAME,
-                input=build_messages(system_prompt_level2, user_message_level2),
-                temperature=0,
+            result_level2 = ai_select_territory(
+                client,
+                MODEL_NAME,
+                system_prompt_level2,
+                user_message_level2,
+                "geo.ultimate_fallback.level2_response",
             )
-            metrics.log_api_call()
-            raw_response_level2 = extract_response_text(response_level2)
-            _dbg("geo.ultimate_fallback.level2_response", raw=raw_response_level2[:400])
-
-            result_level2 = json.loads(raw_response_level2)
 
             if result_level2 and result_level2.get("selected_id") and result_level2.get("confidence") in ["high", "medium"]:
                 selected_id = result_level2["selected_id"]
@@ -3016,16 +2742,13 @@ def ultimate_ai_fallback(con, user_prompt):
                         Quelle est LA bonne commune ?
                         """
 
-                        response_level2b = client.responses.create(
-                            model=MODEL_NAME,
-                            input=build_messages(system_prompt_level2b, user_message_level2b),
-                            temperature=0,
+                        result_level2b = ai_select_territory(
+                            client,
+                            MODEL_NAME,
+                            system_prompt_level2b,
+                            user_message_level2b,
+                            "geo.ultimate_fallback.level2b_response",
                         )
-                        metrics.log_api_call()
-                        raw_response_level2b = extract_response_text(response_level2b)
-                        _dbg("geo.ultimate_fallback.level2b_response", raw=raw_response_level2b[:400])
-
-                        result_level2b = json.loads(raw_response_level2b)
 
                         if result_level2b and result_level2b.get("selected_id"):
                             selected_id = result_level2b["selected_id"]
@@ -3095,16 +2818,13 @@ def ultimate_ai_fallback(con, user_prompt):
             Est-ce un EPCI ? Si oui, lequel ?
             """
 
-            response_level3 = client.responses.create(
-                model=MODEL_NAME,
-                input=build_messages(system_prompt_level3, user_message_level3),
-                temperature=0,
+            result_level3 = ai_select_territory(
+                client,
+                MODEL_NAME,
+                system_prompt_level3,
+                user_message_level3,
+                "geo.ultimate_fallback.level3_response",
             )
-            metrics.log_api_call()
-            raw_response_level3 = extract_response_text(response_level3)
-            _dbg("geo.ultimate_fallback.level3_response", raw=raw_response_level3[:400])
-
-            result_level3 = json.loads(raw_response_level3)
 
             if result_level3 and result_level3.get("selected_id") and result_level3.get("confidence") in ["high", "medium"]:
                 selected_id = result_level3["selected_id"]
@@ -5217,10 +4937,8 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         try:
                             _dbg("sql.exec.before_run", sql_preview=sql_query[:500], con_type=type(con).__name__)
                             df = con.execute(sql_query).df()
-                            metrics.log_sql_query(success=True)
                             _dbg("sql.exec.result", empty=df.empty, rows=len(df), cols=list(df.columns), shape=df.shape)
                         except Exception as e:
-                            metrics.log_sql_query(success=False)
                             _dbg("sql.exec.error", error=str(e), error_type=type(e).__name__)
                             raise e
 
@@ -5333,42 +5051,6 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                             styled_df, col_config = style_df(df, formats, metadata)
                             st.dataframe(styled_df, hide_index=True, column_config=col_config, width='stretch')
 
-                    # 📊 Stocker les données de visualisation dans session_state pour la sidebar
-                    # 🔧 FIX: Ne pas utiliser ai_enhance_formats, utiliser directement les formats de base
-                    formats = chart_config.get("formats", {})
-                    # Améliorer les formats avec la logique de style_df (sans IA)
-                    for col in df.columns:
-                        if col.upper() in ["ID", "AN", "ANNEE", "YEAR", "CODGEO", "NOM_COUV"]:
-                            continue
-                        if col not in formats and pd.api.types.is_numeric_dtype(df[col]):
-                            # Logique similaire à style_df
-                            spec = {"label": col, "title": col}
-                            valid_vals = df[col].dropna().abs()
-                            if not valid_vals.empty:
-                                # Déterminer le type
-                                col_upper = col.upper()
-                                if any(key in col_upper for key in ["TAUX", "PART", "PCT", "PERCENT", "POURCENT", "%"]):
-                                    spec["kind"] = "percent"
-                                    spec["decimals"] = 1
-                                # 🔧 Détecter les colonnes monétaires de manière sûre
-                                elif any(key in col_upper for key in ["EURO", "€", "REVENU", "SALAIRE", "PRIX", "COUT", "COÛT", "MONTANT", "BUDGET", "FINANCE"]):
-                                    spec["kind"] = "euro"
-                                    spec["decimals"] = 0 if valid_vals.min() >= 100 else 2
-                                elif valid_vals.min() >= 100:
-                                    spec["kind"] = "number"
-                                    spec["decimals"] = 0
-                                elif (valid_vals % 1 == 0).all():
-                                    spec["kind"] = "number"
-                                    spec["decimals"] = 0
-                                else:
-                                    spec["kind"] = "number"
-                                    spec["decimals"] = 1
-                            else:
-                                spec["kind"] = "number"
-                                spec["decimals"] = 0
-                            formats[col] = spec
-                    chart_config["formats"] = formats
-
                     # 🔧 Stocker les données pour affichage dans la sidebar
                     st.session_state.current_viz_data = {
                         "df": df.copy(),
@@ -5407,9 +5089,7 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         ),
                         stream=True,
                     )
-                    metrics.log_api_call()
                     full_response_text = message_placeholder.write_stream(stream_response_text(stream))
-                    metrics.log_response()
                     _dbg("pipeline.stream.done", response_len=len(full_response_text) if full_response_text else 0)
                     print("[TERRIBOT][PIPE] ✅ Pipeline done")
 
