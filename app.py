@@ -5021,6 +5021,9 @@ Vous pouvez aussi préciser le contexte géographique (ex: "Alençon dans l'Orne
                         st.session_state.debug_data = {}
                     st.session_state.debug_data["search_query"] = rewritten_prompt
                     st.session_state.debug_data["rag_results"] = glossaire_context
+                    # Stocker les étapes de recherche géographique
+                    if "geo_resolution" in debug_container:
+                        st.session_state.debug_data["geo_resolution"] = debug_container["geo_resolution"]
 
                     # 4. SQL GENERATION
                     ids_sql = ", ".join([f"'{str(i)}'" for i in geo_context['all_ids']])
@@ -5445,3 +5448,40 @@ if "sidebar_debug_placeholder" in st.session_state:
                 if "search_query" in debug_data and debug_data["search_query"]:
                     st.markdown("**Question reformulée pour RAG :**")
                     st.caption(debug_data["search_query"])
+
+                # Geo Resolution Steps
+                if "geo_resolution" in debug_data and debug_data["geo_resolution"]:
+                    st.markdown("**🗺️ Étapes de recherche de territoire :**")
+                    geo_steps = debug_data["geo_resolution"]
+
+                    # Afficher sous forme de tableau
+                    if isinstance(geo_steps, list) and len(geo_steps) > 0:
+                        for i, step in enumerate(geo_steps):
+                            step_num = i + 1
+
+                            # Créer un conteneur pour chaque étape
+                            with st.container():
+                                # Titre de l'étape avec source
+                                source = step.get("Source", "Inconnu")
+                                st.markdown(f"**Étape {step_num}** - *{source}*")
+
+                                # Détails de l'étape
+                                cols = st.columns([1, 2])
+
+                                # Colonne 1 : Recherche et ID
+                                with cols[0]:
+                                    if "Recherche" in step:
+                                        st.caption(f"🔍 Recherche: `{step['Recherche']}`")
+                                    if "ID" in step:
+                                        st.caption(f"🆔 ID: `{step['ID']}`")
+
+                                # Colonne 2 : Résultat
+                                with cols[1]:
+                                    if "Trouvé" in step:
+                                        st.caption(f"✅ Trouvé: **{step['Trouvé']}**")
+                                    if "Erreur" in step:
+                                        st.caption(f"❌ Erreur: {step['Erreur']}")
+
+                                # Séparateur entre les étapes
+                                if step_num < len(geo_steps):
+                                    st.divider()
