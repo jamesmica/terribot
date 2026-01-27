@@ -705,6 +705,11 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
 
     if not numeric_cols: return {"selected_columns": [], "formats": {}}
 
+    # ✅ Détecter si c'est un graphique temporel (courbe)
+    cols = df.columns.tolist()
+    date_col = next((c for c in cols if c.upper() in ["AN", "ANNEE", "YEAR", "DATE"]), None)
+    is_temporal = date_col is not None
+
     stats = {}
     for c in numeric_cols[:20]:
         s = pd.to_numeric(df[c], errors="coerce").dropna()
@@ -715,29 +720,40 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
         "available_columns": numeric_cols,
         "data_stats": stats,
         "glossaire_sample": (glossaire_context or "")[-2000:],
+        "is_temporal": is_temporal,
     }
 
-    system_prompt = """
+    # ✅ Adapter le prompt selon le type de graphique
+    if is_temporal:
+        multi_metric_rule = """
+       - IMPORTANT : Pour les courbes temporelles (évolution dans le temps), choisis TOUJOURS UNE SEULE métrique.
+       - Le graphique affichera cette métrique pour les différents territoires (territoire cible + comparaison France).
+       - Ne choisis jamais plusieurs métriques pour une courbe temporelle."""
+    else:
+        multi_metric_rule = """
+       - Choisis toujours une seule variable pour répondre à la question. Priorité à la qualité du graph par rapport à la question.
+       Le seul cas où tu peux choisir plusieurs variables : si tu veux faire un histogramme groupé de plusieurs variables, ou un histogramme empilé avec plusieurs variables qui ont le même dénominateur et dont le total fait 100%."""
+
+    system_prompt = f"""
     Tu es un expert Dataviz. Configure le graphique.
-    
+
     TA MISSION :
     1. Choisis la ou les colonnes ('selected_columns') pour répondre à la question.
-       - Choisis toujours une seule variable pour répondre à la question. Priorité à la qualité du graph par rapport à la question.
-       Le seul cas où tu peux choisir plusieurs variables : si tu veux faire une courbe, un histogramme groupé de plusieurs variables, ou un histogramme empilé avec plusieurs variables qui ont le même dénominateur et dont le total fait 100%.
+{multi_metric_rule}
        - Les valeurs absolues ne sont pas comparables entre deux territoires de tailles différentes (il faut des taux, des parts, des moyennes, des médianes).
     2. Définis le format ET un label court ('formats') pour chaque colonne.
        - 'label': Un nom très court pour l'axe du graphique (ex: "15-24 ans" au lieu de "part_pop_15_24").
        - 'title': Le titre complet pour l'infobulle (ex: "Part des 15-24 ans au sein de la population").
     3. Définis un TITRE GLOBAL pour le graphique ('chart_title').
        - Exemple : "Répartition des logements selon le DPE en 2025" ou "Évolution du chômage".
-    
+
     JSON ATTENDU :
-    {
+    {{
       "selected_columns": ["col1", "col2"],
-      "formats": {
-        "col1": { "kind": "percent|currency|number", "decimals": 1, "label": "Titre Court Axe", "title": "Titre Long Tooltip" }
-      }
-    }
+      "formats": {{
+        "col1": {{ "kind": "percent|currency|number", "decimals": 1, "label": "Titre Court Axe", "title": "Titre Long Tooltip" }}
+      }}
+    }}
     """
 
     try:
@@ -750,6 +766,12 @@ def get_chart_configuration(df: pd.DataFrame, question: str, glossaire_context: 
 
         if not data.get("selected_columns"): data["selected_columns"] = [numeric_cols[0]]
         data["selected_columns"] = [c for c in data["selected_columns"] if c in df.columns]
+
+        # ✅ FORCE : Pour les courbes temporelles, ne garder qu'une seule métrique
+        if is_temporal and len(data["selected_columns"]) > 1:
+            _dbg("chart_config.temporal.force_single", original=data["selected_columns"], kept=data["selected_columns"][0])
+            data["selected_columns"] = [data["selected_columns"][0]]
+
         return data
     except: return {"selected_columns": [numeric_cols[0]], "formats": {}}
 
