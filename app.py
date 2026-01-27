@@ -4053,7 +4053,7 @@ def auto_plot_data(df, sorted_ids, config=None, con=None, in_sidebar=False):
     
     cols = df.columns.tolist()
     label_col = next((c for c in cols if c.upper() in ["NOM_COUV", "TERRITOIRE", "LIBELLE", "VILLE"]), None)
-    date_col = next((c for c in cols if c.upper() in ["AN", "ANNEE", "YEAR", "DATE"]), None)
+    date_col = next((c for c in cols if c.upper() in ["AN", "ANNEE", "YEAR", "DATE", "PERIODE"]), None)
     id_col = next((c for c in cols if c.upper() == "ID"), None)
 
     if not selected_metrics or not label_col: return
